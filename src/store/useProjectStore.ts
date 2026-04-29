@@ -1066,11 +1066,10 @@ export const useProjectStore = create<ProjectState>()(
           const exportProject = {
             ...project,
             sprites: project.sprites.map((s: any) => {
-              const safeName = s.name.replace(/\s+/g, '_') || `sprite_${s.id}`;
               const extension = s.uri?.split('.').pop() || (s.pixels ? 'bmp' : 'png');
               return {
                 ...s,
-                uri: `./assets/sprites/${safeName}.${extension}`
+                uri: `./assets/sprites/${s.id}.${extension}`
               };
             })
           };
@@ -1094,10 +1093,9 @@ export const useProjectStore = create<ProjectState>()(
               console.warn('Could not read assets directory, falling back to embedded data');
               // Fallback to what we have in memory if folder is empty
               for (const sprite of project.sprites) {
-                const safeName = sprite.name.replace(/\s+/g, '_') || `sprite_${sprite.id}`;
                 if (sprite.pixels) {
                   const bmpBase64 = pixelsToBMPBase64(sprite.pixels);
-                  if (bmpBase64) spriteFolder.file(`${safeName}.bmp`, bmpBase64, { base64: true });
+                  if (bmpBase64) spriteFolder.file(`${sprite.id}.bmp`, bmpBase64, { base64: true });
                 }
               }
             }
