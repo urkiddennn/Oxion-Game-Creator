@@ -100,9 +100,9 @@ const DraggableInstance = ({ inst, obj, scale, gridSize, onDragEnd, onRotateEnd,
       >
         {obj?.behavior === 'text' ? (
           <View style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', padding: 4 }}>
-            <Text 
-              style={{ 
-                color: obj.text?.color || '#FFF', 
+            <Text
+              style={{
+                color: obj.text?.color || '#FFF',
                 fontSize: (obj.text?.fontSize || 16) * 0.8, // Scale down slightly for editor
                 fontFamily: obj.text?.fontFamily === 'pixel' ? 'Pixel' : undefined,
                 textAlign: 'center'
@@ -113,14 +113,14 @@ const DraggableInstance = ({ inst, obj, scale, gridSize, onDragEnd, onRotateEnd,
             </Text>
           </View>
         ) : (
-          <PixelSprite 
-            sprite={sprite} 
-            size={gridSize} 
-            originalSize={true} 
+          <PixelSprite
+            sprite={sprite}
+            size={gridSize}
+            originalSize={true}
             animationState={obj?.appearance?.animationState}
           />
         )}
-        
+
         {isSelected && (
           <View style={{ position: 'absolute', width: '100%', height: '100%', pointerEvents: 'box-none', zIndex: 1000, overflow: 'visible', justifyContent: 'center', alignItems: 'center' }}>
             {activeTool === 'move' && (
@@ -393,7 +393,7 @@ export default function RoomsScreen() {
 
     const snappedX = Math.round(x / GRID_SIZE) * GRID_SIZE;
     const snappedY = Math.round(y / GRID_SIZE) * GRID_SIZE;
-    
+
     // Get object dimensions
     const obj = (currentProject?.objects || []).find(o => o.id === selectedObjectId);
     const sprite = (currentProject?.sprites || []).find(s => s.id === obj?.appearance.spriteId);
@@ -488,86 +488,86 @@ export default function RoomsScreen() {
       </View>
 
       {/* Main Content Area */}
-      <View 
+      <View
         style={styles.mainEditorArea}
         onLayout={(e) => setViewport(e.nativeEvent.layout)}
       >
         <GestureDetector gesture={composedGesture}>
           <View style={styles.gestureOverlay}>
             <Animated.View style={[styles.room, animatedStyle, { width: roomWidth, height: roomHeight }]}>
-            {/* Render Instances Grouped by Layer */}
-            {(currentRoom?.layers || [{ id: 'default', name: 'Layer 1', visible: true, locked: false }]).map((layer, idx, allLayers) => {
-              if (!layer.visible) return null;
+              {/* Render Instances Grouped by Layer */}
+              {(currentRoom?.layers || [{ id: 'default', name: 'Layer 1', visible: true, locked: false }]).map((layer, idx, allLayers) => {
+                if (!layer.visible) return null;
 
-              return (currentRoom?.instances || [])
-                .filter(inst => (inst.layerId || allLayers[0].id) === layer.id)
-                .map((inst) => {
-                  const obj = (currentProject?.objects || []).find(o => o.id === inst.objectId);
-                  const sprite = (currentProject?.sprites || []).find(s => s.id === obj?.appearance.spriteId);
+                return (currentRoom?.instances || [])
+                  .filter(inst => (inst.layerId || allLayers[0].id) === layer.id)
+                  .map((inst) => {
+                    const obj = (currentProject?.objects || []).find(o => o.id === inst.objectId);
+                    const sprite = (currentProject?.sprites || []).find(s => s.id === obj?.appearance.spriteId);
 
-                  return (
-                    <DraggableInstance
-                      key={inst.id}
-                      inst={inst}
-                      obj={obj}
-                      scale={scale}
-                      gridSize={GRID_SIZE}
-                      onDragEnd={handleDragEnd}
-                      onToolAction={handleToolAction}
-                      sprite={sprite}
-                      activeTool={activeTool}
-                      isPlacing={!!selectedObjectId && activeTool === 'select'}
-                      isSelected={selectedInstanceId === inst.id}
-                      onSelect={() => {
-                        if (!layer.locked) {
-                          setSelectedInstanceId(inst.id);
-                          setSelectedObjectId(null); // Cancel placement mode when selecting an object
-                        }
-                      }}
-                    />
-                  );
-                });
-            })}
+                    return (
+                      <DraggableInstance
+                        key={inst.id}
+                        inst={inst}
+                        obj={obj}
+                        scale={scale}
+                        gridSize={GRID_SIZE}
+                        onDragEnd={handleDragEnd}
+                        onToolAction={handleToolAction}
+                        sprite={sprite}
+                        activeTool={activeTool}
+                        isPlacing={!!selectedObjectId && activeTool === 'select'}
+                        isSelected={selectedInstanceId === inst.id}
+                        onSelect={() => {
+                          if (!layer.locked) {
+                            setSelectedInstanceId(inst.id);
+                            setSelectedObjectId(null); // Cancel placement mode when selecting an object
+                          }
+                        }}
+                      />
+                    );
+                  });
+              })}
 
-            {/* Room Boundary Rectangle */}
-            <View style={{
-              position: 'absolute',
-              left: 0,
-              top: 0,
-              width: roomWidth,
-              height: roomHeight,
-              borderWidth: 2,
-              borderColor: theme.colors.primary,
-              backgroundColor: 'rgba(46, 51, 61, 0.4)',
-              pointerEvents: 'none',
-              zIndex: -1
-            }} />
+              {/* Room Boundary Rectangle */}
+              <View style={{
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                width: roomWidth,
+                height: roomHeight,
+                borderWidth: 2,
+                borderColor: theme.colors.primary,
+                backgroundColor: 'rgba(46, 51, 61, 0.4)',
+                pointerEvents: 'none',
+                zIndex: -1
+              }} />
 
 
-            {/* Infinite Grid Layer */}
-            {showGrid && (
-              <View style={{ position: 'absolute', pointerEvents: 'none', zIndex: -2 }}>
-                {Array.from({ length: 120 }).map((_, i) => (
-                  <View key={`h-${i}`} pointerEvents="none" style={[styles.gridLineH, { 
-                    top: (i - 60) * GRID_SIZE, 
-                    width: 4000, 
-                    left: -2000,
-                    opacity: (i - 60) * GRID_SIZE >= 0 && (i - 60) * GRID_SIZE <= roomHeight ? 0.3 : 0.1
-                  }]} />
-                ))}
-                {Array.from({ length: 120 }).map((_, i) => (
-                  <View key={`v-${i}`} pointerEvents="none" style={[styles.gridLineV, { 
-                    left: (i - 60) * GRID_SIZE, 
-                    height: 4000, 
-                    top: -2000,
-                    opacity: (i - 60) * GRID_SIZE >= 0 && (i - 60) * GRID_SIZE <= roomWidth ? 0.3 : 0.1
-                  }]} />
-                ))}
-              </View>
-            )}
-          </Animated.View>
-        </View>
-      </GestureDetector>
+              {/* Infinite Grid Layer */}
+              {showGrid && (
+                <View style={{ position: 'absolute', pointerEvents: 'none', zIndex: -2 }}>
+                  {Array.from({ length: 120 }).map((_, i) => (
+                    <View key={`h-${i}`} pointerEvents="none" style={[styles.gridLineH, {
+                      top: (i - 60) * GRID_SIZE,
+                      width: 4000,
+                      left: -2000,
+                      opacity: (i - 60) * GRID_SIZE >= 0 && (i - 60) * GRID_SIZE <= roomHeight ? 0.3 : 0.1
+                    }]} />
+                  ))}
+                  {Array.from({ length: 120 }).map((_, i) => (
+                    <View key={`v-${i}`} pointerEvents="none" style={[styles.gridLineV, {
+                      left: (i - 60) * GRID_SIZE,
+                      height: 4000,
+                      top: -2000,
+                      opacity: (i - 60) * GRID_SIZE >= 0 && (i - 60) * GRID_SIZE <= roomWidth ? 0.3 : 0.1
+                    }]} />
+                  ))}
+                </View>
+              )}
+            </Animated.View>
+          </View>
+        </GestureDetector>
 
         {/* Zoom Controls */}
         <View style={styles.zoomControls}>
@@ -651,9 +651,9 @@ export default function RoomsScreen() {
                         {obj.behavior === 'text' ? (
                           <Layout size={20} color={theme.colors.primary} />
                         ) : (
-                          <PixelSprite 
-                            sprite={(currentProject?.sprites || []).find(s => s.id === obj.appearance.spriteId)} 
-                            size={32} 
+                          <PixelSprite
+                            sprite={(currentProject?.sprites || []).find(s => s.id === obj.appearance.spriteId)}
+                            size={32}
                             animationState={obj.appearance.animationState}
                           />
                         )}
@@ -689,7 +689,7 @@ export default function RoomsScreen() {
                       <View
                         key={layer.id}
                         style={[
-                          styles.layerItem, 
+                          styles.layerItem,
                           isActive && { borderLeftWidth: 3, borderLeftColor: theme.colors.primary, backgroundColor: 'rgba(0, 209, 255, 0.05)' }
                         ]}
                       >
@@ -711,7 +711,7 @@ export default function RoomsScreen() {
                               if (selectedInstanceId) {
                                 // If an object is selected, move it to this layer
                                 updateRoom(currentRoom.id, {
-                                  instances: currentRoom.instances.map(i => 
+                                  instances: currentRoom.instances.map(i =>
                                     i.id === selectedInstanceId ? { ...i, layerId: layer.id } : i
                                   )
                                 });
@@ -775,15 +775,15 @@ export default function RoomsScreen() {
                           {obj?.behavior === 'text' ? (
                             <Layout size={18} color={theme.colors.primary} />
                           ) : (
-                            <PixelSprite 
-                              sprite={currentProject?.sprites.find(s => s.id === obj?.appearance.spriteId)} 
-                              size={24} 
+                            <PixelSprite
+                              sprite={currentProject?.sprites.find(s => s.id === obj?.appearance.spriteId)}
+                              size={24}
                               animationState={obj?.appearance?.animationState}
                             />
                           )}
                           <Text style={{ color: '#fff', marginLeft: 8, fontSize: 14 }}>{obj?.name || 'Unknown Object'}</Text>
                         </View>
-                        
+
                         {obj?.behavior === 'text' && (
                           <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', padding: 8, borderRadius: 8, borderLeftWidth: 2, borderLeftColor: theme.colors.primary }}>
                             <Text style={{ color: theme.colors.textMuted, fontSize: 10, marginBottom: 4 }}>TEXT CONTENT</Text>
@@ -792,7 +792,7 @@ export default function RoomsScreen() {
                             </Text>
                           </View>
                         )}
-                        
+
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                           <Text style={{ color: theme.colors.textMuted, fontSize: 11 }}>Position</Text>
                           <Text style={{ color: theme.colors.text, fontSize: 11 }}>{inst.x}, {inst.y}</Text>

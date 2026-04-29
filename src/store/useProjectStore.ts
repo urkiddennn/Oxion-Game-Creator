@@ -2,6 +2,12 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
+import { generateWebHTML } from '../utils/webExportTemplate';
+import { pixelsToBMPBase64 } from '../utils/bmpEncoder';
+import { FileSystemManager } from '../utils/fileSystemManager';
+import JSZip from 'jszip';
 
 export type TemplateType = 'Platformer' | 'RPG' | 'Sandbox' | 'Empty';
 
@@ -255,10 +261,11 @@ interface ProjectState {
   deleteLocalVariable: (objectId: string, key: string) => void;
   promoteVariableToGlobal: (objectId: string, key: string) => void;
   deleteGlobalVariable: (key: string) => void;
+  exportToWeb: () => Promise<{ success: boolean, error?: string }>;
 }
 
 const generateUUID = () => {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
     const r = Math.random() * 16 | 0;
     const v = c === 'x' ? r : (r & 0x3 | 0x8);
     return v.toString(16);
@@ -292,22 +299,30 @@ export const useProjectStore = create<ProjectState>()(
             width: 800,
             height: 600,
             instances: [],
+            layers: [{ id: 'l1', name: 'Layer 1', visible: true, locked: false }],
             settings: {
-              showControls: { left: true, right: true, jump: true, shoot: true },
+              showControls: { left: true, right: true, jump: true, shoot: false },
               gravity: 9.8,
-              backgroundColor: '#2E333D',
+              backgroundColor: '#111111',
               showGrid: true,
               gridSize: 32
-            },
-            layers: []
+            }
           }],
           sounds: [],
           animations: [],
+          mainRoomId: 'main'
         };
+
+        // Create folder in background
+        FileSystemManager.createProjectFolder(newProject.id).then(() => {
+          FileSystemManager.saveProjectJson(newProject.id, newProject);
+        });
+
         return {
           projects: [...state.projects, newProject],
+          activeProject: newProject,
           selectedProject: newProject,
-          activeProject: newProject
+          activeRoomId: 'main'
         };
       }),
       removeProject: (name) => set((state) => ({
@@ -328,8 +343,9 @@ export const useProjectStore = create<ProjectState>()(
       updateProject: (updates) => set((state) => {
         const target = state.activeProject || state.selectedProject;
         if (!target) return state;
-        
+
         const updated = { ...target, ...updates };
+        FileSystemManager.saveProjectJson(updated.id, updated);
         return {
           activeProject: state.activeProject?.id === target.id ? updated : state.activeProject,
           selectedProject: state.selectedProject?.id === target.id ? updated : state.selectedProject,
@@ -338,14 +354,43 @@ export const useProjectStore = create<ProjectState>()(
       }),
       addSprite: (sprite) => set((state) => {
         if (!state.activeProject) return state;
-        const updated = {
+        const newSprite = { ...sprite };
+        const pid = state.activeProject.id;
+        
+        // Save to FileSystem and update URI
+        (async () => {
+          let assetUri = newSprite.uri;
+          if (newSprite.pixels) {
+            const bmpB64 = pixelsToBMPBase64(newSprite.pixels);
+            assetUri = `data:image/bmp;base64,${bmpB64}`;
+          }
+          
+          if (assetUri) {
+            const localUri = await FileSystemManager.saveAsset(pid, newSprite.id, assetUri);
+            
+            // Update the state with the NEW permanent local URI
+            set((innerState) => {
+              if (!innerState.activeProject) return innerState;
+              const updatedSprites = innerState.activeProject.sprites.map(s => 
+                s.id === newSprite.id ? { ...s, uri: localUri } : s
+              );
+              const updatedProject = { ...innerState.activeProject, sprites: updatedSprites };
+              FileSystemManager.saveProjectJson(pid, updatedProject);
+              return {
+                activeProject: updatedProject,
+                projects: innerState.projects.map(p => p.id === pid ? updatedProject : p)
+              };
+            });
+          }
+        })();
+
+        const updatedProject = {
           ...state.activeProject,
-          sprites: [...(state.activeProject.sprites || []), sprite]
+          sprites: [...state.activeProject.sprites, newSprite]
         };
         return {
-          activeProject: updated,
-          selectedProject: state.selectedProject?.name === updated.name ? updated : state.selectedProject,
-          projects: state.projects.map(p => p.name === updated.name ? updated : p)
+          activeProject: updatedProject,
+          projects: state.projects.map(p => p.id === updatedProject.id ? updatedProject : p)
         };
       }),
       updateSprite: (id: string, updates: any) => set((state) => {
@@ -764,12 +809,12 @@ export const useProjectStore = create<ProjectState>()(
           if (authError || !userData.user) {
             return { success: false, error: 'You must be signed in to publish.' };
           }
-          
+
           // Deep clone to avoid mutating local state
           const project = JSON.parse(JSON.stringify(sourceProject));
 
           const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
-          
+
           // 1. Ensure Project ID is a UUID
           if (!isUUID(project.id)) {
             const newId = generateUUID();
@@ -791,7 +836,11 @@ export const useProjectStore = create<ProjectState>()(
           // Migrate all internal IDs to UUID
           project.sprites = (project.sprites || []).map((s: any) => ({ ...s, id: ensureUUID(s.id) }));
           project.sounds = (project.sounds || []).map((s: any) => ({ ...s, id: ensureUUID(s.id) }));
-          project.animations = (project.animations || []).map((s: any) => ({ ...s, id: ensureUUID(s.id) }));
+          project.animations = (project.animations || []).map((s: any) => ({ 
+            ...s, 
+            id: ensureUUID(s.id),
+            spriteId: s.spriteId ? ensureUUID(s.spriteId) : s.spriteId
+          }));
 
           if (project.iconSpriteId) {
             project.iconSpriteId = ensureUUID(project.iconSpriteId);
@@ -802,6 +851,29 @@ export const useProjectStore = create<ProjectState>()(
             if (obj.appearance?.spriteId) {
               obj.appearance.spriteId = ensureUUID(obj.appearance.spriteId);
             }
+            if (obj.appearance?.animationId) {
+              obj.appearance.animationId = ensureUUID(obj.appearance.animationId);
+            }
+            
+            // Combat references
+            if (obj.combat?.bulletObjectId) {
+              obj.combat.bulletObjectId = ensureUUID(obj.combat.bulletObjectId);
+            }
+            if (obj.combat?.explosionSpriteId) {
+              obj.combat.explosionSpriteId = ensureUUID(obj.combat.explosionSpriteId);
+            }
+
+            // Logic references (actions that might target IDs)
+            if (obj.logic?.listeners) {
+              obj.logic.listeners = obj.logic.listeners.map((l: any) => {
+                if (l.action?.startsWith('spawn:')) {
+                  const parts = l.action.split(':');
+                  return { ...l, action: `spawn:${ensureUUID(parts[1])}` };
+                }
+                return l;
+              });
+            }
+
             return { ...obj, id: newObjId };
           });
 
@@ -973,6 +1045,81 @@ export const useProjectStore = create<ProjectState>()(
           projects: state.projects.map(p => p.name === updated.name ? updated : p)
         };
       }),
+      exportToWeb: async () => {
+        const project = get().activeProject;
+        if (!project) return { success: false, error: 'No active project' };
+        try {
+          const zip = new JSZip();
+          const projectDir = FileSystemManager.getProjectDir(project.id);
+          const assetsDir = FileSystemManager.getAssetsDir(project.id);
+
+          // 1. Fetch Matter.js
+          let matterSrc = '';
+          try {
+            const mRes = await fetch('https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js');
+            matterSrc = await mRes.text();
+          } catch (e) {
+            console.warn('Could not fetch Matter.js for bundling');
+          }
+
+          // 2. Prepare Export Metadata (Map URIs to relative paths inside ZIP)
+          const exportProject = {
+            ...project,
+            sprites: project.sprites.map((s: any) => {
+              const safeName = s.name.replace(/\s+/g, '_') || `sprite_${s.id}`;
+              const extension = s.uri?.split('.').pop() || (s.pixels ? 'bmp' : 'png');
+              return {
+                ...s,
+                uri: `./assets/sprites/${safeName}.${extension}`
+              };
+            })
+          };
+
+          const html = generateWebHTML(exportProject, !!matterSrc);
+          zip.file("index.html", html);
+          if (matterSrc) zip.file("matter.min.js", matterSrc);
+          zip.file("project.json", JSON.stringify(exportProject, null, 2));
+          
+          // 3. Export Sprites from physical assets folder
+          const spriteFolder = zip.folder("assets/sprites");
+          if (spriteFolder) {
+            try {
+              const files = await FileSystem.readDirectoryAsync(assetsDir);
+              for (const file of files) {
+                const fileUri = assetsDir + file;
+                const base64 = await FileSystem.readAsStringAsync(fileUri, { encoding: FileSystem.EncodingType.Base64 });
+                spriteFolder.file(file, base64, { base64: true });
+              }
+            } catch (e) {
+              console.warn('Could not read assets directory, falling back to embedded data');
+              // Fallback to what we have in memory if folder is empty
+              for (const sprite of project.sprites) {
+                const safeName = sprite.name.replace(/\s+/g, '_') || `sprite_${sprite.id}`;
+                if (sprite.pixels) {
+                  const bmpBase64 = pixelsToBMPBase64(sprite.pixels);
+                  if (bmpBase64) spriteFolder.file(`${safeName}.bmp`, bmpBase64, { base64: true });
+                }
+              }
+            }
+          }
+          
+          zip.file("README.txt", `Oxion Game: ${project.name}\n\nTo play:\n1. Unzip this folder.\n2. Open index.html in any web browser.\n\nAssets are mirrored in assets/sprites/`);
+
+          const base64Zip = await zip.generateAsync({ type: "base64" });
+          
+          const filename = `${project.name.replace(/\s+/g, '_')}_WebExport.zip`;
+          const baseDir = ((FileSystem as any).cacheDirectory || (FileSystem as any).documentDirectory);
+          const fileUri = baseDir + filename;
+          
+          await FileSystem.writeAsStringAsync(fileUri, base64Zip, { encoding: FileSystem.EncodingType.Base64 });
+          await Sharing.shareAsync(fileUri);
+          
+          return { success: true };
+        } catch (err: any) {
+          console.error('Export Error:', err);
+          return { success: false, error: err.message };
+        }
+      }
     }),
     {
       name: 'oxion-project-storage',

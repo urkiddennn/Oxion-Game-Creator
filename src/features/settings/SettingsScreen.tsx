@@ -1,13 +1,16 @@
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Modal, Image } from 'react-native';
 import { theme } from '../../theme';
 import { useProjectStore } from '../../store/useProjectStore';
-import { Settings as SettingsIcon, LogOut, Shield, Database, Bell, X, Box, Image as ImageIcon, Trash2 } from 'lucide-react-native';
+import { Settings as SettingsIcon, LogOut, Shield, Database, Bell, X, Box, Image as ImageIcon, Trash2, Globe } from 'lucide-react-native';
 import { Alert } from 'react-native';
 import React from 'react';
 
 export default function SettingsScreen() {
-  const { activeProject: currentProject, closeProject, updateProject, removeProject } = useProjectStore();
+  const { activeProject: currentProject, closeProject, updateProject, removeProject, exportToWeb } = useProjectStore();
   const [spritePickerVisible, setSpritePickerVisible] = React.useState(false);
+  const [isExporting, setIsExporting] = React.useState(false);
+  const [exportProgress, setExportProgress] = React.useState(0);
+  const [exportStatus, setExportStatus] = React.useState('Preparing...');
 
   const handleDeleteProject = () => {
     if (!currentProject) return;
@@ -116,10 +119,41 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Project Settings</Text>
-        <SettingItem icon={Shield} label="Project Permissions" />
-        <SettingItem icon={Database} label="Storage & Export" />
-        <SettingItem icon={Bell} label="Notifications" />
+        <Text style={[styles.sectionTitle, { width: '100%' }]}>Project Settings</Text>
+        <View style={styles.gridContainer}>
+          <SettingItem icon={Shield} label="Permissions" />
+          
+          <TouchableOpacity 
+            style={styles.item} 
+            onPress={async () => {
+              setIsExporting(true);
+              setExportProgress(0);
+              
+              // Simulate progress
+              setExportStatus('Processing assets...');
+              for(let i=0; i<=33; i++) { setExportProgress(i); await new Promise(r => setTimeout(r, 30)); }
+              
+              setExportStatus('Compiling runtime...');
+              for(let i=34; i<=66; i++) { setExportProgress(i); await new Promise(r => setTimeout(r, 30)); }
+              
+              setExportStatus('Packaging HTML...');
+              for(let i=67; i<=100; i++) { setExportProgress(i); await new Promise(r => setTimeout(r, 30)); }
+              
+              const res = await exportToWeb();
+              setIsExporting(false);
+              if (!res.success) Alert.alert('Export Failed', res.error);
+            }}
+          >
+            <View style={styles.itemLeft}>
+              <Globe color={theme.colors.primary} size={20} />
+              <Text style={styles.itemLabel}>Web Export</Text>
+            </View>
+            <Text style={styles.itemValue}>Ready</Text>
+          </TouchableOpacity>
+
+          <SettingItem icon={Database} label="Storage" />
+          <SettingItem icon={Bell} label="Alerts" />
+        </View>
       </View>
 
       <TouchableOpacity
@@ -179,6 +213,26 @@ export default function SettingsScreen() {
                 )}
               </View>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={isExporting}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { padding: 24, alignItems: 'center' }]}>
+            <Globe color={theme.colors.primary} size={48} />
+            <Text style={[styles.modalTitle, { marginTop: 16, fontSize: 18 }]}>Building Web App</Text>
+            <Text style={{ color: theme.colors.textSecondary, marginBottom: 20 }}>{exportStatus}</Text>
+            
+            <View style={styles.progressBarContainer}>
+              <View style={[styles.progressBar, { width: `${exportProgress}%` }]} />
+            </View>
+            
+            <Text style={{ color: theme.colors.primary, fontWeight: 'bold', marginTop: 10 }}>{exportProgress}%</Text>
           </View>
         </View>
       </Modal>
@@ -367,29 +421,52 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   item: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    width: '49%',
+    flexDirection: 'column',
+    justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: theme.colors.surface,
     padding: 12,
     borderRadius: 2,
-    marginBottom: 4,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: theme.colors.border,
+    minHeight: 80,
   },
   itemLeft: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
+    marginBottom: 8,
   },
   itemLabel: {
     color: theme.colors.text,
     fontWeight: '600',
-    fontSize: 13,
+    fontSize: 11,
+    textAlign: 'center',
   },
   itemValue: {
     color: theme.colors.textMuted,
-    fontSize: 11,
+    fontSize: 9,
+    textTransform: 'uppercase',
+  },
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  progressBarContainer: {
+    width: '100%',
+    height: 6,
+    backgroundColor: theme.colors.background,
+    borderRadius: 3,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: theme.colors.primary,
   },
   dangerButton: {
     marginHorizontal: 16,

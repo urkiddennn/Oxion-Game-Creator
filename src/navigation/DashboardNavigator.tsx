@@ -1,5 +1,5 @@
 import React, { Suspense, useState } from 'react';
-import { View, TouchableOpacity, Text, StyleSheet, Modal, ActivityIndicator, DeviceEventEmitter } from 'react-native';
+import { View, TouchableOpacity, Text, StyleSheet, Modal, ActivityIndicator, DeviceEventEmitter, Alert } from 'react-native';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import {
@@ -9,6 +9,7 @@ import {
 import { theme } from '../theme';
 import GamePlayer from '../features/rooms/components/GamePlayer';
 import { useProjectStore } from '../store/useProjectStore';
+import { FileSystemManager } from '../utils/fileSystemManager';
 
 const SpritesScreen = React.lazy(() => import('../features/sprites/SpritesScreen'));
 const ObjectsScreen = React.lazy(() => import('../features/objects/ObjectsScreen'));
@@ -29,7 +30,16 @@ function TopToolbar({ state, navigation, onPlay, onDebug }: any) {
           <TouchableOpacity style={styles.toolbarButton} onPress={() => setMenuVisible(true)}>
             <Menu color={theme.colors.text} size={18} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.toolbarButton}>
+          <TouchableOpacity 
+            style={styles.toolbarButton} 
+            onPress={() => {
+              const activeProject = useProjectStore.getState().activeProject;
+              if (activeProject) {
+                FileSystemManager.saveProjectJson(activeProject.id, activeProject);
+                Alert.alert('Success', 'Project saved successfully to device storage!');
+              }
+            }}
+          >
             <Save color={theme.colors.text} size={18} />
           </TouchableOpacity>
 
