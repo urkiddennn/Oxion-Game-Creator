@@ -1,6 +1,6 @@
 import React from 'react';
 import { Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
-import { X, Image as ImageIcon } from 'lucide-react-native';
+import { X, Image as ImageIcon, Film } from 'lucide-react-native';
 import ObjectCreatorModal from './modals/ObjectCreatorModal';
 import ObjectInspectorModal from './modals/ObjectInspectorModal';
 import { theme } from '../../../theme';
@@ -9,6 +9,7 @@ export default function ObjectModals({
   createModalVisible, setCreateModalVisible,
   inspectorVisible, setInspectorVisible,
   spritePickerVisible, setSpritePickerVisible,
+  animationPickerVisible, setAnimationPickerVisible,
   selectedObject, setSelectedObject,
   currentProject, updateObject, handleCreateObject, renderSpritePreview
 }: any) {
@@ -28,6 +29,7 @@ export default function ObjectModals({
         currentProject={currentProject}
         updateObject={updateObject}
         setSpritePickerVisible={setSpritePickerVisible}
+        setAnimationPickerVisible={setAnimationPickerVisible}
         renderSpritePreview={renderSpritePreview}
       />
 
@@ -55,6 +57,13 @@ export default function ObjectModals({
                     style={styles.pickerItem}
                     onPress={() => {
                       if (!selectedObject) return;
+                      
+                      // Check if there's a specialized callback (used for multi-sprite picking)
+                      if ((global as any).lastSpritePickerCallback) {
+                        (global as any).lastSpritePickerCallback(sprite.id);
+                        return;
+                      }
+
                       const appearance = selectedObject.appearance || { spriteId: null, animationSpeed: 100 };
                       updateObject(selectedObject.id, { 
                         appearance: { ...appearance, spriteId: sprite.id } 
@@ -78,6 +87,61 @@ export default function ObjectModals({
                     <ImageIcon size={48} color={theme.colors.textMuted} />
                     <Text style={styles.emptyPickerText}>No Sprites Yet</Text>
                     <Text style={styles.emptyPickerSub}>Go to the Sprites tab to create or import some!</Text>
+                  </View>
+                )}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Animation Picker Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={animationPickerVisible}
+        onRequestClose={() => setAnimationPickerVisible(false)}
+      >
+        <View style={styles.pickerOverlay}>
+          <View style={styles.pickerContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Animation</Text>
+              <TouchableOpacity onPress={() => setAnimationPickerVisible(false)}>
+                <X color={theme.colors.text} size={24} />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.pickerGrid}>
+                {currentProject?.animations?.map((anim: any) => (
+                  <TouchableOpacity 
+                    key={anim.id} 
+                    style={styles.pickerItem}
+                    onPress={() => {
+                      if (!selectedObject) return;
+                      const appearance = selectedObject.appearance || { type: 'sprite', spriteId: null, animationId: null, animationSpeed: 100 };
+                      updateObject(selectedObject.id, { 
+                        appearance: { ...appearance, animationId: anim.id, type: 'animation' } 
+                      });
+                      setSelectedObject({ 
+                        ...selectedObject, 
+                        appearance: { ...appearance, animationId: anim.id, type: 'animation' } 
+                      });
+                      setAnimationPickerVisible(false);
+                    }}
+                  >
+                    <View style={styles.pickerPreview}>
+                      <Film size={24} color={theme.colors.primary} />
+                    </View>
+                    <Text style={styles.pickerLabel} numberOfLines={1}>{anim.name}</Text>
+                  </TouchableOpacity>
+                ))}
+                
+                {(currentProject?.animations || []).length === 0 && (
+                  <View style={styles.emptyPicker}>
+                    <Film size={48} color={theme.colors.textMuted} />
+                    <Text style={styles.emptyPickerText}>No Animations Yet</Text>
+                    <Text style={styles.emptyPickerSub}>Go to the Animations tab to create some!</Text>
                   </View>
                 )}
               </View>

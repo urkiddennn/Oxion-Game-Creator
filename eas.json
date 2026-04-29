@@ -10,16 +10,18 @@
       "channel": "development"
     },
     "preview": {
-      "distribution": "internal",
+      "node": "20.10.0",
+      "distribution": "store",
+      "channel": "preview",
       "android": {
-        "buildType": "apk"
-      },
-      "channel": "preview"
+        "buildType": "apk",
+        "resourceClass": "medium"
+      }
     },
     "production": {
+      "node": "20.10.0",
       "autoIncrement": true,
-      "channel": "production",
-      "node": "20.10.0"
+      "channel": "production"
     }
   },
   "submit": {

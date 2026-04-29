@@ -1,16 +1,43 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Modal, Switch } from 'react-native';
 import { theme } from '../../theme';
 import { styles } from './SpritesScreen.styles';
-import { Image as ImageIcon, Plus, Upload, Palette, X } from 'lucide-react-native';
+import { Image as ImageIcon, Plus, Upload, Palette, X, Trash2, ChevronDown, Save } from 'lucide-react-native';
+import { TextInput } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import SpriteEditor from './components/SpriteEditor';
 import { useProjectStore, Sprite } from '../../store/useProjectStore';
 
 export default function SpritesScreen() {
-  const { activeProject: currentProject, addSprite } = useProjectStore();
+  const { activeProject: currentProject, addSprite, updateSprite, removeSprite } = useProjectStore();
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
+  const [selectedSpriteId, setSelectedSpriteId] = useState<string | null>(null);
+  const [imgSize, setImgSize] = useState({ width: 0, height: 0 });
+  const [previewState, setPreviewState] = useState<string | null>(null);
+  const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
+
+  const selectedSprite = currentProject?.sprites.find(s => s.id === selectedSpriteId);
+
+  React.useEffect(() => {
+    if (selectedSprite?.uri) {
+      Image.getSize(selectedSprite.uri, (width, height) => {
+        setImgSize({ width, height });
+      });
+    }
+  }, [selectedSprite?.id]);
+
+
+
+  React.useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (previewState) {
+      interval = setInterval(() => {
+        setCurrentFrameIndex(prev => prev + 1);
+      }, 100);
+    }
+    return () => clearInterval(interval);
+  }, [previewState]);
 
   const handleImport = async () => {
     setShowAddMenu(false);
@@ -22,15 +49,29 @@ export default function SpritesScreen() {
 
     if (!result.canceled) {
       const asset = result.assets[0];
-      const newSprite: Sprite = {
-        id: Date.now().toString(),
-        name: `Imported ${Date.now().toString().slice(-4)}`,
-        uri: asset.uri,
-        type: 'imported',
-        width: asset.width,
-        height: asset.height,
+      const saveSprite = (w: number, h: number) => {
+        const newSprite: Sprite = {
+          id: Date.now().toString(),
+          name: `Imported ${Date.now().toString().slice(-4)}`,
+          uri: asset.uri,
+          type: 'imported',
+          width: w,
+          height: h,
+          grid: {
+            enabled: false, // Don't auto-enable, let user decide
+            frameWidth: w,
+            frameHeight: h,
+          },
+          animations: []
+        };
+        addSprite(newSprite);
       };
-      addSprite(newSprite);
+
+      if (asset.width && asset.height) {
+        saveSprite(asset.width, asset.height);
+      } else {
+        Image.getSize(asset.uri, (w, h) => saveSprite(w, h));
+      }
     }
   };
 
@@ -62,7 +103,11 @@ export default function SpritesScreen() {
       ) : (
         <ScrollView contentContainerStyle={styles.spriteGrid}>
           {sprites.map((sprite) => (
-            <View key={sprite.id} style={styles.spriteCard}>
+            <TouchableOpacity
+              key={sprite.id}
+              style={styles.spriteCard}
+              onPress={() => setSelectedSpriteId(sprite.id)}
+            >
               <View style={styles.previewContainer}>
                 {sprite.type === 'imported' ? (
                   <Image source={{ uri: sprite.uri }} style={styles.spritePreview} />
@@ -71,16 +116,16 @@ export default function SpritesScreen() {
                     {sprite.pixels?.map((row, r) => (
                       <View key={r} style={styles.pixelRow}>
                         {row.map((color, c) => (
-                          <View 
-                            key={c} 
+                          <View
+                            key={c}
                             style={[
-                              styles.pixel, 
-                              { 
+                              styles.pixel,
+                              {
                                 backgroundColor: color || 'transparent',
                                 width: `${100 / row.length}%`,
-                                aspectRatio: 1 
+                                aspectRatio: 1
                               }
-                            ]} 
+                            ]}
                           />
                         ))}
                       </View>
@@ -88,10 +133,7 @@ export default function SpritesScreen() {
                   </View>
                 )}
               </View>
-              <Text style={styles.spriteLabel} numberOfLines={1}>
-                {sprite.name || `Sprite ${sprite.id.slice(-4)}`}
-              </Text>
-            </View>
+            </TouchableOpacity>
           ))}
         </ScrollView>
       )}
@@ -124,6 +166,247 @@ export default function SpritesScreen() {
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
+      </Modal>
+
+      {/* Sprite Details / Animation Editor Modal */}
+      <Modal visible={!!selectedSpriteId} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.detailsContent}>
+            {selectedSprite && (
+              <>
+                <View style={styles.detailsHeader}>
+                  <TextInput
+                    style={styles.detailsTitle}
+                    value={selectedSprite.name}
+                    onChangeText={(v) => updateSprite(selectedSprite.id, { name: v })}
+                  />
+                  <View style={{ flexDirection: 'row', gap: 12 }}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        removeSprite(selectedSprite.id);
+                        setSelectedSpriteId(null);
+                      }}
+                    >
+                      <Trash2 size={20} color={theme.colors.error} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setSelectedSpriteId(null)}>
+                      <X size={24} color={theme.colors.text} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View style={styles.slicerLayout}>
+                  {/* Sidebar - Settings & States */}
+                  <View style={styles.slicerSidebar}>
+                    <ScrollView showsVerticalScrollIndicator={false}>
+                      <View style={styles.sidebarSection}>
+                        <Text style={styles.sectionTitle}>Preview</Text>
+                        <View style={styles.animationPreview}>
+                          {(() => {
+                            const w = imgSize.width || selectedSprite.width || 0;
+                            const h = imgSize.height || selectedSprite.height || 0;
+                            const activeAnim = selectedSprite.animations?.find(a => a.name === previewState);
+                            if (!activeAnim || w === 0) return <Text style={{ color: '#444', fontSize: 10 }}>Select State</Text>;
+
+                            const fw = Math.max(1, selectedSprite.grid?.frameWidth || 32);
+                            const fh = Math.max(1, selectedSprite.grid?.frameHeight || 32);
+                            const cols = Math.floor(w / fw);
+
+                            const frameIdx = activeAnim.row + (currentFrameIndex % activeAnim.frameCount);
+                            const r = Math.floor(frameIdx / cols);
+                            const c = frameIdx % cols;
+
+                            const frameSize = 64;
+                            return (
+                              <Image
+                                source={{ uri: selectedSprite.uri }}
+                                style={{
+                                  width: w * (frameSize / fw),
+                                  height: h * (frameSize / fh),
+                                  position: 'absolute',
+                                  left: -c * frameSize,
+                                  top: -r * frameSize,
+                                  // @ts-ignore
+                                  imageRendering: 'pixelated',
+                                }}
+                                resizeMode="stretch"
+                              />
+                            );
+                          })()}
+                        </View>
+
+                        <View style={styles.sectionHeader}>
+                          <Text style={styles.sectionTitle}>Slicing</Text>
+                          <Switch
+                            value={!!selectedSprite.grid?.enabled}
+                            onValueChange={(v) => updateSprite(selectedSprite.id, {
+                              grid: {
+                                ...(selectedSprite.grid || { frameWidth: 32, frameHeight: 32 }),
+                                enabled: v
+                              }
+                            })}
+                            trackColor={{ false: '#222', true: theme.colors.primary }}
+                            thumbColor="#fff"
+                            ios_backgroundColor="#3e3e3e"
+                            // @ts-ignore
+                            style={{ transform: [{ scale: 0.6 }], height: 20, width: 30 }}
+                          />
+                        </View>
+                        <View style={styles.inputGrid}>
+                          <View style={styles.inputItem}>
+                            <Text style={styles.label}>WIDTH</Text>
+                            <TextInput
+                              style={styles.input}
+                              keyboardType="numeric"
+                              value={String(selectedSprite.grid?.frameWidth || 32)}
+                              onChangeText={(v) => updateSprite(selectedSprite.id, {
+                                grid: {
+                                  ...(selectedSprite.grid || { enabled: true, frameHeight: 32 }),
+                                  frameWidth: parseInt(v) || 0,
+                                }
+                              })}
+                            />
+                          </View>
+                          <View style={styles.inputItem}>
+                            <Text style={styles.label}>HEIGHT</Text>
+                            <TextInput
+                              style={styles.input}
+                              keyboardType="numeric"
+                              value={String(selectedSprite.grid?.frameHeight || 32)}
+                              onChangeText={(v) => updateSprite(selectedSprite.id, {
+                                grid: {
+                                  ...(selectedSprite.grid || { enabled: true, frameWidth: 32 }),
+                                  frameHeight: parseInt(v) || 0
+                                }
+                              })}
+                            />
+                          </View>
+                        </View>
+                      </View>
+
+                      <View style={styles.sidebarSection}>
+                        <Text style={styles.sectionTitle}>Animations</Text>
+                        <View style={styles.stateList}>
+                          {(selectedSprite.animations || []).map((anim, idx) => (
+                            <TouchableOpacity
+                              key={idx}
+                              style={[styles.stateItem, previewState === anim.name && styles.stateActive]}
+                              onPress={() => setPreviewState(anim.name)}
+                            >
+                              <View style={styles.stateHeader}>
+                                <TextInput
+                                  style={styles.stateNameInput}
+                                  value={anim.name}
+                                  onChangeText={(v) => {
+                                    const states = [...(selectedSprite.animations || [])];
+                                    states[idx].name = v;
+                                    updateSprite(selectedSprite.id, { animations: states });
+                                  }}
+                                />
+                                <TouchableOpacity
+                                  onPress={() => {
+                                    const states = (selectedSprite.animations || []).filter((_, i) => i !== idx);
+                                    updateSprite(selectedSprite.id, { animations: states });
+                                    if (previewState === anim.name) setPreviewState(null);
+                                  }}
+                                >
+                                  <Trash2 size={14} color="#666" />
+                                </TouchableOpacity>
+                              </View>
+                              <View style={styles.stateInputs}>
+                                <View style={styles.stateInputWrap}>
+                                  <Text style={styles.label}>COL</Text>
+                                  <TextInput
+                                    style={styles.input}
+                                    keyboardType="numeric"
+                                    value={String(anim.row)}
+                                    onChangeText={(v) => {
+                                      const states = [...(selectedSprite.animations || [])];
+                                      states[idx].row = parseInt(v) || 0;
+                                      updateSprite(selectedSprite.id, { animations: states });
+                                    }}
+                                  />
+                                </View>
+                                <View style={styles.stateInputWrap}>
+                                  <Text style={styles.label}>COUNT</Text>
+                                  <TextInput
+                                    style={styles.input}
+                                    keyboardType="numeric"
+                                    value={String(anim.frameCount)}
+                                    onChangeText={(v) => {
+                                      const states = [...(selectedSprite.animations || [])];
+                                      states[idx].frameCount = parseInt(v) || 1;
+                                      updateSprite(selectedSprite.id, { animations: states });
+                                    }}
+                                  />
+                                </View>
+                              </View>
+                            </TouchableOpacity>
+                          ))}
+                          <TouchableOpacity
+                            style={styles.addStateBtn}
+                            onPress={() => {
+                              const states = selectedSprite.animations || [];
+                              updateSprite(selectedSprite.id, {
+                                animations: [...states, { name: 'State', row: 0, frameCount: 1, fps: 10, loop: true }]
+                              });
+                            }}
+                          >
+                            <Text style={styles.addStateText}>+ Add Animation</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </ScrollView>
+                  </View>
+
+                  {/* Main Area - Frame Grid */}
+                  <View style={styles.slicerMain}>
+                    <ScrollView style={styles.slicerScroll} showsVerticalScrollIndicator={true}>
+                      <View style={styles.frameGrid}>
+                        {(() => {
+                          const w = imgSize.width || selectedSprite.width || 0;
+                          const h = imgSize.height || selectedSprite.height || 0;
+                          const fw = Math.max(1, selectedSprite.grid?.frameWidth || 32);
+                          const fh = Math.max(1, selectedSprite.grid?.frameHeight || 32);
+                          const cols = Math.floor(w / fw);
+                          const rows = Math.floor(h / fh);
+                          const count = Math.min(cols * rows, 200);
+
+                          if (count <= 0) return <Text style={{ color: '#333', fontSize: 10, padding: 20 }}>No frames found. Check slicing W/H.</Text>;
+
+                          return Array.from({ length: isNaN(count) ? 0 : count }).map((_, i) => {
+                            const r = Math.floor(i / cols);
+                            const c = i % cols;
+                            return (
+                              <View key={i} style={styles.frameContainer}>
+                                <Text style={styles.frameIndex}>{i}</Text>
+                                <View style={styles.frameBox}>
+                                  <Image
+                                    source={{ uri: selectedSprite.uri }}
+                                    style={{
+                                      width: w * (40 / fw),
+                                      height: h * (40 / fh),
+                                      position: 'absolute',
+                                      left: -c * 40,
+                                      top: -r * 40,
+                                      // @ts-ignore
+                                      imageRendering: 'pixelated',
+                                    }}
+                                    resizeMode="stretch"
+                                  />
+                                </View>
+                              </View>
+                            );
+                          });
+                        })()}
+                      </View>
+                    </ScrollView>
+                  </View>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
       </Modal>
     </View>
   );

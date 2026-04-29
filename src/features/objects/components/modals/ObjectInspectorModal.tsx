@@ -1,6 +1,6 @@
 import React, { JSX, useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, TextInput, Switch, Image, StyleSheet } from 'react-native';
-import { Info, Palette, Bolt, Share2, Settings, X, Plus, Trash2, Heart, Music, Target, Layers, Play, ArrowLeft, ArrowRight, Pause, ChevronUp, Zap, MousePointer2, HelpCircle, Layout, Globe, Activity } from 'lucide-react-native';
+import { Info, Palette, Bolt, Share2, Settings, X, Plus, Trash2, Heart, Music, Target, Layers, Play, ArrowLeft, ArrowRight, Pause, ChevronUp, Zap, MousePointer2, HelpCircle, Layout, Globe, Activity, ChevronDown } from 'lucide-react-native';
 import { theme } from '../../../../theme';
 import { GameObject, useProjectStore } from '../../../../store/useProjectStore';
 import { styles } from './ObjectInspectorModal.styles';
@@ -13,7 +13,9 @@ interface ObjectInspectorModalProps {
   currentProject: any;
   updateObject: (id: string, updates: Partial<GameObject>) => void;
   setSpritePickerVisible: (visible: boolean) => void;
+  setAnimationPickerVisible?: (visible: boolean) => void;
   renderSpritePreview: (spriteId: string | null, size?: number) => JSX.Element;
+  onSelectSprite?: (spriteId: string) => void;
 }
 
 const VariableRow = ({
@@ -132,7 +134,8 @@ const ParticlePreview = ({ settings, particleSprite }: { settings: any, particle
 
 export default function ObjectInspectorModal({
   visible, onClose, selectedObject, setSelectedObject, currentProject,
-  updateObject, setSpritePickerVisible, renderSpritePreview
+  updateObject, setSpritePickerVisible, setAnimationPickerVisible, renderSpritePreview,
+  onSelectSprite
 }: ObjectInspectorModalProps) {
   const [actionPickerVisible, setActionPickerVisible] = useState(false);
   const [activeListenerIndex, setActiveListenerIndex] = useState<number | null>(null);
@@ -157,7 +160,10 @@ export default function ObjectInspectorModal({
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
-  if (!selectedObject) return null;
+  const [statePickerVisible, setStatePickerVisible] = useState(false);
+  const [pickingForEngineState, setPickingForEngineState] = useState<string | null>(null);
+
+  if (!visible || !selectedObject) return null;
 
   const safeObject = {
     ...selectedObject,
@@ -220,6 +226,41 @@ export default function ObjectInspectorModal({
     return (currentProject?.objects || []).filter((obj: GameObject) => obj.id !== safeObject.id);
   }, [currentProject?.objects, safeObject.id]);
 
+  const selectedSprite = useMemo(() => {
+    return (currentProject?.sprites || []).find((s: any) => s.id === safeObject.appearance?.spriteId);
+  }, [currentProject?.sprites, safeObject.appearance?.spriteId]);
+
+  const allSprites = useMemo(() => {
+    return currentProject?.sprites || [];
+  }, [currentProject?.sprites]);
+
+  const [pickingSecondaryIndex, setPickingSecondaryIndex] = useState(-1); // -1 for primary, >=0 for additional
+
+  const handleSpriteSelectLocal = (spriteId: string) => {
+    if (pickingSecondaryIndex === -1) {
+      updateField('appearance.spriteId', spriteId);
+    } else {
+      const currentIds = [...(safeObject.appearance.additionalSpriteIds || [])];
+      if (pickingSecondaryIndex < currentIds.length) {
+        currentIds[pickingSecondaryIndex] = spriteId;
+      } else {
+        currentIds.push(spriteId);
+      }
+      updateField('appearance.additionalSpriteIds', currentIds);
+    }
+    setSpritePickerVisible?.(false);
+  };
+
+  // We need to tell the parent (ObjectModals) which function to call when a sprite is picked
+  useEffect(() => {
+    if (visible) {
+      (global as any).lastSpritePickerCallback = handleSpriteSelectLocal;
+    }
+    return () => {
+      (global as any).lastSpritePickerCallback = null;
+    };
+  }, [visible, pickingSecondaryIndex, safeObject.appearance.additionalSpriteIds]);
+
   const updateField = (path: string, value: any) => {
     const parts = path.split('.');
     if (parts.length === 1) {
@@ -280,6 +321,7 @@ export default function ObjectInspectorModal({
     setPropertyPickerVisible(false);
   };
 
+
   return (
     <>
       <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
@@ -323,23 +365,113 @@ export default function ObjectInspectorModal({
                   expanded={expandedSections.appearance}
                   onToggle={() => toggleSection('appearance')}
                 >
-                  <TouchableOpacity
-                    style={styles.spriteSelectButtonCompact}
-                    onPress={() => setSpritePickerVisible(true)}
-                  >
-                    <View style={styles.spritePreviewContainerSmall}>
-                      {renderSpritePreview(safeObject.appearance.spriteId, 32)}
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={{ color: theme.colors.textMuted, fontSize: 8, marginBottom: 8, textTransform: 'uppercase' }}>Primary Sprite Sheet</Text>
+                    <TouchableOpacity
+                      style={styles.spriteSelectButtonCompact}
+                      onPress={() => {
+                        setPickingSecondaryIndex(-1);
+                        setSpritePickerVisible?.(true);
+                      }}
+                    >
+                      <View style={styles.spritePreviewContainerSmall}>
+                        {renderSpritePreview(safeObject.appearance.spriteId, 32)}
+                      </View>
+                      <Text style={styles.spriteSelectLabelSmall}>
+                        {selectedSprite?.name || 'Select Sprite'}
+                      </Text>
+                      <ChevronDown size={16} color={theme.colors.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={{ color: theme.colors.textMuted, fontSize: 8, marginBottom: 8, textTransform: 'uppercase' }}>Additional Sprite Sheets</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                      {(safeObject.appearance.additionalSpriteIds || []).map((id, index) => {
+                        const s = (currentProject?.sprites || []).find(spr => spr.id === id);
+                        return (
+                          <TouchableOpacity
+                            key={`${id}-${index}`}
+                            style={{ padding: 6, borderRadius: 6, backgroundColor: '#1A1D23', borderWidth: 1, borderColor: '#333', flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                            onPress={() => {
+                              setPickingSecondaryIndex(index);
+                              setSpritePickerVisible?.(true);
+                            }}
+                          >
+                            <View style={{ width: 20, height: 20, borderRadius: 2, overflow: 'hidden' }}>
+                              {renderSpritePreview(id, 20)}
+                            </View>
+                            <Text style={{ color: '#DDD', fontSize: 10 }}>{s?.name || '???'}</Text>
+                            <TouchableOpacity onPress={() => {
+                              const newIds = [...(safeObject.appearance.additionalSpriteIds || [])];
+                              newIds.splice(index, 1);
+                              updateField('appearance.additionalSpriteIds', newIds);
+                            }}>
+                              <X size={12} color={theme.colors.error} />
+                            </TouchableOpacity>
+                          </TouchableOpacity>
+                        );
+                      })}
+                      <TouchableOpacity
+                        style={{ padding: 6, paddingHorizontal: 12, borderRadius: 6, backgroundColor: '#222', borderStyle: 'dashed', borderWidth: 1, borderColor: '#444', flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                        onPress={() => {
+                          setPickingSecondaryIndex((safeObject.appearance.additionalSpriteIds || []).length);
+                          setSpritePickerVisible?.(true);
+                        }}
+                      >
+                        <Plus size={14} color={theme.colors.primary} />
+                        <Text style={{ color: theme.colors.primary, fontSize: 10, fontWeight: 'bold' }}>ADD SHEET</Text>
+                      </TouchableOpacity>
                     </View>
-                    <Text style={styles.spriteSelectLabelSmall}>
-                      {safeObject.appearance.spriteId
-                        ? (currentProject?.sprites || []).find((s: any) => s.id === safeObject.appearance.spriteId)?.name
-                        : 'Select Sprite'}
-                    </Text>
-                  </TouchableOpacity>
+                  </View>
+
+                  <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#333', paddingTop: 12 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                      <Text style={{ color: theme.colors.textMuted, fontSize: 10, fontWeight: 'bold' }}>INITIAL STATE</Text>
+                      <TouchableOpacity
+                        style={{ flex: 1, marginLeft: 16, padding: 8, borderRadius: 4, backgroundColor: '#1A1D23', borderWidth: 1, borderColor: '#333' }}
+                        onPress={() => {
+                          setPickingForEngineState('appearance.animationState');
+                          setStatePickerVisible(true);
+                        }}
+                      >
+                        <Text style={{ fontSize: 10, textAlign: 'center', color: safeObject.appearance.animationState ? theme.colors.primary : '#888' }}>
+                          {safeObject.appearance.animationState ? safeObject.appearance.animationState.toUpperCase() : 'SELECT...'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {(safeObject.behavior === 'player' || safeObject.behavior === 'enemy') && (
+                      <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: '#222', paddingTop: 8 }}>
+                        <Text style={{ color: '#444', fontSize: 8, fontWeight: 'bold', marginBottom: 8, textTransform: 'uppercase' }}>Behavior Mappings</Text>
+                        {['idle', 'move', 'jump', 'hit', 'dead', 'melee', 'shoot'].map(engineState => {
+                          const mappedName = (safeObject.animations as any)[engineState];
+                          return (
+                            <View key={engineState} style={{ marginBottom: 6 }}>
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <Text style={{ color: '#666', fontSize: 9 }}>{engineState.toUpperCase()}</Text>
+                                <TouchableOpacity
+                                  style={{ width: '60%', padding: 6, borderRadius: 4, backgroundColor: '#16191E', borderWidth: 1, borderColor: '#222' }}
+                                  onPress={() => {
+                                    setPickingForEngineState(engineState);
+                                    setStatePickerVisible(true);
+                                  }}
+                                >
+                                  <Text style={{ fontSize: 9, textAlign: 'center', color: mappedName ? theme.colors.primary : '#444' }}>
+                                    {mappedName ? mappedName.toUpperCase() : 'NONE'}
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
 
                   {(safeObject.behavior === 'player' || safeObject.behavior === 'enemy' || safeObject.behavior === 'particle') && (
                     <InputGroup
-                      label="Animation Speed (ms)"
+                      label="Base Animation Speed"
                       value={safeObject.appearance.animationSpeed.toString()}
                       onChange={(v: string) => updateField('appearance.animationSpeed', parseInt(v) || 0)}
                       keyboardType="numeric"
@@ -348,27 +480,7 @@ export default function ObjectInspectorModal({
                 </Section>
               )}
 
-              {(safeObject.behavior === 'player' || safeObject.behavior === 'enemy') && (
-                <Section
-                  title="Animation States"
-                  icon={<Layers size={16} color="#FF00D1" />}
-                  expanded={expandedSections.animations}
-                  onToggle={() => toggleSection('animations')}
-                >
-                  {['idle', 'move', 'jump', 'hit', 'dead', 'melee', 'shoot'].map(state => (
-                    <View key={state} style={styles.animationStateRow}>
-                      <Text style={styles.animationStateLabel}>{state.toUpperCase()}</Text>
-                      <TouchableOpacity
-                        style={styles.miniSpritePicker}
-                        onPress={() => { }}
-                      >
-                        {renderSpritePreview((safeObject.animations as any)[state], 24)}
-                        <Text style={styles.miniSpriteText}>Change</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                </Section>
-              )}
+
 
               <Section
                 title="Physics & Movement"
@@ -379,6 +491,46 @@ export default function ObjectInspectorModal({
                 <SwitchRow label="Enabled" value={safeObject.physics.enabled} onToggle={(v: boolean) => updateField('physics.enabled', v)} />
                 {safeObject.physics.enabled && (
                   <>
+                    <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
+                      <View style={{ flex: 1 }}>
+                        <InputGroup
+                          label="HITBOX WIDTH"
+                          value={(safeObject.width || 32).toString()}
+                          onChange={(v: string) => updateField('width', parseInt(v) || 0)}
+                          keyboardType="numeric"
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <InputGroup
+                          label="HITBOX HEIGHT"
+                          value={(safeObject.height || 32).toString()}
+                          onChange={(v: string) => updateField('height', parseInt(v) || 0)}
+                          keyboardType="numeric"
+                        />
+                      </View>
+                    </View>
+
+                    <TouchableOpacity
+                      style={{
+                        backgroundColor: 'rgba(255,255,255,0.05)',
+                        padding: 8,
+                        borderRadius: 6,
+                        marginBottom: 16,
+                        alignItems: 'center',
+                        borderWidth: 1,
+                        borderColor: '#333'
+                      }}
+                      onPress={() => {
+                        const sprite = currentProject?.sprites.find(s => s.id === safeObject.appearance.spriteId);
+                        const fw = sprite?.grid?.enabled ? sprite.grid.frameWidth : (sprite?.width || 32);
+                        const fh = sprite?.grid?.enabled ? sprite.grid.frameHeight : (sprite?.height || 32);
+                        updateField('width', fw);
+                        updateField('height', fh);
+                      }}
+                    >
+                      <Text style={{ color: theme.colors.primary, fontSize: 10, fontWeight: 'bold' }}>RESET TO SPRITE SIZE</Text>
+                    </TouchableOpacity>
+
                     <SwitchRow label="Static (Fixed)" value={safeObject.physics.isStatic} onToggle={(v: boolean) => updateField('physics.isStatic', v)} />
                     <SwitchRow label="Apply Gravity" value={safeObject.physics.applyGravity} onToggle={(v: boolean) => updateField('physics.applyGravity', v)} />
                     <SwitchRow label="Ignore Collision" value={safeObject.physics.ignoreCollision} onToggle={(v: boolean) => updateField('physics.ignoreCollision', v)} />
@@ -1116,13 +1268,171 @@ export default function ObjectInspectorModal({
                   </TouchableOpacity>
                 ))}
               </View>
+
+              <View style={styles.divider} />
+              <Text style={styles.subSectionTitleCompact}>Play Animation</Text>
+              <View style={{ gap: 8 }}>
+                {allSprites.map((s: any) => (
+                  <View key={s.id} style={{ marginBottom: 8 }}>
+                    <Text style={{ color: theme.colors.textMuted, fontSize: 8, marginBottom: 4 }}>{s.name?.toUpperCase() || 'SPRITE'}</Text>
+                    <View style={styles.pickerRowSmall}>
+                      {(s.animations || []).map((anim: any) => (
+                        <TouchableOpacity
+                          key={anim.name}
+                          style={styles.pickerChipSecondary}
+                          onPress={() => handleActionSelect(`animation:${s.name}:${anim.name}`)}
+                        >
+                          <Text style={styles.pickerChipTextSmall}>{anim.name.toUpperCase()}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                ))}
+              </View>
             </ScrollView>
           </View>
         </View>
       </Modal>
+
+      {/* Animation State Picker Modal - Moved outside to ensure it layers on top */}
+      <Modal visible={statePickerVisible} transparent animationType="fade">
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setStatePickerVisible(false)}
+        >
+          <View style={[styles.menuContainer, { width: '85%', maxHeight: '70%' }]}>
+            <View style={styles.menuHeader}>
+              <Text style={styles.menuTitle}>Select {pickingForEngineState?.toUpperCase()} Animation</Text>
+              <TouchableOpacity onPress={() => setStatePickerVisible(false)}>
+                <X size={20} color={theme.colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ padding: 8 }}>
+              <TouchableOpacity
+                style={[styles.menuItem, { backgroundColor: '#1A1D23', marginBottom: 8, borderRadius: 4 }]}
+                onPress={() => {
+                  if (pickingForEngineState === 'appearance.animationState') {
+                    updateField('appearance.animationState', null);
+                  } else if (pickingForEngineState) {
+                    updateField(`animations.${pickingForEngineState}`, null);
+                  }
+                  setStatePickerVisible(false);
+                }}
+              >
+                <X size={18} color="#888" />
+                <Text style={[styles.menuText, { color: '#888' }]}>NONE / DEFAULT</Text>
+              </TouchableOpacity>
+
+              {(!selectedSprite?.animations || selectedSprite.animations.length === 0) && (!currentProject?.sprites || currentProject.sprites.length <= 1) ? (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <HelpCircle size={32} color="#333" />
+                  <Text style={{ color: '#555', fontSize: 12, marginTop: 8, textAlign: 'center' }}>
+                    No animations found for this sprite.{"\n"}Go to Sprites screen to add states like 'idle' or 'run'.
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  {/* Primary & Secondary Sprite Animations */}
+                  <Text style={{ color: theme.colors.primary, fontSize: 10, fontWeight: 'bold', marginBottom: 8, marginTop: 12 }}>OBJECT SPRITE SHEETS</Text>
+                  {[safeObject.appearance.spriteId, ...(safeObject.appearance.additionalSpriteIds || [])].map((id, sIdx) => {
+                    const s = (currentProject?.sprites || []).find(spr => spr.id === id);
+                    if (!s) return null;
+                    return (
+                      <View key={`${id}-${sIdx}`} style={{ marginBottom: 12, backgroundColor: '#111', padding: 8, borderRadius: 6 }}>
+                        <Text style={{ color: '#888', fontSize: 9, fontWeight: 'bold', marginBottom: 6 }}>{sIdx === 0 ? 'PRIMARY:' : 'SECONDARY:'} {s.name?.toUpperCase()}</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                          {(s.animations || []).map((anim: any) => (
+                            <TouchableOpacity
+                              key={anim.name}
+                              style={[
+                                styles.menuItem,
+                                {
+                                  backgroundColor: '#1A1D23',
+                                  marginBottom: 4,
+                                  borderRadius: 4,
+                                  borderColor: (pickingForEngineState === 'appearance.animationState' ?
+                                    safeObject.appearance.animationState === (sIdx === 0 ? anim.name : `${s.name}:${anim.name}`) :
+                                    (safeObject.animations as any)[pickingForEngineState!] === (sIdx === 0 ? anim.name : `${s.name}:${anim.name}`)
+                                  ) ? theme.colors.primary : 'transparent',
+                                  borderWidth: 1,
+                                  padding: 8
+                                }
+                              ]}
+                              onPress={() => {
+                                const val = sIdx === 0 ? anim.name : `${s.name}:${anim.name}`;
+                                if (pickingForEngineState === 'appearance.animationState') {
+                                  updateField('appearance.animationState', val);
+                                } else if (pickingForEngineState) {
+                                  updateField(`animations.${pickingForEngineState}`, val);
+                                }
+                                setStatePickerVisible(false);
+                              }}
+                            >
+                              <Activity size={14} color={theme.colors.primary} />
+                              <View style={{ flex: 1, marginLeft: 8 }}>
+                                <Text style={[styles.menuText, { fontSize: 11, fontWeight: 'bold' }]}>{anim.name.toUpperCase()}</Text>
+                              </View>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+                    );
+                  })}
+
+                  {/* Other Sprite Animations */}
+                  <View style={{ marginTop: 24, borderTopWidth: 1, borderTopColor: '#222', paddingTop: 16 }}>
+                    <Text style={{ color: theme.colors.textMuted, fontSize: 10, fontWeight: 'bold', marginBottom: 12 }}>ALL PROJECT SPRITES</Text>
+                    {(currentProject?.sprites || []).filter((s: any) => s.id !== safeObject.appearance.spriteId && !(safeObject.appearance.additionalSpriteIds || []).includes(s.id)).map((sprite: any) => (
+                      <View key={sprite.id} style={{ marginBottom: 16 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                          <View style={{ width: 16, height: 16, borderRadius: 2, backgroundColor: '#333', marginRight: 8, overflow: 'hidden' }}>
+                            {renderSpritePreview(sprite.id, 16)}
+                          </View>
+                          <Text style={{ color: '#888', fontSize: 10, fontWeight: 'bold' }}>{sprite.name?.toUpperCase()}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                          {(sprite.animations || []).map((anim: any) => (
+                            <TouchableOpacity
+                              key={anim.name}
+                              style={{
+                                paddingHorizontal: 10,
+                                paddingVertical: 6,
+                                borderRadius: 12,
+                                backgroundColor: '#1A1D23',
+                                borderWidth: 1,
+                                borderColor: (pickingForEngineState === 'appearance.animationState' ?
+                                  safeObject.appearance.animationState === `${sprite.name}:${anim.name}` :
+                                  (safeObject.animations as any)[pickingForEngineState!] === `${sprite.name}:${anim.name}`
+                                ) ? theme.colors.primary : '#333'
+                              }}
+                              onPress={() => {
+                                const val = `${sprite.name}:${anim.name}`;
+                                if (pickingForEngineState === 'appearance.animationState') {
+                                  updateField('appearance.animationState', val);
+                                } else if (pickingForEngineState) {
+                                  updateField(`animations.${pickingForEngineState}`, val);
+                                }
+                                setStatePickerVisible(false);
+                              }}
+                            >
+                              <Text style={{ fontSize: 10, color: '#BBB' }}>{anim.name.toUpperCase()}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </>
   );
-}
+};
 
 // Sub-components for cleaner JSX
 interface SectionProps {

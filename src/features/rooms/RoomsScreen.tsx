@@ -16,59 +16,33 @@ import Animated, {
   withTiming,
   runOnJS
 } from 'react-native-reanimated';
-import { useProjectStore } from '../../store/useProjectStore';
+import { useProjectStore, ObjectInstance } from '../../store/useProjectStore';
+import { PixelSprite } from '../../components/PixelSprite';
 import { Svg, Rect, Path } from 'react-native-svg';
 import { styles } from './RoomsScreen.styles';
 
-const PixelSprite = React.memo(({ sprite, size, originalSize = false }: { sprite: any, size: number, originalSize?: boolean }) => {
-  if (!sprite) return <View style={{ width: size, height: size, backgroundColor: '#4ade80', borderRadius: 4, borderWidth: 1, borderColor: '#22c55e' }} />;
 
-  if (sprite.type === 'imported') {
-    const width = originalSize ? (sprite.width || size) : size;
-    const height = originalSize ? (sprite.height || size) : size;
-    return <Image source={{ uri: sprite.uri }} style={{ width, height, resizeMode: 'contain' }} />;
-  }
 
-  const rows = sprite.pixels?.length || 1;
-  const cols = sprite.pixels?.[0]?.length || 1;
-  const pixelSize = size / Math.max(rows, cols);
-
-  // Path pooling optimization
-  const colorPaths: { [key: string]: string } = {};
-
-  sprite.pixels?.forEach((row: string[], r: number) => {
-    row.forEach((color: string, c: number) => {
-      if (color === 'transparent' || !color) return;
-      if (!colorPaths[color]) colorPaths[color] = '';
-
-      const x = c * pixelSize;
-      const y = r * pixelSize;
-      colorPaths[color] += `M${x},${y}h${pixelSize}v${pixelSize}h-${pixelSize}z `;
-    });
-  });
-
-  return (
-    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      {Object.entries(colorPaths).map(([color, pathData]) => (
-        <Path key={color} d={pathData} fill={color} />
-      ))}
-    </Svg>
-  );
-});
-
-const DraggableInstance = ({ inst, obj, scale, gridSize, onDragEnd, sprite, activeTool, onToolAction, isPlacing, isSelected, onSelect }: any) => {
+const DraggableInstance = ({ inst, obj, scale, gridSize, onDragEnd, onRotateEnd, sprite, activeTool, onToolAction, isPlacing, isSelected, onSelect }: any) => {
   const translateX = useSharedValue(inst.x);
   const translateY = useSharedValue(inst.y);
-  const width = useSharedValue(inst.width || sprite?.width || gridSize);
-  const height = useSharedValue(inst.height || sprite?.height || gridSize);
+  const isGrid = !!sprite?.grid?.enabled;
+  const fw = isGrid ? (sprite?.grid?.frameWidth || gridSize) : (sprite?.width || gridSize);
+  const fh = isGrid ? (sprite?.grid?.frameHeight || gridSize) : (sprite?.height || gridSize);
+  const width = useSharedValue(isGrid ? fw : (inst.width || fw));
+  const height = useSharedValue(isGrid ? fh : (inst.height || fh));
+  const rotation = useSharedValue(inst.angle || 0);
 
   // Sync shared values if inst prop changes
   React.useEffect(() => {
     translateX.value = inst.x;
     translateY.value = inst.y;
-    width.value = inst.width || sprite?.width || gridSize;
-    height.value = inst.height || sprite?.height || gridSize;
-  }, [inst.x, inst.y, inst.width, inst.height, sprite?.width, sprite?.height]);
+    const isGrid = !!sprite?.grid?.enabled;
+    const fw = isGrid ? (sprite?.grid?.frameWidth || gridSize) : (sprite?.width || gridSize);
+    const fh = isGrid ? (sprite?.grid?.frameHeight || gridSize) : (sprite?.height || gridSize);
+    width.value = isGrid ? fw : (inst.width || fw);
+    height.value = isGrid ? fh : (inst.height || fh);
+  }, [inst.x, inst.y, inst.width, inst.height, sprite?.width, sprite?.height, sprite?.grid?.enabled, sprite?.grid?.frameWidth, sprite?.grid?.frameHeight]);
 
   const dragGesture = Gesture.Pan()
     .enabled(activeTool === 'move')
@@ -97,12 +71,12 @@ const DraggableInstance = ({ inst, obj, scale, gridSize, onDragEnd, sprite, acti
   const composedGesture = Gesture.Simultaneous(dragGesture, tapGesture);
 
   const instanceStyle = useAnimatedStyle(() => ({
+    width: width.value,
+    height: height.value,
     transform: [
       { translateX: translateX.value },
       { translateY: translateY.value }
     ],
-    width: width.value,
-    height: height.value,
   }));
 
   return (
@@ -139,63 +113,74 @@ const DraggableInstance = ({ inst, obj, scale, gridSize, onDragEnd, sprite, acti
             </Text>
           </View>
         ) : (
-          <PixelSprite sprite={sprite} size={gridSize} originalSize={true} />
+          <PixelSprite 
+            sprite={sprite} 
+            size={gridSize} 
+            originalSize={true} 
+            animationState={obj?.appearance?.animationState}
+          />
         )}
         
         {isSelected && (
-          <View style={{ position: 'absolute', width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1000, overflow: 'visible' }}>
-            {/* Y Axis (Red - pointing up) */}
-            <View style={{
-              position: 'absolute',
-              bottom: '50%',
-              left: '50%',
-              width: 2,
-              height: Math.max(height.value * 0.6, 60),
-              backgroundColor: '#ff4d4d',
-              marginLeft: -1,
-            }}>
-              <View style={{
-                position: 'absolute',
-                top: -4,
-                left: -3,
-                width: 0,
-                height: 0,
-                borderLeftWidth: 4,
-                borderRightWidth: 4,
-                borderBottomWidth: 6,
-                borderStyle: 'solid',
-                backgroundColor: 'transparent',
-                borderLeftColor: 'transparent',
-                borderRightColor: 'transparent',
-                borderBottomColor: '#ff4d4d',
-              }} />
-            </View>
-            {/* X Axis (Blue - pointing right) */}
-            <View style={{
-              position: 'absolute',
-              left: '50%',
-              top: '50%',
-              width: Math.max(width.value * 0.6, 60),
-              height: 2,
-              backgroundColor: '#4d94ff',
-              marginTop: -1,
-            }}>
-              <View style={{
-                position: 'absolute',
-                right: -4,
-                top: -3,
-                width: 0,
-                height: 0,
-                borderTopWidth: 4,
-                borderBottomWidth: 4,
-                borderLeftWidth: 6,
-                borderStyle: 'solid',
-                backgroundColor: 'transparent',
-                borderTopColor: 'transparent',
-                borderBottomColor: 'transparent',
-                borderLeftColor: '#4d94ff',
-              }} />
-            </View>
+          <View style={{ position: 'absolute', width: '100%', height: '100%', pointerEvents: 'box-none', zIndex: 1000, overflow: 'visible', justifyContent: 'center', alignItems: 'center' }}>
+            {activeTool === 'move' && (
+              <>
+                {/* Y Axis (Red - pointing up) */}
+                <View style={{
+                  position: 'absolute',
+                  bottom: '50%',
+                  left: '50%',
+                  width: 2,
+                  height: 60,
+                  backgroundColor: '#ff4d4d',
+                  marginLeft: -1,
+                  opacity: 0.8
+                }}>
+                  <View style={{
+                    position: 'absolute',
+                    top: -4,
+                    left: -3,
+                    width: 0,
+                    height: 0,
+                    borderLeftWidth: 4,
+                    borderRightWidth: 4,
+                    borderBottomWidth: 6,
+                    borderStyle: 'solid',
+                    backgroundColor: 'transparent',
+                    borderLeftColor: 'transparent',
+                    borderRightColor: 'transparent',
+                    borderBottomColor: '#ff4d4d',
+                  }} />
+                </View>
+                {/* X Axis (Blue - pointing right) */}
+                <View style={{
+                  position: 'absolute',
+                  left: '50%',
+                  top: '50%',
+                  width: 60,
+                  height: 2,
+                  backgroundColor: '#4d94ff',
+                  marginTop: -1,
+                  opacity: 0.8
+                }}>
+                  <View style={{
+                    position: 'absolute',
+                    right: -4,
+                    top: -3,
+                    width: 0,
+                    height: 0,
+                    borderTopWidth: 4,
+                    borderBottomWidth: 4,
+                    borderLeftWidth: 6,
+                    borderStyle: 'solid',
+                    backgroundColor: 'transparent',
+                    borderTopColor: 'transparent',
+                    borderBottomColor: 'transparent',
+                    borderLeftColor: '#4d94ff',
+                  }} />
+                </View>
+              </>
+            )}
           </View>
         )}
       </Animated.View>
@@ -234,7 +219,7 @@ const RoomSettingInput = ({ label, value, onChange }: { label: string, value: nu
 
 export default function RoomsScreen() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const { activeProject: currentProject, updateRoom, addInstanceToRoom, updateInstancePosition, updateInstanceSize, removeInstanceFromRoom, reorderInstance, addRoom, addLayer, removeLayer, updateLayer, reorderLayer, activeRoomId, setActiveRoomId } = useProjectStore();
+  const { activeProject: currentProject, updateRoom, addInstanceToRoom, updateInstancePosition, updateInstanceSize, updateInstanceAngle, removeInstanceFromRoom, reorderInstance, addRoom, addLayer, removeLayer, updateLayer, reorderLayer, activeRoomId, setActiveRoomId } = useProjectStore();
   const [showGrid, setShowGrid] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
@@ -395,8 +380,12 @@ export default function RoomsScreen() {
     // Hit detection: Don't place a new object if we clicked on an existing one
     const hitInstance = (currentRoom.instances || []).find(inst => {
       const obj = (currentProject?.objects || []).find(o => o.id === inst.objectId);
-      const w = inst.width || GRID_SIZE;
-      const h = inst.height || GRID_SIZE;
+      const sprite = (currentProject?.sprites || []).find(s => s.id === obj?.appearance.spriteId);
+      const isGrid = !!sprite?.grid?.enabled;
+      const fw = isGrid ? (sprite?.grid?.frameWidth || 32) : (sprite?.width || GRID_SIZE);
+      const fh = isGrid ? (sprite?.grid?.frameHeight || 32) : (sprite?.height || GRID_SIZE);
+      const w = isGrid ? fw : (inst.width || fw);
+      const h = isGrid ? fh : (inst.height || fh);
       return x >= inst.x && x <= inst.x + w && y >= inst.y && y <= inst.y + h;
     });
 
@@ -404,11 +393,20 @@ export default function RoomsScreen() {
 
     const snappedX = Math.round(x / GRID_SIZE) * GRID_SIZE;
     const snappedY = Math.round(y / GRID_SIZE) * GRID_SIZE;
+    
+    // Get object dimensions
+    const obj = (currentProject?.objects || []).find(o => o.id === selectedObjectId);
+    const sprite = (currentProject?.sprites || []).find(s => s.id === obj?.appearance.spriteId);
+    const frameW = (sprite?.grid?.enabled && sprite.grid.frameWidth) ? sprite.grid.frameWidth : (sprite?.width || 32);
+    const frameH = (sprite?.grid?.enabled && sprite.grid.frameHeight) ? sprite.grid.frameHeight : (sprite?.height || 32);
+
     addInstanceToRoom(currentRoom.id, {
       id: Math.random().toString(36).substr(2, 9),
       objectId: selectedObjectId,
       x: snappedX,
       y: snappedY,
+      width: frameW,
+      height: frameH,
       layerId: activeLayerId || (currentRoom.layers?.[0]?.id || 'default')
     });
   };
@@ -653,7 +651,11 @@ export default function RoomsScreen() {
                         {obj.behavior === 'text' ? (
                           <Layout size={20} color={theme.colors.primary} />
                         ) : (
-                          <PixelSprite sprite={(currentProject?.sprites || []).find(s => s.id === obj.appearance.spriteId)} size={32} />
+                          <PixelSprite 
+                            sprite={(currentProject?.sprites || []).find(s => s.id === obj.appearance.spriteId)} 
+                            size={32} 
+                            animationState={obj.appearance.animationState}
+                          />
                         )}
                       </View>
                       <Text style={styles.objectName} numberOfLines={1}>{obj.name}</Text>
@@ -773,7 +775,11 @@ export default function RoomsScreen() {
                           {obj?.behavior === 'text' ? (
                             <Layout size={18} color={theme.colors.primary} />
                           ) : (
-                            <PixelSprite sprite={currentProject?.sprites.find(s => s.id === obj?.appearance.spriteId)} size={24} />
+                            <PixelSprite 
+                              sprite={currentProject?.sprites.find(s => s.id === obj?.appearance.spriteId)} 
+                              size={24} 
+                              animationState={obj?.appearance?.animationState}
+                            />
                           )}
                           <Text style={{ color: '#fff', marginLeft: 8, fontSize: 14 }}>{obj?.name || 'Unknown Object'}</Text>
                         </View>

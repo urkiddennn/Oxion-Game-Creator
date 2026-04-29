@@ -4,6 +4,7 @@ import { useProjectStore, GameObject, Sprite } from '../../store/useProjectStore
 import { styles } from './ObjectsScreen.styles';
 import { theme } from '../../theme';
 import { Plus, ChevronRight, User, MousePointer2, Timer, Heart, Move, Bolt, Layout, HelpCircle, Box, Info, Palette, Settings, Image as ImageIcon, X, Share2, Trash2 } from 'lucide-react-native';
+import { PixelSprite } from '../../components/PixelSprite';
 
 const BEHAVIORS = [
   { id: 'player', label: 'Player', icon: User, color: '#00D1FF' },
@@ -23,6 +24,7 @@ export default function ObjectsScreen() {
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [inspectorVisible, setInspectorVisible] = useState(false);
   const [spritePickerVisible, setSpritePickerVisible] = useState(false);
+  const [animationPickerVisible, setAnimationPickerVisible] = useState(false);
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const { activeProject: currentProject, addObject, updateObject } = useProjectStore();
   const selectedObject = (currentProject?.objects || []).find((o: any) => o.id === selectedObjectId) || null;
@@ -51,7 +53,9 @@ export default function ObjectsScreen() {
         shoot: undefined,
       },
       appearance: { 
+        type: 'sprite',
         spriteId: null,
+        animationState: undefined,
         animationSpeed: 100,
       },
       physics: {
@@ -107,7 +111,7 @@ export default function ObjectsScreen() {
     if (!sprite) return <Box color={theme.colors.textMuted} size={size} />;
 
     if (sprite.type === 'imported') {
-      return <Image source={{ uri: sprite.uri }} style={{ width: size, height: size, resizeMode: 'contain' }} />;
+      return <PixelSprite sprite={sprite} size={size} />;
     }
 
     return (
@@ -171,6 +175,8 @@ export default function ObjectsScreen() {
             setInspectorVisible={setInspectorVisible}
             spritePickerVisible={spritePickerVisible}
             setSpritePickerVisible={setSpritePickerVisible}
+            animationPickerVisible={animationPickerVisible}
+            setAnimationPickerVisible={setAnimationPickerVisible}
             selectedObject={selectedObject}
             setSelectedObject={setSelectedObject}
             currentProject={currentProject}

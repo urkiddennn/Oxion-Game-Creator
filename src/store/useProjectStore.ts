@@ -13,6 +13,24 @@ export interface Sprite {
   pixels?: string[][];
   width?: number;
   height?: number;
+  crop?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  grid?: {
+    enabled: boolean;
+    frameWidth: number;
+    frameHeight: number;
+  };
+  animations?: {
+    name: string;
+    row: number;
+    frameCount: number;
+    fps: number;
+    loop: boolean;
+  }[];
 }
 
 export interface SoundAsset {
@@ -23,19 +41,29 @@ export interface SoundAsset {
   sequence?: number[][]; // [row][step] -> 0/1 for simple trigger
 }
 
+// AnimationAsset is deprecated in favor of Sprite-internal animations
+export interface AnimationAsset {
+  id: string;
+  name: string;
+  frames: string[];
+  frameRate: number;
+  loop: boolean;
+}
+
 export interface GameObject {
   id: string;
   name: string;
   type: string;
   behavior: string;
-
+  width?: number;
+  height?: number;
   health: {
     max: number;
     current: number;
   };
 
   animations: {
-    idle?: string;
+    idle?: string; // These will now be the name of the state in the Sprite
     move?: string;
     jump?: string;
     hit?: string;
@@ -45,7 +73,10 @@ export interface GameObject {
   };
 
   appearance: {
+    type: 'sprite'; // Always sprite now, but it can be animated
     spriteId: string | null;
+    additionalSpriteIds?: string[]; // New: support for multiple spritesheets
+    animationState?: string; // Current state name (e.g. 'idle')
     color?: string;
     animationSpeed: number;
   };
@@ -140,6 +171,7 @@ export interface ObjectInstance {
   y: number;
   width?: number;
   height?: number;
+  angle?: number;
   layerId?: string;
 }
 
@@ -175,6 +207,7 @@ export interface Project {
   objects: GameObject[];
   rooms: Room[];
   sounds: SoundAsset[];
+  animations: AnimationAsset[];
   mainRoomId?: string;
   iconSpriteId?: string;
 }
@@ -190,6 +223,11 @@ interface ProjectState {
   openProject: (name: string) => void;
   updateProject: (updates: Partial<Project>) => void;
   addSprite: (sprite: Sprite) => void;
+  updateSprite: (id: string, updates: Partial<Sprite>) => void;
+  removeSprite: (id: string) => void;
+  addAnimation: (animation: AnimationAsset) => void;
+  updateAnimation: (id: string, updates: Partial<AnimationAsset>) => void;
+  removeAnimation: (id: string) => void;
   addObject: (object: GameObject) => void;
   updateObject: (id: string, updates: Partial<GameObject>) => void;
   updateRoom: (id: string, updates: Partial<Room>) => void;
@@ -197,6 +235,7 @@ interface ProjectState {
   addInstanceToRoom: (roomId: string, instance: ObjectInstance) => void;
   updateInstancePosition: (roomId: string, instanceId: string, x: number, y: number) => void;
   updateInstanceSize: (roomId: string, instanceId: string, width: number, height: number) => void;
+  updateInstanceAngle: (roomId: string, instanceId: string, angle: number) => void;
   removeInstanceFromRoom: (roomId: string, instanceId: string) => void;
   reorderInstance: (roomId: string, instanceId: string, direction: 'forward' | 'backward' | 'front' | 'back') => void;
   addLayer: (roomId: string) => void;
@@ -255,6 +294,7 @@ export const useProjectStore = create<ProjectState>()(
             layers: []
           }],
           sounds: [],
+          animations: [],
         };
         return {
           projects: [...state.projects, newProject],
@@ -290,7 +330,71 @@ export const useProjectStore = create<ProjectState>()(
         if (!state.activeProject) return state;
         const updated = {
           ...state.activeProject,
-          sprites: [sprite, ...(state.activeProject.sprites || [])]
+          sprites: [...(state.activeProject.sprites || []), sprite]
+        };
+        return {
+          activeProject: updated,
+          selectedProject: state.selectedProject?.name === updated.name ? updated : state.selectedProject,
+          projects: state.projects.map(p => p.name === updated.name ? updated : p)
+        };
+      }),
+      updateSprite: (id: string, updates: any) => set((state) => {
+        if (!state.activeProject) return state;
+        const updated = {
+          ...state.activeProject,
+          sprites: (state.activeProject.sprites || []).map(s =>
+            s.id === id ? { ...s, ...updates } : s
+          )
+        };
+        return {
+          activeProject: updated,
+          selectedProject: state.selectedProject?.name === updated.name ? updated : state.selectedProject,
+          projects: state.projects.map(p => p.name === updated.name ? updated : p)
+        };
+      }),
+      removeSprite: (id) => set((state) => {
+        if (!state.activeProject) return state;
+        const updated = {
+          ...state.activeProject,
+          sprites: (state.activeProject.sprites || []).filter(s => s.id !== id)
+        };
+        return {
+          activeProject: updated,
+          selectedProject: state.selectedProject?.name === updated.name ? updated : state.selectedProject,
+          projects: state.projects.map(p => p.name === updated.name ? updated : p)
+        };
+      }),
+      addAnimation: (animation) => set((state) => {
+        if (!state.activeProject) return state;
+        const updated = {
+          ...state.activeProject,
+          animations: [...(state.activeProject.animations || []), animation]
+        };
+        return {
+          activeProject: updated,
+          selectedProject: state.selectedProject?.name === updated.name ? updated : state.selectedProject,
+          projects: state.projects.map(p => p.name === updated.name ? updated : p)
+        };
+      }),
+      updateAnimation: (id, updates) => set((state) => {
+        if (!state.activeProject) return state;
+        const updated = {
+          ...state.activeProject,
+          animations: (state.activeProject.animations || []).map(a =>
+            a.id === id ? { ...a, ...updates } : a
+          )
+        };
+        return {
+          activeProject: updated,
+          selectedProject: state.selectedProject?.name === updated.name ? updated : state.selectedProject,
+          projects: state.projects.map(p => p.name === updated.name ? updated : p)
+        };
+      }),
+      removeAnimation: (id) => set((state) => {
+        if (!state.activeProject) return state;
+        const updated = {
+          ...state.activeProject,
+          animations: (state.activeProject.animations || []).filter(a => a.id !== id)
         };
         return {
           activeProject: updated,
@@ -427,6 +531,25 @@ export const useProjectStore = create<ProjectState>()(
               ...room,
               instances: (room.instances || []).map(inst =>
                 inst.id === instanceId ? { ...inst, width, height } : inst
+              )
+            } : room
+          )
+        };
+        return {
+          activeProject: updated,
+          selectedProject: state.selectedProject?.name === updated.name ? updated : state.selectedProject,
+          projects: state.projects.map(p => p.name === updated.name ? updated : p)
+        };
+      }),
+      updateInstanceAngle: (roomId, instanceId, angle) => set((state) => {
+        if (!state.activeProject) return state;
+        const updated = {
+          ...state.activeProject,
+          rooms: (state.activeProject.rooms || []).map(room =>
+            room.id === roomId ? {
+              ...room,
+              instances: (room.instances || []).map(inst =>
+                inst.id === instanceId ? { ...inst, angle } : inst
               )
             } : room
           )
@@ -630,7 +753,7 @@ export const useProjectStore = create<ProjectState>()(
           const { data: userData } = await supabase.auth.getUser();
 
           // 1. Separate heavy assets from the project logic
-          const { sprites, sounds, ...logic } = project;
+          const { sprites, sounds, animations, ...logic } = project;
 
           // 2. Publish Project Logic (Small JSON)
           const projectId = project.id || `legacy_${project.name.toLowerCase().replace(/ /g, '_')}_${Math.random().toString(36).substr(2, 5)}`;
@@ -662,7 +785,6 @@ export const useProjectStore = create<ProjectState>()(
               }, { onConflict: 'id' });
             if (sError) console.warn('Asset Sync Error:', sError);
           }
-
           for (const snd of project.sounds) {
             const { error: sndError } = await supabase
               .from('game_assets')
@@ -674,6 +796,19 @@ export const useProjectStore = create<ProjectState>()(
                 created_at: new Date().toISOString()
               }, { onConflict: 'id' });
             if (sndError) console.warn('Asset Sync Error:', sndError);
+          }
+
+          for (const anim of project.animations || []) {
+            const { error: animError } = await supabase
+              .from('game_assets')
+              .upsert({
+                id: anim.id,
+                game_id: projectId,
+                type: 'animation',
+                data: anim,
+                created_at: new Date().toISOString()
+              }, { onConflict: 'id' });
+            if (animError) console.warn('Asset Sync Error:', animError);
           }
 
           return { success: true };
@@ -701,6 +836,7 @@ export const useProjectStore = create<ProjectState>()(
           rooms: logic.rooms || [],
           sprites: logic.sprites || [],
           sounds: logic.sounds || [],
+          animations: logic.animations || [],
           isRemote: true
         };
       },

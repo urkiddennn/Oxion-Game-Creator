@@ -4,7 +4,7 @@ import { CommonActions, useNavigation } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import {
   Menu, Save, Settings, Box, Music, Palette,
-  Layout, Play, Undo, RotateCcw, Folder, FileText, Bug
+  Layout, Play, Undo, RotateCcw, Folder, FileText, Bug, Film
 } from 'lucide-react-native';
 import { theme } from '../theme';
 import GamePlayer from '../features/rooms/components/GamePlayer';
