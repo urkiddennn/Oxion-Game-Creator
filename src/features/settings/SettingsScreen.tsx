@@ -1,12 +1,34 @@
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Modal, Image } from 'react-native';
 import { theme } from '../../theme';
 import { useProjectStore } from '../../store/useProjectStore';
-import { Settings as SettingsIcon, LogOut, Shield, Database, Bell, X, Box, Image as ImageIcon } from 'lucide-react-native';
+import { Settings as SettingsIcon, LogOut, Shield, Database, Bell, X, Box, Image as ImageIcon, Trash2 } from 'lucide-react-native';
+import { Alert } from 'react-native';
 import React from 'react';
 
 export default function SettingsScreen() {
-  const { activeProject: currentProject, closeProject, updateProject } = useProjectStore();
+  const { activeProject: currentProject, closeProject, updateProject, removeProject } = useProjectStore();
   const [spritePickerVisible, setSpritePickerVisible] = React.useState(false);
+
+  const handleDeleteProject = () => {
+    if (!currentProject) return;
+    
+    Alert.alert(
+      'Delete Project',
+      `Are you sure you want to permanently delete "${currentProject.name}"? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: () => {
+            const name = currentProject.name;
+            closeProject();
+            removeProject(name);
+          }
+        },
+      ]
+    );
+  };
 
   const renderSpritePreview = (spriteId: string | undefined, size: number = 32) => {
     const sprite = (currentProject?.sprites || []).find(s => s.id === spriteId);
@@ -104,8 +126,16 @@ export default function SettingsScreen() {
         style={styles.dangerButton}
         onPress={() => closeProject()}
       >
-        <LogOut color={theme.colors.error} size={20} />
+        <LogOut color={theme.colors.text} size={20} />
         <Text style={styles.dangerText}>Close Project</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.dangerButton, { backgroundColor: theme.colors.error + '20', borderColor: theme.colors.error + '40', marginTop: 0 }]}
+        onPress={handleDeleteProject}
+      >
+        <Trash2 color={theme.colors.error} size={20} />
+        <Text style={[styles.dangerText, { color: theme.colors.error }]}>Delete Project Permanently</Text>
       </TouchableOpacity>
 
       <Modal
@@ -174,7 +204,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
   },
   header: {
-    padding: 24,
+    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -182,37 +212,39 @@ const styles = StyleSheet.create({
   title: {
     ...theme.typography.h2,
     color: theme.colors.text,
+    fontSize: 20,
   },
   section: {
-    paddingHorizontal: 24,
-    marginBottom: 24,
+    paddingHorizontal: 16,
+    marginBottom: 16,
   },
   sectionTitle: {
     ...theme.typography.caption,
     color: theme.colors.textSecondary,
-    marginBottom: 12,
+    marginBottom: 8,
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
+    fontSize: 9,
   },
   nameInput: {
     backgroundColor: theme.colors.background,
-    borderRadius: 8,
-    padding: 12,
+    borderRadius: 4,
+    padding: 10,
     color: theme.colors.text,
-    fontSize: 16,
+    fontSize: 14,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
   iconRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 12,
   },
   iconPreview: {
-    width: 80,
-    height: 80,
+    width: 64,
+    height: 64,
     backgroundColor: theme.colors.background,
-    borderRadius: 12,
+    borderRadius: 4,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
@@ -224,27 +256,27 @@ const styles = StyleSheet.create({
   },
   iconHint: {
     color: theme.colors.textSecondary,
-    fontSize: 12,
-    lineHeight: 18,
-    marginBottom: 8,
+    fontSize: 10,
+    lineHeight: 14,
+    marginBottom: 4,
   },
   changeLink: {
     color: theme.colors.primary,
     fontWeight: 'bold',
-    fontSize: 14,
+    fontSize: 12,
   },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.85)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 16,
   },
   modalContent: {
     width: '100%',
-    maxHeight: '80%',
+    maxHeight: '70%',
     backgroundColor: theme.colors.surface,
-    borderRadius: 24,
+    borderRadius: 8,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -253,29 +285,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
+    padding: 12,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
   modalTitle: {
     ...theme.typography.h3,
     color: theme.colors.text,
+    fontSize: 14,
   },
   spriteGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    padding: 12,
+    padding: 8,
   },
   spriteItem: {
     width: '33.33%',
-    padding: 8,
+    padding: 4,
     alignItems: 'center',
   },
   spritePreview: {
-    width: 64,
-    height: 64,
+    width: 48,
+    height: 48,
     backgroundColor: theme.colors.background,
-    borderRadius: 12,
+    borderRadius: 4,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 4,
@@ -284,39 +317,39 @@ const styles = StyleSheet.create({
   },
   spriteLabel: {
     color: theme.colors.textSecondary,
-    fontSize: 10,
+    fontSize: 9,
   },
   emptyPicker: {
     flex: 1,
     alignItems: 'center',
-    padding: 40,
+    padding: 24,
   },
   emptyPickerText: {
     color: theme.colors.textMuted,
-    marginTop: 12,
+    marginTop: 8,
   },
   pickerContainer: {
     backgroundColor: theme.colors.surface,
-    padding: 16,
-    borderRadius: 16,
+    padding: 10,
+    borderRadius: 4,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
   pickerLabel: {
     color: theme.colors.text,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   roomList: {
     flexDirection: 'row',
   },
   roomChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     backgroundColor: theme.colors.background,
-    borderRadius: 20,
-    marginRight: 8,
+    borderRadius: 2,
+    marginRight: 6,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
@@ -326,7 +359,7 @@ const styles = StyleSheet.create({
   },
   roomChipText: {
     color: theme.colors.textSecondary,
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '500',
   },
   roomChipTextActive: {
@@ -338,40 +371,43 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: theme.colors.surface,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 8,
+    padding: 12,
+    borderRadius: 2,
+    marginBottom: 4,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
   itemLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
   itemLabel: {
     color: theme.colors.text,
     fontWeight: '600',
+    fontSize: 13,
   },
   itemValue: {
     color: theme.colors.textMuted,
-    fontSize: 12,
+    fontSize: 11,
   },
   dangerButton: {
-    marginHorizontal: 24,
+    marginHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     backgroundColor: theme.colors.error + '10',
-    padding: 16,
-    borderRadius: 12,
+    padding: 12,
+    borderRadius: 2,
     borderWidth: 1,
     borderColor: theme.colors.error + '40',
     marginBottom: 40,
+    marginTop: 8,
   },
   dangerText: {
     color: theme.colors.error,
     fontWeight: 'bold',
+    fontSize: 13,
   },
 });

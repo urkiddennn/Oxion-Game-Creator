@@ -64,7 +64,7 @@ export default function LaunchpadScreen() {
         <View style={styles.mainContent}>
           {/* Project Section */}
           <View style={styles.projectsSection}>
-            <Text style={styles.sectionTitle}>Projects</Text>
+
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.projectGrid}>
               {/* Dynamic Project Cards */}
@@ -73,35 +73,16 @@ export default function LaunchpadScreen() {
                 return (
                   <TouchableOpacity
                     key={`${project.name}_${index}`}
-                    style={[styles.projectCard, isSelected && styles.projectCardActive]}
+                    style={styles.projectCard}
                     onPress={() => {
-                      if (isSelected) {
-                        openProject(project.name);
-                      } else {
-                        selectProject(project.name);
-                      }
+                      openProject(project.name);
                     }}
                     delayLongPress={200}
                   >
-                    <View style={styles.thumbnailPlaceholder}>
-                      {isSelected && (
-                        <View style={styles.activeBadge}>
-                          <Text style={styles.activeBadgeText}>SELECTED</Text>
-                        </View>
-                      )}
-                      <TouchableOpacity 
-                        style={styles.deleteProjectBtn}
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          removeProject(project.name);
-                        }}
-                      >
-                        <Trash2 size={14} color={theme.colors.error} />
-                      </TouchableOpacity>
-                    </View>
+                    <View style={styles.thumbnailPlaceholder} />
                     <View style={styles.projectInfo}>
                       <Text style={styles.projectName}>{project.name}</Text>
-                      <ArrowRight color={isSelected ? theme.colors.primary : theme.colors.text} size={16} />
+                      <ArrowRight color={theme.colors.textMuted} size={16} />
                     </View>
                   </TouchableOpacity>
                 );
@@ -129,7 +110,7 @@ export default function LaunchpadScreen() {
           </View>
         </View>
       )}
-      
+
       {/* Project Naming Modal */}
       <Modal
         visible={namingModalVisible}
@@ -137,9 +118,9 @@ export default function LaunchpadScreen() {
         animationType="fade"
         onRequestClose={() => setNamingModalVisible(false)}
       >
-        <TouchableOpacity 
-          style={styles.modalOverlay} 
-          activeOpacity={1} 
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
           onPress={() => setNamingModalVisible(false)}
         >
           <View style={styles.namingModal}>
@@ -153,14 +134,14 @@ export default function LaunchpadScreen() {
               autoFocus
             />
             <View style={styles.modalButtons}>
-              <TouchableOpacity 
-                style={[styles.modalButton, { backgroundColor: '#1E2228' }]} 
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: '#1E2228' }]}
                 onPress={() => setNamingModalVisible(false)}
               >
                 <Text style={styles.modalButtonText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.modalButton, { backgroundColor: theme.colors.primary }]} 
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: theme.colors.primary }]}
                 onPress={confirmCreate}
               >
                 <Text style={[styles.modalButtonText, { color: theme.colors.background }]}>Create Project</Text>
@@ -252,13 +233,10 @@ const styles = StyleSheet.create({
     width: 180,
     height: 180,
     backgroundColor: '#1E2228',
-    borderRadius: 8,
+    borderRadius: 4,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  projectCardActive: {
-    borderColor: theme.colors.primary,
+    borderColor: theme.colors.border,
   },
   activeBadge: {
     position: 'absolute',
@@ -267,7 +245,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.primary,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 4,
+    borderRadius: 2,
   },
   activeBadgeText: {
     color: theme.colors.background,
@@ -276,7 +254,7 @@ const styles = StyleSheet.create({
   },
   thumbnailPlaceholder: {
     flex: 1,
-    backgroundColor: '#FFFFFF', 
+    backgroundColor: '#FFFFFF',
   },
   projectInfo: {
     flexDirection: 'row',
@@ -294,7 +272,7 @@ const styles = StyleSheet.create({
     width: 180,
     height: 180,
     backgroundColor: '#1E2228',
-    borderRadius: 8,
+    borderRadius: 4,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
@@ -347,7 +325,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 400,
     backgroundColor: theme.colors.surfaceElevated,
-    borderRadius: 16,
+    borderRadius: 6,
     padding: 24,
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -364,7 +342,7 @@ const styles = StyleSheet.create({
   },
   modalInput: {
     backgroundColor: '#1E2228',
-    borderRadius: 8,
+    borderRadius: 4,
     paddingHorizontal: 16,
     paddingVertical: 12,
     color: theme.colors.text,
@@ -381,7 +359,7 @@ const styles = StyleSheet.create({
   modalButton: {
     paddingHorizontal: 20,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 4,
     minWidth: 100,
     alignItems: 'center',
   },

@@ -248,7 +248,7 @@ interface ProjectState {
   removeObject: (id: string) => void;
   removeProject: (name: string) => void;
   closeProject: () => void;
-  publishProject: () => Promise<{ success: boolean, error?: string }>;
+  publishProject: (description?: string) => Promise<{ success: boolean, error?: string }>;
   fetchRemoteProject: (id: string) => Promise<any>;
   fetchRemoteAsset: (id: string) => Promise<any>;
   setRemoteProject: (project: Project) => void;
@@ -256,6 +256,14 @@ interface ProjectState {
   promoteVariableToGlobal: (objectId: string, key: string) => void;
   deleteGlobalVariable: (key: string) => void;
 }
+
+const generateUUID = () => {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
 
 export const useProjectStore = create<ProjectState>()(
   persist(
@@ -272,7 +280,7 @@ export const useProjectStore = create<ProjectState>()(
           finalName = `${name} ${counter++}`;
         }
         const newProject: Project = {
-          id: Math.random().toString(36).substr(2, 9),
+          id: generateUUID(),
           name: finalName,
           template,
           variables: { global: {} },
@@ -318,12 +326,14 @@ export const useProjectStore = create<ProjectState>()(
         };
       }),
       updateProject: (updates) => set((state) => {
-        if (!state.activeProject) return state;
-        const updated = { ...state.activeProject, ...updates };
+        const target = state.activeProject || state.selectedProject;
+        if (!target) return state;
+        
+        const updated = { ...target, ...updates };
         return {
-          activeProject: updated,
-          selectedProject: state.selectedProject?.name === state.activeProject?.name ? updated : state.selectedProject,
-          projects: state.projects.map(p => p.name === state.activeProject?.name ? updated : p)
+          activeProject: state.activeProject?.id === target.id ? updated : state.activeProject,
+          selectedProject: state.selectedProject?.id === target.id ? updated : state.selectedProject,
+          projects: state.projects.map(p => p.id === target.id ? updated : p)
         };
       }),
       addSprite: (sprite) => set((state) => {
@@ -745,70 +755,114 @@ export const useProjectStore = create<ProjectState>()(
         ...state,
         activeProject: null
       })),
-      publishProject: async () => {
-        const project = get().activeProject;
-        if (!project) return { success: false, error: 'No active project' };
+      publishProject: async (description?: string) => {
+        const sourceProject = get().selectedProject || get().activeProject;
+        if (!sourceProject) return { success: false, error: 'No active project selected' };
 
         try {
-          const { data: userData } = await supabase.auth.getUser();
+          const { data: userData, error: authError } = await supabase.auth.getUser();
+          if (authError || !userData.user) {
+            return { success: false, error: 'You must be signed in to publish.' };
+          }
+          
+          // Deep clone to avoid mutating local state
+          const project = JSON.parse(JSON.stringify(sourceProject));
 
-          // 1. Separate heavy assets from the project logic
+          const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+          
+          // 1. Ensure Project ID is a UUID
+          if (!isUUID(project.id)) {
+            const newId = generateUUID();
+            project.id = newId;
+            get().updateProject({ id: newId });
+          }
+
+          // 2. ID Migration Map
+          const idMap = new Map<string, string>();
+          const ensureUUID = (oldId: string) => {
+            if (!oldId) return generateUUID();
+            if (isUUID(oldId)) return oldId;
+            if (idMap.has(oldId)) return idMap.get(oldId)!;
+            const newId = generateUUID();
+            idMap.set(oldId, newId);
+            return newId;
+          };
+
+          // Migrate all internal IDs to UUID
+          project.sprites = (project.sprites || []).map((s: any) => ({ ...s, id: ensureUUID(s.id) }));
+          project.sounds = (project.sounds || []).map((s: any) => ({ ...s, id: ensureUUID(s.id) }));
+          project.animations = (project.animations || []).map((s: any) => ({ ...s, id: ensureUUID(s.id) }));
+
+          if (project.iconSpriteId) {
+            project.iconSpriteId = ensureUUID(project.iconSpriteId);
+          }
+
+          project.objects = (project.objects || []).map((obj: any) => {
+            const newObjId = ensureUUID(obj.id);
+            if (obj.appearance?.spriteId) {
+              obj.appearance.spriteId = ensureUUID(obj.appearance.spriteId);
+            }
+            return { ...obj, id: newObjId };
+          });
+
+          project.rooms = (project.rooms || []).map((room: any) => {
+            room.instances = (room.instances || []).map((inst: any) => {
+              inst.id = ensureUUID(inst.id);
+              inst.objectId = ensureUUID(inst.objectId);
+              return inst;
+            });
+            return room;
+          });
+
+          // 3. Prepare Payloads
           const { sprites, sounds, animations, ...logic } = project;
 
-          // 2. Publish Project Logic (Small JSON)
-          const projectId = project.id || `legacy_${project.name.toLowerCase().replace(/ /g, '_')}_${Math.random().toString(36).substr(2, 5)}`;
+          // Add icon preview for community list
+          if (project.iconSpriteId) {
+            const iconSprite = sprites.find((s: any) => s.id === project.iconSpriteId);
+            if (iconSprite) {
+              (logic as any).iconPreview = {
+                type: iconSprite.type,
+                uri: iconSprite.uri,
+                pixels: iconSprite.pixels
+              };
+            }
+          }
 
+          // 4. Upload Logic
           const { error: projectError } = await supabase
             .from('games')
             .upsert({
-              id: projectId,
+              id: project.id,
               title: project.name,
               project_data: logic,
-              author_id: userData.user?.id,
-              author_name: userData.user?.user_metadata?.username || 'Unknown Developer',
+              author_id: userData.user.id,
+              author_name: userData.user.user_metadata?.username || 'Unknown Developer',
+              description: description || '',
               created_at: new Date().toISOString()
             }, { onConflict: 'id' });
 
-          if (projectError) throw projectError;
-
-          // 3. Publish Assets (Sprites/Sounds) individually
-          // This enables lazy-loading of only needed assets
-          for (const s of project.sprites) {
-            const { error: sError } = await supabase
-              .from('game_assets')
-              .upsert({
-                id: s.id,
-                game_id: projectId,
-                type: 'sprite',
-                data: s,
-                created_at: new Date().toISOString()
-              }, { onConflict: 'id' });
-            if (sError) console.warn('Asset Sync Error:', sError);
-          }
-          for (const snd of project.sounds) {
-            const { error: sndError } = await supabase
-              .from('game_assets')
-              .upsert({
-                id: snd.id,
-                game_id: projectId,
-                type: 'sound',
-                data: snd,
-                created_at: new Date().toISOString()
-              }, { onConflict: 'id' });
-            if (sndError) console.warn('Asset Sync Error:', sndError);
+          if (projectError) {
+            console.error('Logic Upload Error:', projectError);
+            throw new Error(`Failed to save game logic: ${projectError.message}`);
           }
 
-          for (const anim of project.animations || []) {
-            const { error: animError } = await supabase
+          // 5. Batch Upload Assets (Much faster and more reliable)
+          const assetPayloads = [
+            ...(sprites || []).map((s: any) => ({ id: s.id, game_id: project.id, type: 'sprite', data: s })),
+            ...(sounds || []).map((s: any) => ({ id: s.id, game_id: project.id, type: 'sound', data: s })),
+            ...(animations || []).map((s: any) => ({ id: s.id, game_id: project.id, type: 'animation', data: s }))
+          ];
+
+          if (assetPayloads.length > 0) {
+            const { error: assetError } = await supabase
               .from('game_assets')
-              .upsert({
-                id: anim.id,
-                game_id: projectId,
-                type: 'animation',
-                data: anim,
-                created_at: new Date().toISOString()
-              }, { onConflict: 'id' });
-            if (animError) console.warn('Asset Sync Error:', animError);
+              .upsert(assetPayloads, { onConflict: 'id' });
+
+            if (assetError) {
+              console.error('Asset Upload Error:', assetError);
+              throw new Error(`Failed to save assets: ${assetError.message}`);
+            }
           }
 
           return { success: true };
@@ -818,25 +872,37 @@ export const useProjectStore = create<ProjectState>()(
         }
       },
       fetchRemoteProject: async (id: string) => {
-        const { data, error } = await supabase
+        // 1. Fetch Game Logic
+        const { data: gameData, error: gameError } = await supabase
           .from('games')
           .select('*')
           .eq('id', id)
           .single();
 
-        if (error) throw error;
+        if (gameError) throw gameError;
 
-        // Reconstruct project with streaming markers
-        const logic = data.project_data || {};
+        // 2. Fetch All Assets for this Game
+        const { data: assetsData, error: assetsError } = await supabase
+          .from('game_assets')
+          .select('*')
+          .eq('game_id', id);
+
+        if (assetsError) console.warn('Asset Fetch Error:', assetsError);
+
+        const logic = gameData.project_data || {};
+        const assets = assetsData || [];
+
+        // 3. Reconstruct full project
         return {
           ...logic,
-          id: data.id,
-          name: data.title,
+          id: gameData.id,
+          name: gameData.title,
           objects: logic.objects || [],
           rooms: logic.rooms || [],
-          sprites: logic.sprites || [],
-          sounds: logic.sounds || [],
-          animations: logic.animations || [],
+          variables: logic.variables || { global: {} },
+          sprites: assets.filter(a => a.type === 'sprite').map(a => a.data),
+          sounds: assets.filter(a => a.type === 'sound').map(a => a.data),
+          animations: assets.filter(a => a.type === 'animation').map(a => a.data),
           isRemote: true
         };
       },
