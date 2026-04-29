@@ -1,8 +1,9 @@
 import React, { JSX, useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, TextInput, Switch, Image, StyleSheet } from 'react-native';
-import { Info, Palette, Bolt, Share2, Settings, X, Plus, Trash2, Heart, Music, Target, Layers, Play, ArrowLeft, ArrowRight, Pause, ChevronUp, Zap, MousePointer2 } from 'lucide-react-native';
+import { Info, Palette, Bolt, Share2, Settings, X, Plus, Trash2, Heart, Music, Target, Layers, Play, ArrowLeft, ArrowRight, Pause, ChevronUp, Zap, MousePointer2, HelpCircle, Layout, Globe, Activity } from 'lucide-react-native';
 import { theme } from '../../../../theme';
-import { GameObject } from '../../../../store/useProjectStore';
+import { GameObject, useProjectStore } from '../../../../store/useProjectStore';
+import { styles } from './ObjectInspectorModal.styles';
 
 interface ObjectInspectorModalProps {
   visible: boolean;
@@ -14,6 +15,58 @@ interface ObjectInspectorModalProps {
   setSpritePickerVisible: (visible: boolean) => void;
   renderSpritePreview: (spriteId: string | null, size?: number) => JSX.Element;
 }
+
+const VariableRow = ({
+  varKey,
+  value,
+  onRename,
+  onChangeValue,
+  onPromote,
+  onDelete,
+  isGlobal = false
+}: any) => {
+  const [localKey, setLocalKey] = useState(varKey);
+
+  useEffect(() => {
+    setLocalKey(varKey);
+  }, [varKey]);
+
+  return (
+    <View style={styles.variableRow}>
+      {isGlobal ? (
+        <Text style={[styles.varName, { opacity: 0.7 }]}>{varKey}</Text>
+      ) : (
+        <TextInput
+          style={styles.varName}
+          value={localKey}
+          onChangeText={setLocalKey}
+          onBlur={() => {
+            if (localKey !== varKey && localKey.trim() !== '') {
+              onRename(varKey, localKey);
+            } else {
+              setLocalKey(varKey);
+            }
+          }}
+        />
+      )}
+      <TextInput
+        style={styles.varValue}
+        value={String(value)}
+        onChangeText={onChangeValue}
+      />
+      <View style={styles.varActions}>
+        {!isGlobal && onPromote && (
+          <TouchableOpacity onPress={onPromote}>
+            <Globe size={14} color={theme.colors.secondary} />
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity onPress={onDelete}>
+          <Trash2 size={14} color="#EF4444" />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
 
 const ParticlePreview = ({ settings, particleSprite }: { settings: any, particleSprite: any }) => {
   const [p, setP] = useState<{ id: number, x: number, y: number, vx: number, vy: number, life: number }[]>([]);
@@ -85,6 +138,9 @@ export default function ObjectInspectorModal({
   const [activeListenerIndex, setActiveListenerIndex] = useState<number | null>(null);
   const [eventPickerVisible, setEventPickerVisible] = useState(false);
   const [activeEventIndex, setActiveEventIndex] = useState<number | null>(null);
+  const [propertyPickerVisible, setPropertyPickerVisible] = useState(false);
+  const [activePropertyIndex, setActivePropertyIndex] = useState<number | null>(null);
+  const [pickingForCondition, setPickingForCondition] = useState(false);
 
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     about: true,
@@ -94,7 +150,7 @@ export default function ObjectInspectorModal({
     combat: false,
     sounds: false,
     logic: false,
-    variables: false
+    variables: true
   });
 
   const toggleSection = (section: string) => {
@@ -103,7 +159,6 @@ export default function ObjectInspectorModal({
 
   if (!selectedObject) return null;
 
-  // Ensure all new properties exist (Auto-migration for old objects)
   const safeObject = {
     ...selectedObject,
     health: selectedObject.health || { max: 100, current: 100 },
@@ -161,6 +216,10 @@ export default function ObjectInspectorModal({
 
   const globalVars = currentProject?.variables?.global || {};
 
+  const otherObjects = useMemo(() => {
+    return (currentProject?.objects || []).filter((obj: GameObject) => obj.id !== safeObject.id);
+  }, [currentProject?.objects, safeObject.id]);
+
   const updateField = (path: string, value: any) => {
     const parts = path.split('.');
     if (parts.length === 1) {
@@ -183,12 +242,17 @@ export default function ObjectInspectorModal({
     const currentListeners = safeObject.logic?.listeners || [];
     const newListeners = [...currentListeners];
     if (activeListenerIndex !== null) {
-      newListeners[activeListenerIndex] = { ...newListeners[activeListenerIndex], action: actionStr };
+      if (pickingForCondition) {
+        newListeners[activeListenerIndex] = { ...newListeners[activeListenerIndex], conditionAction: actionStr };
+      } else {
+        newListeners[activeListenerIndex] = { ...newListeners[activeListenerIndex], action: actionStr };
+      }
     } else {
       newListeners.push({ eventId: '', action: actionStr });
     }
     updateField('logic.listeners', newListeners);
     setActionPickerVisible(false);
+    setPickingForCondition(false);
   };
 
   const handleEventSelect = (eventId: string) => {
@@ -199,6 +263,21 @@ export default function ObjectInspectorModal({
       updateField('logic.listeners', newListeners);
     }
     setEventPickerVisible(false);
+  };
+
+  const handlePropertySelect = (propStr: string) => {
+    const currentListeners = safeObject.logic?.listeners || [];
+    if (activePropertyIndex !== null) {
+      const newListeners = [...currentListeners];
+      const currentCond = newListeners[activePropertyIndex].condition || '';
+      const lastChar = currentCond.trim().slice(-1);
+      const isOp = ['>', '<', '=', '!'].includes(lastChar);
+      const newVal = currentCond + (currentCond && !isOp ? ' ' : '') + propStr;
+
+      newListeners[activePropertyIndex] = { ...newListeners[activePropertyIndex], condition: newVal };
+      updateField('logic.listeners', newListeners);
+    }
+    setPropertyPickerVisible(false);
   };
 
   return (
@@ -214,7 +293,6 @@ export default function ObjectInspectorModal({
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-              {/* 1. About & Health */}
               <Section
                 title="About"
                 icon={<Info size={16} color={theme.colors.primary} />}
@@ -222,8 +300,6 @@ export default function ObjectInspectorModal({
                 onToggle={() => toggleSection('about')}
               >
                 <InputGroup label="Name" value={safeObject.name} onChange={(v: string) => updateField('name', v)} />
-
-                {/* Only show Health for Player or Enemy */}
                 {(safeObject.behavior === 'player' || safeObject.behavior === 'enemy') && (
                   <View style={[styles.subSection, { marginTop: 12 }]}>
                     <Text style={styles.subSectionTitleCompact}>Health Stats</Text>
@@ -240,39 +316,38 @@ export default function ObjectInspectorModal({
                 )}
               </Section>
 
-              {/* 2. Appearance */}
-              <Section
-                title="Appearance"
-                icon={<Palette size={16} color={theme.colors.secondary} />}
-                expanded={expandedSections.appearance}
-                onToggle={() => toggleSection('appearance')}
-              >
-                <TouchableOpacity
-                  style={styles.spriteSelectButtonCompact}
-                  onPress={() => setSpritePickerVisible(true)}
+              {safeObject.behavior !== 'text' && (
+                <Section
+                  title="Appearance"
+                  icon={<Palette size={16} color={theme.colors.secondary} />}
+                  expanded={expandedSections.appearance}
+                  onToggle={() => toggleSection('appearance')}
                 >
-                  <View style={styles.spritePreviewContainerSmall}>
-                    {renderSpritePreview(safeObject.appearance.spriteId, 32)}
-                  </View>
-                  <Text style={styles.spriteSelectLabelSmall}>
-                    {safeObject.appearance.spriteId
-                      ? (currentProject?.sprites || []).find((s: any) => s.id === safeObject.appearance.spriteId)?.name
-                      : 'Select Sprite'}
-                  </Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.spriteSelectButtonCompact}
+                    onPress={() => setSpritePickerVisible(true)}
+                  >
+                    <View style={styles.spritePreviewContainerSmall}>
+                      {renderSpritePreview(safeObject.appearance.spriteId, 32)}
+                    </View>
+                    <Text style={styles.spriteSelectLabelSmall}>
+                      {safeObject.appearance.spriteId
+                        ? (currentProject?.sprites || []).find((s: any) => s.id === safeObject.appearance.spriteId)?.name
+                        : 'Select Sprite'}
+                    </Text>
+                  </TouchableOpacity>
 
-                {/* Only show Animation Speed if behavior usually animates */}
-                {(safeObject.behavior === 'player' || safeObject.behavior === 'enemy' || safeObject.behavior === 'particle') && (
-                  <InputGroup
-                    label="Animation Speed (ms)"
-                    value={safeObject.appearance.animationSpeed.toString()}
-                    onChange={(v: string) => updateField('appearance.animationSpeed', parseInt(v) || 0)}
-                    keyboardType="numeric"
-                  />
-                )}
-              </Section>
+                  {(safeObject.behavior === 'player' || safeObject.behavior === 'enemy' || safeObject.behavior === 'particle') && (
+                    <InputGroup
+                      label="Animation Speed (ms)"
+                      value={safeObject.appearance.animationSpeed.toString()}
+                      onChange={(v: string) => updateField('appearance.animationSpeed', parseInt(v) || 0)}
+                      keyboardType="numeric"
+                    />
+                  )}
+                </Section>
+              )}
 
-              {/* 3. Animations States - Only for Actors */}
               {(safeObject.behavior === 'player' || safeObject.behavior === 'enemy') && (
                 <Section
                   title="Animation States"
@@ -285,7 +360,7 @@ export default function ObjectInspectorModal({
                       <Text style={styles.animationStateLabel}>{state.toUpperCase()}</Text>
                       <TouchableOpacity
                         style={styles.miniSpritePicker}
-                        onPress={() => { /* Open Picker for specific animation */ }}
+                        onPress={() => { }}
                       >
                         {renderSpritePreview((safeObject.animations as any)[state], 24)}
                         <Text style={styles.miniSpriteText}>Change</Text>
@@ -295,7 +370,6 @@ export default function ObjectInspectorModal({
                 </Section>
               )}
 
-              {/* 4. Physics */}
               <Section
                 title="Physics & Movement"
                 icon={<Zap size={16} color={theme.colors.warning} />}
@@ -315,7 +389,6 @@ export default function ObjectInspectorModal({
                 )}
               </Section>
 
-              {/* 5. Combat - Only for relevant behaviors */}
               {(safeObject.behavior === 'player' || safeObject.behavior === 'enemy' || safeObject.behavior === 'bullet') && (
                 <Section
                   title="Combat & Weapons"
@@ -323,7 +396,6 @@ export default function ObjectInspectorModal({
                   expanded={expandedSections.combat}
                   onToggle={() => toggleSection('combat')}
                 >
-                  {/* Shooting & Melee for Player/Enemy */}
                   {(safeObject.behavior === 'player' || safeObject.behavior === 'enemy') && (
                     <>
                       <SwitchRow
@@ -373,7 +445,6 @@ export default function ObjectInspectorModal({
                     </>
                   )}
 
-                  {/* Explosion logic for Bullets/Enemies */}
                   {(safeObject.behavior === 'bullet' || safeObject.behavior === 'enemy') && (
                     <View style={styles.subSection}>
                       <SwitchRow label="Explode on Contact" value={safeObject.combat.explodes} onToggle={(v: boolean) => updateField('combat.explodes', v)} />
@@ -382,7 +453,6 @@ export default function ObjectInspectorModal({
                 </Section>
               )}
 
-              {/* 6. Particle Emitter - Only for Emitters */}
               {(safeObject.behavior === 'emitter' || safeObject.behavior === 'particle') && (
                 <Section
                   title="Particle Emitter"
@@ -428,14 +498,92 @@ export default function ObjectInspectorModal({
                 </Section>
               )}
 
-              {/* 7. Sounds */}
+              {safeObject.behavior === 'text' && (
+                <Section
+                  title="Text Settings"
+                  icon={<Layout size={16} color="#FFFFFF" />}
+                  expanded={expandedSections.text || true}
+                  onToggle={() => toggleSection('text')}
+                >
+                  <View style={styles.subSection}>
+                    <Text style={styles.inputLabel}>DISPLAY TEXT</Text>
+                    <TextInput
+                      style={styles.logicInput}
+                      value={safeObject.text?.content || ''}
+                      onChangeText={(v) => updateField('text.content', v)}
+                      placeholder="Score: {score}"
+                      placeholderTextColor={theme.colors.textMuted}
+                    />
+                    <Text style={styles.miniLabel}>Use {"{var}"} to show global variables</Text>
+
+                    <View style={[styles.pickerRowSmall, { marginTop: 4 }]}>
+                      {Object.keys(globalVars).map(varName => (
+                        <TouchableOpacity
+                          key={varName}
+                          style={styles.pickerChipSecondary}
+                          onPress={() => {
+                            const currentContent = safeObject.text?.content || '';
+                            updateField('text.content', currentContent + `{${varName}}`);
+                          }}
+                        >
+                          <Text style={styles.pickerChipTextSmall}>{varName}</Text>
+                        </TouchableOpacity>
+                      ))}
+                      {Object.keys(globalVars).length === 0 && (
+                        <Text style={[styles.infoTextSmall, { marginTop: 0 }]}>No global variables created yet.</Text>
+                      )}
+                    </View>
+                  </View>
+
+                  <View style={styles.subSection}>
+                    <Text style={styles.inputLabel}>FONT FAMILY</Text>
+                    <View style={styles.pickerRowSmall}>
+                      {['default', 'pixel'].map(f => (
+                        <TouchableOpacity
+                          key={f}
+                          style={[styles.pickerChip, safeObject.text?.fontFamily === f && { borderColor: theme.colors.primary }]}
+                          onPress={() => updateField('text.fontFamily', f)}
+                        >
+                          <Text style={[styles.pickerChipText, { fontFamily: f === 'pixel' ? 'Pixel' : undefined }]}>
+                            {f.toUpperCase()}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
+                  <View style={styles.row}>
+                    <View style={{ flex: 1 }}>
+                      <InputGroup label="Size" value={safeObject.text?.fontSize?.toString() || '24'} onChange={(v: string) => updateField('text.fontSize', parseInt(v) || 12)} keyboardType="numeric" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <InputGroup label="Color" value={safeObject.text?.color || '#FFFFFF'} onChange={(v: string) => updateField('text.color', v)} />
+                    </View>
+                  </View>
+
+                  <View style={styles.subSection}>
+                    <Text style={styles.inputLabel}>ALIGNMENT</Text>
+                    <View style={styles.pickerRowSmall}>
+                      {['left', 'center', 'right'].map(a => (
+                        <TouchableOpacity
+                          key={a}
+                          style={[styles.pickerChip, safeObject.text?.textAlign === a && { borderColor: theme.colors.primary }]}
+                          onPress={() => updateField('text.textAlign', a)}
+                        >
+                          <Text style={styles.pickerChipText}>{a.toUpperCase()}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                </Section>
+              )}
+
               <Section
                 title="Sounds"
                 icon={<Music size={16} color="#10B981" />}
                 expanded={expandedSections.sounds}
                 onToggle={() => toggleSection('sounds')}
               >
-                {/* Hit/Dead sounds apply to almost anything that can be 'hit' (Player/Enemy) */}
                 {(safeObject.behavior === 'player' || safeObject.behavior === 'enemy') && (
                   <>
                     {['jump', 'shoot', 'melee', 'hit', 'dead', 'run'].map(sound => (
@@ -450,7 +598,6 @@ export default function ObjectInspectorModal({
                   </>
                 )}
 
-                {/* Bullets only need an 'explode' or 'hit' sound */}
                 {safeObject.behavior === 'bullet' && (
                   <View style={styles.soundRow}>
                     <Text style={styles.inputLabel}>EXPLODE/HIT</Text>
@@ -461,13 +608,11 @@ export default function ObjectInspectorModal({
                   </View>
                 )}
 
-                {/* Solids/Buttons might have a 'click' or 'interact' sound in future */}
                 {(safeObject.behavior !== 'player' && safeObject.behavior !== 'enemy' && safeObject.behavior !== 'bullet') && (
                   <Text style={styles.infoTextSmall}>No specific sounds for this behavior yet.</Text>
                 )}
               </Section>
 
-              {/* 7. Logic & Actions */}
               <Section
                 title="Logic & Actions"
                 icon={<Zap size={16} color="#F59E0B" />}
@@ -476,65 +621,127 @@ export default function ObjectInspectorModal({
               >
                 <Text style={styles.subSectionTitleCompact}>Event Listeners</Text>
                 {safeObject.logic.listeners.map((listener, index) => (
-                  <View key={index} style={styles.variableRow}>
-                    <View style={{ flex: 1.2, position: 'relative' }}>
-                      <TextInput
-                        style={[styles.varName, { paddingRight: 30 }]}
-                        value={listener.eventId}
-                        onChangeText={(v) => {
+                  <View key={index} style={styles.logicChainContainer}>
+                    <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.logicBlockTitle}>WHEN</Text>
+                        <View style={styles.logicBlock}>
+                          <TextInput
+                            style={styles.logicInput}
+                            value={listener.eventId}
+                            onChangeText={(v) => {
+                              const newListeners = [...safeObject.logic.listeners];
+                              newListeners[index] = { ...listener, eventId: v };
+                              updateField('logic.listeners', newListeners);
+                            }}
+                            placeholder="every_tick"
+                          />
+                          <TouchableOpacity onPress={() => { setActiveEventIndex(index); setEventPickerVisible(true); }}>
+                            <Zap size={12} color="#F59E0B" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.logicBlockTitle}>DO</Text>
+                        <View style={[styles.logicBlock, { borderColor: theme.colors.secondary + '40' }]}>
+                          <TextInput
+                            style={styles.logicInput}
+                            value={listener.action}
+                            onChangeText={(v) => {
+                              const newListeners = [...safeObject.logic.listeners];
+                              newListeners[index] = { ...listener, action: v };
+                              updateField('logic.listeners', newListeners);
+                            }}
+                            placeholder="jump"
+                          />
+                          <TouchableOpacity onPress={() => { setActiveListenerIndex(index); setActionPickerVisible(true); }}>
+                            <Target size={12} color={theme.colors.secondary} />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+
+                    {listener.condition ? (
+                      <View style={{ marginTop: 10 }}>
+                        <View style={styles.logicConnectorSmall} />
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <View style={[styles.logicBlock, { flex: 2, borderColor: theme.colors.primary + '40' }]}>
+                            <Text style={[styles.logicBlockTitle, { marginRight: 8 }]}>IF</Text>
+                            <TextInput
+                              style={styles.logicInput}
+                              value={listener.condition}
+                              onChangeText={(v) => {
+                                const newListeners = [...safeObject.logic.listeners];
+                                newListeners[index] = { ...listener, condition: v };
+                                updateField('logic.listeners', newListeners);
+                              }}
+                              placeholder="score > 10"
+                            />
+                            <TouchableOpacity onPress={() => { setActivePropertyIndex(index); setPropertyPickerVisible(true); }}>
+                              <Layers size={12} color={theme.colors.primary} />
+                            </TouchableOpacity>
+                          </View>
+
+                          <View style={[styles.logicBlock, { flex: 2, borderColor: theme.colors.secondary + '40' }]}>
+                            <Text style={[styles.logicBlockTitle, { marginRight: 8 }]}>THEN</Text>
+                            <TextInput
+                              style={styles.logicInput}
+                              value={listener.conditionAction}
+                              onChangeText={(v) => {
+                                const newListeners = [...safeObject.logic.listeners];
+                                newListeners[index] = { ...listener, conditionAction: v };
+                                updateField('logic.listeners', newListeners);
+                              }}
+                              placeholder="score + 1"
+                            />
+                            <TouchableOpacity onPress={() => {
+                              setActiveListenerIndex(index);
+                              setPickingForCondition(true);
+                              setActionPickerVisible(true);
+                            }}>
+                              <Target size={12} color={theme.colors.secondary} />
+                            </TouchableOpacity>
+                          </View>
+
+                          <TouchableOpacity onPress={() => {
+                            const newListeners = [...safeObject.logic.listeners];
+                            newListeners[index] = { ...listener, condition: '' };
+                            updateField('logic.listeners', newListeners);
+                          }}>
+                            <X size={14} color="#EF4444" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.addConditionBtn}
+                        onPress={() => {
                           const newListeners = [...safeObject.logic.listeners];
-                          newListeners[index] = { ...listener, eventId: v };
+                          newListeners[index] = { ...listener, condition: 'this.x > 0' };
                           updateField('logic.listeners', newListeners);
                         }}
-                        placeholder="Event ID"
-                      />
-                      <TouchableOpacity
-                        style={{ position: 'absolute', right: 8, top: '50%', marginTop: -8 }}
-                        onPress={() => {
-                          setActiveEventIndex(index);
-                          setEventPickerVisible(true);
-                        }}
                       >
-                        <Zap size={14} color="#F59E0B" />
+                        <Plus size={10} color={theme.colors.primary} />
+                        <Text style={styles.addConditionText}>ADD CONDITION (IF)</Text>
                       </TouchableOpacity>
-                    </View>
-                    <View style={{ flex: 1, position: 'relative' }}>
-                      <TextInput
-                        style={[styles.varValue, { paddingRight: 30 }]}
-                        value={listener.action}
-                        onChangeText={(v) => {
-                          const newListeners = [...safeObject.logic.listeners];
-                          newListeners[index] = { ...listener, action: v };
-                          updateField('logic.listeners', newListeners);
-                        }}
-                        placeholder="Action (jump)"
-                      />
-                      <TouchableOpacity
-                        style={{ position: 'absolute', right: 8, top: '50%', marginTop: -8 }}
-                        onPress={() => {
-                          setActiveListenerIndex(index);
-                          setActionPickerVisible(true);
-                        }}
-                      >
-                        <Target size={16} color={theme.colors.primary} />
-                      </TouchableOpacity>
-                    </View>
+                    )}
+
                     <TouchableOpacity
-                      style={{ padding: 4, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 6 }}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      style={styles.logicDeleteButton}
                       onPress={() => {
                         const currentListeners = safeObject.logic?.listeners || [];
                         const newListeners = currentListeners.filter((_, i) => i !== index);
                         updateField('logic.listeners', newListeners);
                       }}>
-                      <Trash2 size={14} color="#EF4444" />
+                      <Trash2 size={12} color="#EF4444" />
                     </TouchableOpacity>
                   </View>
                 ))}
                 <TouchableOpacity
                   style={styles.addButtonCompact}
                   onPress={() => {
-                    setActiveListenerIndex(null); // null means we're adding a new one
+                    setActiveListenerIndex(null);
                     setActionPickerVisible(true);
                   }}
                 >
@@ -557,7 +764,6 @@ export default function ObjectInspectorModal({
                 />
               </Section>
 
-              {/* 8. Variables */}
               <Section
                 title="Variables"
                 icon={<Settings size={16} color={theme.colors.primary} />}
@@ -565,12 +771,24 @@ export default function ObjectInspectorModal({
                 onToggle={() => toggleSection('variables')}
               >
                 <Text style={styles.subSectionTitleCompact}>Local Variables (Local to this Object)</Text>
-                {Object.entries(safeObject.variables.local || {}).map(([key, value]) => (
-                  <View key={key} style={styles.variableRow}>
-                    <TextInput style={styles.varName} value={key} />
-                    <TextInput style={styles.varValue} value={String(value)} />
-                    <TouchableOpacity><Trash2 size={14} color="#EF4444" /></TouchableOpacity>
-                  </View>
+                {Object.entries(safeObject.variables.local || {}).map(([key, value], index) => (
+                  <VariableRow
+                    key={`local-${index}`}
+                    varKey={key}
+                    value={value}
+                    onRename={(oldKey: string, newKey: string) => {
+                      const newLocal = { ...safeObject.variables.local };
+                      newLocal[newKey] = value;
+                      delete newLocal[oldKey];
+                      updateField('variables.local', newLocal);
+                    }}
+                    onChangeValue={(v: string) => {
+                      const newLocal = { ...safeObject.variables.local, [key]: v };
+                      updateField('variables.local', newLocal);
+                    }}
+                    onPromote={() => useProjectStore.getState().promoteVariableToGlobal(safeObject.id, key)}
+                    onDelete={() => useProjectStore.getState().deleteLocalVariable(safeObject.id, key)}
+                  />
                 ))}
                 <TouchableOpacity
                   style={styles.addButtonCompact}
@@ -586,11 +804,18 @@ export default function ObjectInspectorModal({
                 <View style={styles.divider} />
 
                 <Text style={styles.subSectionTitleCompact}>Global Variables (Project-wide)</Text>
-                {Object.entries(globalVars).map(([key, value]) => (
-                  <View key={key} style={styles.variableRow}>
-                    <Text style={[styles.varName, { opacity: 0.7 }]}>{key}</Text>
-                    <Text style={styles.varValue}>{String(value)}</Text>
-                  </View>
+                {Object.entries(globalVars).map(([key, value], index) => (
+                  <VariableRow
+                    key={`global-${index}`}
+                    varKey={key}
+                    value={value}
+                    isGlobal={true}
+                    onChangeValue={(v: string) => {
+                      const newGlobals = { ...currentProject.variables.global, [key]: v };
+                      useProjectStore.getState().updateProject({ variables: { global: newGlobals } });
+                    }}
+                    onDelete={() => useProjectStore.getState().deleteGlobalVariable(key)}
+                  />
                 ))}
                 <Text style={styles.infoTextSmall}>Global variables can be managed in Project Settings.</Text>
               </Section>
@@ -602,7 +827,7 @@ export default function ObjectInspectorModal({
       {/* Event Picker Modal */}
       <Modal visible={eventPickerVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { height: '80%' }]}>
+          <View style={[styles.modalContent, { height: '100%' }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Select Event Trigger</Text>
               <TouchableOpacity onPress={() => setEventPickerVisible(false)}>
@@ -611,6 +836,16 @@ export default function ObjectInspectorModal({
             </View>
 
             <ScrollView>
+              <Text style={styles.subSectionTitleCompact}>Engine Events</Text>
+              <TouchableOpacity
+                style={styles.actionPresetItem}
+                onPress={() => handleEventSelect('on_tick')}
+              >
+                <Activity size={14} color={theme.colors.primary} />
+                <Text style={[styles.actionPresetText, { fontWeight: 'bold', color: theme.colors.primary }]}>Every Frame (on tick)</Text>
+              </TouchableOpacity>
+
+              <View style={styles.divider} />
               <Text style={styles.subSectionTitleCompact}>Built-in Movements</Text>
               {[
                 { id: 'builtin_jump', label: 'When Player Jumps' },
@@ -630,6 +865,31 @@ export default function ObjectInspectorModal({
                   <Text style={styles.actionPresetText}>{ev.label}</Text>
                 </TouchableOpacity>
               ))}
+              <View style={styles.divider} />
+              <Text style={styles.subSectionTitleCompact}>Collisions & Interactions</Text>
+              <TouchableOpacity
+                style={styles.actionPresetItem}
+                onPress={() => handleEventSelect('on_collision')}
+              >
+                <Bolt size={14} color="#FFAC00" />
+                <Text style={styles.actionPresetText}>On Any Collision</Text>
+              </TouchableOpacity>
+
+              <Text style={[styles.subSectionTitleCompact, { marginTop: 12, marginBottom: 8, fontSize: 11, opacity: 0.8 }]}>When hitting specific Object:</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {(currentProject?.objects || []).map((obj: GameObject) => (
+                  <TouchableOpacity
+                    key={obj.id}
+                    style={styles.objectPickerItemSmall}
+                    onPress={() => handleEventSelect(`collision:${obj.name}`)}
+                  >
+                    <View style={styles.objectPickerSpriteBox}>
+                      {renderSpritePreview(obj.appearance?.spriteId, 32)}
+                    </View>
+                    <Text style={styles.objectPickerNameSmall} numberOfLines={1}>{obj.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
               <View style={styles.divider} />
               <Text style={styles.subSectionTitleCompact}>Broadcast Triggers (from other objects)</Text>
@@ -647,6 +907,74 @@ export default function ObjectInspectorModal({
                 <Zap size={14} color={theme.colors.warning} />
                 <Text style={styles.actionPresetText}>On Collision Event</Text>
               </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Property Picker Modal */}
+      <Modal visible={propertyPickerVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { height: '80%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Insert Property / Variable</Text>
+              <TouchableOpacity onPress={() => setPropertyPickerVisible(false)}>
+                <X color={theme.colors.textMuted} size={24} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.subSectionTitleCompact}>Current Object (this)</Text>
+              <View style={styles.pickerRowSmall}>
+                {['this.x', 'this.y', 'this.vx', 'this.vy'].map(p => (
+                  <TouchableOpacity key={p} style={styles.pickerChip} onPress={() => handlePropertySelect(p)}>
+                    <Text style={styles.pickerChipText}>{p.split('.')[1].toUpperCase()}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={styles.divider} />
+              <Text style={styles.subSectionTitleCompact}>Project Variables</Text>
+              <View style={styles.pickerRowSmall}>
+                {Object.keys(currentProject?.variables?.global || {}).map(v => (
+                  <TouchableOpacity key={v} style={styles.pickerChip} onPress={() => handlePropertySelect(v)}>
+                    <Text style={styles.pickerChipText}>{v}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {otherObjects.length > 0 && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Other Project Objects</Text>
+                  {otherObjects.map((obj: GameObject) => {
+                    const displayName = obj.name || obj.behavior || 'Unnamed Object';
+                    const targetId = obj.name || obj.behavior || obj.id;
+                    return (
+                      <View key={obj.id} style={{ marginBottom: 12 }}>
+                        <Text style={[styles.miniLabel, { color: theme.colors.primary }]}>{displayName.toUpperCase()}</Text>
+                        <View style={styles.pickerRowSmall}>
+                          {['x', 'y', 'vx', 'vy'].map(p => (
+                            <TouchableOpacity key={p} style={styles.pickerChipSecondary} onPress={() => handlePropertySelect(`${targetId}.${p}`)}>
+                              <Text style={styles.pickerChipTextSmall}>{p.toUpperCase()}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </>
+              )}
+
+              <View style={styles.divider} />
+              <Text style={styles.subSectionTitleCompact}>Operators</Text>
+              <View style={styles.pickerRowSmall}>
+                {['>', '<', '==', '!=', '+', '-'].map(op => (
+                  <TouchableOpacity key={op} style={[styles.pickerChip, { backgroundColor: theme.colors.surfaceElevated }]} onPress={() => handlePropertySelect(op)}>
+                    <Text style={styles.pickerChipText}>{op}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </ScrollView>
           </View>
         </View>
@@ -698,16 +1026,93 @@ export default function ObjectInspectorModal({
               </TouchableOpacity>
 
               <View style={styles.divider} />
-              <Text style={styles.subSectionTitleCompact}>Spawn Object (Create Instance)</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                {currentProject?.objects.map((obj: any) => (
+              <Text style={styles.subSectionTitleCompact}>Global Variables (Game-wide)</Text>
+              {Object.keys(currentProject?.variables?.global || {}).map(v => (
+                <View key={v} style={{ marginBottom: 12 }}>
+                  <Text style={[styles.miniLabel, { color: theme.colors.primary }]}>{v.toUpperCase()}</Text>
+                  <View style={styles.pickerRowSmall}>
+                    <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => handleActionSelect(`var_add:${v}:1`)}>
+                      <Text style={styles.pickerChipTextSmall}>+1</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => handleActionSelect(`var_add:${v}:-1`)}>
+                      <Text style={styles.pickerChipTextSmall}>-1</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => handleActionSelect(`var_set:${v}:0`)}>
+                      <Text style={styles.pickerChipTextSmall}>SET 0</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+
+              <View style={styles.divider} />
+              <Text style={styles.subSectionTitleCompact}>Movement & Rotation</Text>
+              <View style={styles.pickerRowSmall}>
+                <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => handleActionSelect('add_x:1')}>
+                  <Text style={styles.pickerChipTextSmall}>X + 1</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => handleActionSelect('add_x:-1')}>
+                  <Text style={styles.pickerChipTextSmall}>X - 1</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => handleActionSelect('add_y:1')}>
+                  <Text style={styles.pickerChipTextSmall}>Y + 1</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => handleActionSelect('add_y:-1')}>
+                  <Text style={styles.pickerChipTextSmall}>Y - 1</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => handleActionSelect('add_angle:5')}>
+                  <Text style={styles.pickerChipTextSmall}>ROT + 5°</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => handleActionSelect('add_angle:-5')}>
+                  <Text style={styles.pickerChipTextSmall}>ROT - 5°</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.divider} />
+              <Text style={styles.subSectionTitleCompact}>Local Variables (This Object Only)</Text>
+              {Object.keys(safeObject.variables.local || {}).map(v => (
+                <View key={v} style={{ marginBottom: 12 }}>
+                  <Text style={[styles.miniLabel, { color: theme.colors.secondary }]}>{v.toUpperCase()}</Text>
+                  <View style={styles.pickerRowSmall}>
+                    <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => handleActionSelect(`lvar_add:${v}:1`)}>
+                      <Text style={styles.pickerChipTextSmall}>+1</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => handleActionSelect(`lvar_add:${v}:-1`)}>
+                      <Text style={styles.pickerChipTextSmall}>-1</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => handleActionSelect(`lvar_set:${v}:0`)}>
+                      <Text style={styles.pickerChipTextSmall}>SET 0</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+
+              <View style={styles.divider} />
+              <Text style={styles.subSectionTitleCompact}>Scene Control</Text>
+              <View style={styles.pickerRowSmall}>
+                <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => handleActionSelect('restart_room')}>
+                  <Text style={styles.pickerChipTextSmall}>RESTART ROOM</Text>
+                </TouchableOpacity>
+                {(currentProject?.rooms || []).map((room: any) => (
+                  <TouchableOpacity
+                    key={room.id}
+                    style={styles.pickerChipSecondary}
+                    onPress={() => handleActionSelect(`go_to_room:${room.name}`)}
+                  >
+                    <Text style={styles.pickerChipTextSmall}>GO TO {room.name?.toUpperCase()}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={styles.divider} />
+              <Text style={styles.subSectionTitleCompact}>Spawn Objects</Text>
+              <View style={styles.pickerRowSmall}>
+                {(currentProject?.objects || []).map((obj: GameObject) => (
                   <TouchableOpacity
                     key={obj.id}
-                    style={styles.miniObjectSelect}
-                    onPress={() => handleActionSelect(`create_instance:${obj.id}`)}
+                    style={styles.pickerChipSecondary}
+                    onPress={() => handleActionSelect(`create_instance:${obj.id}:0:0`)}
                   >
-                    {renderSpritePreview(obj.appearance.spriteId, 24)}
-                    <Text style={styles.miniObjectText}>{obj.name}</Text>
+                    <Text style={styles.pickerChipTextSmall}>SPAWN {obj.name?.toUpperCase() || 'OBJ'}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -768,49 +1173,3 @@ const SwitchRow = ({ label, value, onToggle }: SwitchRowProps) => (
   </View>
 );
 
-const styles = StyleSheet.create({
-  inspectorOverlay: { flex: 1, backgroundColor: theme.colors.background },
-  inspectorContent: { flex: 1, paddingHorizontal: 16, paddingTop: 48 },
-  inspectorHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  inspectorTitle: { ...theme.typography.h2, color: theme.colors.text },
-  saveText: { color: theme.colors.primary, fontWeight: 'bold', fontSize: 14 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  modalContent: { width: '100%', backgroundColor: theme.colors.surface, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: theme.colors.border },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { ...theme.typography.h3, color: theme.colors.text },
-  inspectorSectionCompact: { backgroundColor: theme.colors.surface, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: theme.colors.border, overflow: 'hidden' },
-  sectionHeaderAccordion: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, backgroundColor: theme.colors.surfaceElevated },
-  sectionLabel: { ...theme.typography.body, fontWeight: 'bold', color: theme.colors.text },
-  sectionContent: { padding: 12, gap: 12 },
-  inputGroupCompact: { gap: 4 },
-  inputLabel: { ...theme.typography.caption, color: theme.colors.textMuted, fontSize: 10, marginBottom: 2 },
-  inspectorInputCompact: { backgroundColor: theme.colors.surfaceElevated, borderRadius: 6, padding: 8, fontSize: 12, color: theme.colors.text, borderWidth: 1, borderColor: theme.colors.border },
-  spriteSelectButtonCompact: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.surfaceElevated, padding: 8, borderRadius: 10, gap: 10 },
-  spritePreviewContainerSmall: { width: 32, height: 32, backgroundColor: '#1E2228', borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
-  spriteSelectLabelSmall: { color: theme.colors.text, fontSize: 12, fontWeight: '600' },
-  switchRowCompact: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  animationStateRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1E2228', padding: 8, borderRadius: 8 },
-  animationStateLabel: { color: theme.colors.text, fontSize: 10, fontWeight: 'bold' },
-  miniSpritePicker: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#2E333D', padding: 4, borderRadius: 6 },
-  miniSpriteText: { color: theme.colors.textMuted, fontSize: 9 },
-  subSection: { gap: 10, paddingLeft: 12, borderLeftWidth: 1, borderLeftColor: theme.colors.border, marginTop: 4 },
-  divider: { height: 1, backgroundColor: theme.colors.border, marginVertical: 4 },
-  soundRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  soundPicker: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#1E2228', padding: 6, borderRadius: 6, minWidth: 120 },
-  soundText: { color: theme.colors.text, fontSize: 10 },
-  subSectionTitleCompact: { color: theme.colors.textMuted, fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 0.5 },
-  variableRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-  varName: { flex: 1, backgroundColor: '#1E2228', padding: 6, borderRadius: 4, color: theme.colors.text, fontSize: 10 },
-  varValue: { flex: 1, backgroundColor: '#1E2228', padding: 6, borderRadius: 4, color: theme.colors.primary, fontSize: 10 },
-  addButtonCompact: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 8, borderRadius: 8, borderWidth: 1, borderStyle: 'dashed', borderColor: theme.colors.primary },
-  addButtonTextSmall: { color: theme.colors.primary, fontSize: 10, fontWeight: 'bold' },
-  infoTextSmall: { color: theme.colors.textMuted, fontSize: 9, textAlign: 'center', marginTop: 8, fontStyle: 'italic' },
-  miniObjectSelect: { padding: 8, borderRadius: 10, backgroundColor: '#1E2228', alignItems: 'center', gap: 6, marginRight: 8, borderWidth: 1, borderColor: 'transparent', minWidth: 80 },
-  miniObjectSelectActive: { borderColor: theme.colors.primary, backgroundColor: theme.colors.surfaceElevated },
-  miniObjectText: { color: theme.colors.text, fontSize: 9, fontWeight: '600' },
-  previewContainer: { height: 100, backgroundColor: '#000', borderRadius: 12, marginBottom: 12, overflow: 'hidden', position: 'relative', borderBottomWidth: 1, borderColor: '#333' },
-  previewParticle: { position: 'absolute', width: 4, height: 4, borderRadius: 2 },
-  previewSource: { position: 'absolute', bottom: 10, left: '50%', marginLeft: -4, width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff', opacity: 0.3 },
-  actionPresetItem: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, backgroundColor: '#1E2228', borderRadius: 8, marginTop: 8 },
-  actionPresetText: { color: theme.colors.text, fontSize: 14, fontWeight: '600' },
-});

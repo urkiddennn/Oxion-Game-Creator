@@ -4,7 +4,7 @@ import { CommonActions, useNavigation } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import {
   Menu, Save, Settings, Box, Music, Palette,
-  Layout, Play, Undo, RotateCcw, Folder, FileText
+  Layout, Play, Undo, RotateCcw, Folder, FileText, Bug
 } from 'lucide-react-native';
 import { theme } from '../theme';
 import GamePlayer from '../features/rooms/components/GamePlayer';
@@ -14,10 +14,11 @@ const SpritesScreen = React.lazy(() => import('../features/sprites/SpritesScreen
 const ObjectsScreen = React.lazy(() => import('../features/objects/ObjectsScreen'));
 const RoomsScreen = React.lazy(() => import('../features/rooms/RoomsScreen'));
 const AudioScreen = React.lazy(() => import('../features/audio/AudioScreen'));
+const SettingsScreen = React.lazy(() => import('../features/settings/SettingsScreen'));
 
 const Tab = createBottomTabNavigator();
 
-function TopToolbar({ state, navigation, onPlay }: any) {
+function TopToolbar({ state, navigation, onPlay, onDebug }: any) {
   const [menuVisible, setMenuVisible] = useState(false);
   const closeProject = useProjectStore((state) => state.closeProject);
 
@@ -65,6 +66,9 @@ function TopToolbar({ state, navigation, onPlay }: any) {
         </View>
 
         <View style={styles.toolbarRight}>
+          <TouchableOpacity style={styles.toolbarButton} onPress={onDebug}>
+            <Bug color={theme.colors.secondary} size={18} />
+          </TouchableOpacity>
           <TouchableOpacity style={styles.toolbarButton} onPress={onPlay}>
             <Play fill={theme.colors.success} color={theme.colors.success} size={18} />
           </TouchableOpacity>
@@ -95,7 +99,10 @@ function TopToolbar({ state, navigation, onPlay }: any) {
               <FileText color={theme.colors.text} size={16} />
               <Text style={styles.menuItemText}>Documentation</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={() => setMenuVisible(false)}>
+            <TouchableOpacity style={styles.menuItem} onPress={() => {
+              setMenuVisible(false);
+              navigation.navigate('Settings');
+            }}>
               <Settings color={theme.colors.text} size={16} />
               <Text style={styles.menuItemText}>Editor Settings</Text>
             </TouchableOpacity>
@@ -112,12 +119,14 @@ function getIcon(name: string) {
     case 'Objects': return Box;
     case 'Rooms': return Layout;
     case 'Audio': return Music;
+    case 'Settings': return Settings;
     default: return Box;
   }
 }
 
 export default function DashboardNavigator() {
   const [isTesting, setIsTesting] = React.useState(false);
+  const [isDebug, setIsDebug] = React.useState(false);
 
   return (
     <>
@@ -130,7 +139,8 @@ export default function DashboardNavigator() {
               <TopToolbar
                 state={state}
                 navigation={navigation}
-                onPlay={() => setIsTesting(true)}
+                onPlay={() => { setIsDebug(false); setIsTesting(true); }}
+                onDebug={() => { setIsDebug(true); setIsTesting(true); }}
               />
               <View style={styles.contentArea}>
                 <View style={styles.canvasContainer}>
@@ -155,11 +165,13 @@ export default function DashboardNavigator() {
         <Tab.Screen name="Objects" component={ObjectsScreen} options={{ title: 'Objects' }} />
         <Tab.Screen name="Sprites" component={SpritesScreen} options={{ title: 'Sprites' }} />
         <Tab.Screen name="Audio" component={AudioScreen} options={{ title: 'Audio' }} />
+        <Tab.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
       </Tab.Navigator>
 
       <GamePlayer
         visible={isTesting}
         onClose={() => setIsTesting(false)}
+        debug={isDebug}
       />
     </>
   );

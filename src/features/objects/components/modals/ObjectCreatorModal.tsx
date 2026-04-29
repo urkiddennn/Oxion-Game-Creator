@@ -14,6 +14,7 @@ export const BEHAVIORS = [
   { id: 'emitter', label: 'Particle Emitter', icon: Zap, color: '#7000FF' },
   { id: 'bullet', label: 'Bullet', icon: Box, color: '#FFA500' }, // Added Bullet
   { id: 'popup', label: 'Pop-up Text', icon: Layout, color: '#94A3B8' },
+  { id: 'text', label: 'Text Object', icon: Layout, color: '#FFFFFF' },
 ];
 
 interface ObjectCreatorModalProps {
@@ -40,8 +41,8 @@ export default function ObjectCreatorModal({ visible, onClose, onSelectBehavior 
           </View>
           <ScrollView contentContainerStyle={styles.behaviorGrid}>
             {BEHAVIORS.map((b) => (
-              <TouchableOpacity 
-                key={b.id} 
+              <TouchableOpacity
+                key={b.id}
                 style={styles.behaviorButton}
                 onPress={() => onSelectBehavior(b.id)}
               >
@@ -61,15 +62,19 @@ export default function ObjectCreatorModal({ visible, onClose, onSelectBehavior 
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 0,
   },
   modalContent: {
-    backgroundColor: theme.colors.background,
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    height: '60%',
-    padding: 24,
+    backgroundColor: theme.colors.surfaceElevated,
+    borderRadius: 0,
+    width: '100%',
+    maxHeight: '100%',
+    padding: 0,
+    borderWidth: 0,
+    borderColor: theme.colors.border,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -88,15 +93,15 @@ const styles = StyleSheet.create({
   behaviorGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+
     paddingBottom: 32,
-    justifyContent: 'space-between',
+    justifyContent: 'center',
   },
   behaviorButton: {
-    width: '30%',
+    width: '20%',
     backgroundColor: theme.colors.surface,
     padding: 12,
-    borderRadius: 16,
+    borderRadius: 10,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: theme.colors.border,
