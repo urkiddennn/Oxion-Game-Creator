@@ -136,14 +136,22 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
     [localAnimState]
   );
 
+  // Shared values for animation parameters to ensure UI-thread reactivity
+  const animFrameCount = useSharedValue(1);
+  const animRow = useSharedValue(0);
+  const animFps = useSharedValue(10);
+  const animLoop = useSharedValue(true);
+  const hasAnim = useSharedValue(false);
+
   // Animation frame calculation moved to worklet
   const frameIndex = useDerivedValue(() => {
-    if (!activeState || !activeState.anim || activeState.anim.frameCount <= 1) return 0;
-    const fps = activeState.anim.fps || 10;
-    const interval = 1000 / fps;
-    const elapsed = globalFrameTimer.value % (activeState.anim.frameCount * interval);
+    'worklet';
+    if (!hasAnim.value || animFrameCount.value <= 1) return 0;
+    
+    const interval = 1000 / animFps.value;
+    const elapsed = globalFrameTimer.value % (animFrameCount.value * interval);
     const frame = Math.floor(elapsed / interval);
-    return activeState.anim.loop ? frame : Math.min(frame, activeState.anim.frameCount - 1);
+    return animLoop.value ? frame : Math.min(frame, animFrameCount.value - 1);
   });
 
   const isVisible = useDerivedValue(() => {
@@ -151,7 +159,7 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
     const camX = cameraX.value;
     const camY = cameraY.value;
     const zoom = cameraZoom.value;
-    
+
     // Visible area in world coordinates (room space)
     const viewportW = gameWidth / zoom;
     const viewportH = gameHeight / zoom;
@@ -159,22 +167,24 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
     const visibleRight = camX + viewportW;
     const visibleTop = camY;
     const visibleBottom = camY + viewportH;
-    
+
     // Object bounding box
     const objLeft = sv.x.value;
     const objRight = sv.x.value + width;
     const objTop = sv.y.value;
     const objBottom = sv.y.value + height;
-    
+
     const margin = 100; // extra pixels to avoid popping at edges
     return (objRight + margin > visibleLeft &&
-            objLeft - margin < visibleRight &&
-            objBottom + margin > visibleTop &&
-            objTop - margin < visibleBottom);
+      objLeft - margin < visibleRight &&
+      objBottom + margin > visibleTop &&
+      objTop - margin < visibleBottom);
   });
 
   const activeState = useMemo(() => {
     const stateNames = ['idle', 'move', 'jump', 'hit', 'dead'];
+    let targetSprite = override?.spriteId ? (sprites?.find(s => s.id === override.spriteId) || sprite) : sprite;
+    if (!targetSprite) return null;
 
     // Priority:
     // 1. Manual override (from script action)
@@ -195,8 +205,6 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
     // Check for custom mapping in GameObject (e.g. mapping "idle" to "Dance")
     const customMapping = override?.animName ? null : (obj?.animations as any)?.[currentStateName];
     const searchStr = customMapping || currentStateName;
-
-    let targetSprite = override?.spriteId ? (sprites?.find(s => s.id === override.spriteId) || sprite) : sprite;
     let targetAnimName = searchStr;
 
     if (!override?.spriteId && searchStr.includes(':')) {
@@ -206,14 +214,67 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
       if (foundSprite) targetSprite = foundSprite;
     }
 
-    if (!targetSprite) return null;
+    const trimmedTargetAnimName = targetAnimName.trim().toLowerCase();
+    
+    // Find animation with robust fallback (case-insensitive and trimmed)
+    let foundAnim = targetSprite.animations?.find((a: any) => 
+      a.name && a.name.trim().toLowerCase() === trimmedTargetAnimName
+    );
+    
+    // Fallback 1: If searching for 'idle' (or common defaults) and not found, take the first animation
+    if (!foundAnim && (trimmedTargetAnimName === 'idle' || trimmedTargetAnimName === 'default') && targetSprite.animations?.length > 0) {
+      foundAnim = targetSprite.animations[0];
+    }
+    
+    // Fallback 2: If we have multiple frames (assumed by grid) but no named animation, create a virtual one for the first row
+    if (!foundAnim && targetSprite.grid?.enabled) {
+      if (!targetSprite.animations?.length) {
+        foundAnim = { name: 'default', row: 0, frameCount: 1, fps: 10, loop: true };
+      } else if (trimmedTargetAnimName === 'idle') {
+        foundAnim = targetSprite.animations[0];
+      }
+    }
 
-    const trimmedTargetAnimName = targetAnimName.trim();
-    const foundAnim = targetSprite.animations?.find((a: any) => a.name.trim() === trimmedTargetAnimName);
-    return foundAnim ? { anim: foundAnim, sprite: targetSprite } : null;
+    return foundAnim ? { 
+      anim: { ...foundAnim, frameCount: foundAnim.frameCount || 1, fps: foundAnim.fps || 10 }, 
+      sprite: targetSprite 
+    } : null;
   }, [sprite, localAnimState, obj?.animations, obj?.appearance?.animationState, override, sprites]);
 
+  // Sync animation data to shared values for the UI thread
+  useEffect(() => {
+    if (activeState?.anim) {
+      animFrameCount.value = activeState.anim.frameCount || 1;
+      animRow.value = activeState.anim.row || 0;
+      animFps.value = activeState.anim.fps || 10;
+      animLoop.value = activeState.anim.loop !== false;
+      hasAnim.value = true;
+    } else {
+      animFrameCount.value = 1;
+      animRow.value = 0;
+      animFps.value = 10;
+      animLoop.value = true;
+      hasAnim.value = false;
+    }
+  }, [activeState]);
+
   const currentSprite = activeState?.sprite || sprite;
+
+  // Pre-calculate image dimensions for the spritesheet to avoid .value access in render
+  const sheetDimensions = useMemo(() => {
+    if (!currentSprite) return { w: 0, h: 0 };
+    const fw = Math.max(1, currentSprite.grid?.frameWidth || width || 32);
+    const fh = Math.max(1, currentSprite.grid?.frameHeight || height || 32);
+    const fc = activeState?.anim?.frameCount || 1;
+    
+    const baseW = imgDimensions.w || currentSprite.width || (fw * fc);
+    const baseH = imgDimensions.h || currentSprite.height || fh;
+    
+    return {
+      w: baseW * (width / fw),
+      h: baseH * (height / fh)
+    };
+  }, [imgDimensions, currentSprite, activeState?.anim?.frameCount, width, height]);
 
   useEffect(() => {
     if (!currentSprite) return;
@@ -244,28 +305,32 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
   }, [sprite, spriteId, isRemote]);
 
   const lastResolvedText = useRef<{ content: string, vars: string, result: string }>({ content: '', vars: '', result: '' });
+  const varKeysCache = useRef<{ keys: string[], lowerMap: Record<string, string> }>({ keys: [], lowerMap: {} });
 
   const resolveText = (content: string) => {
     if (!content) return '';
 
     const contentTrimmed = content.trim().toLowerCase();
-
-    // 1. Direct variable match fallback (if user just typed "var_0" without {})
-    const localDirectKey = localVariables ? Object.keys(localVariables).find(k => k.toLowerCase() === contentTrimmed) : null;
-    const globalDirectKey = Object.keys(variables).find(k => k.toLowerCase() === contentTrimmed);
-    if (localDirectKey || globalDirectKey) {
-      return String(localDirectKey ? localVariables![localDirectKey] : variables[globalDirectKey!]);
+    
+    // Optimization: Cache lowercase keys for faster lookup
+    const currentVarKeys = Object.keys(variables);
+    if (varKeysCache.current.keys.length !== currentVarKeys.length) {
+      const lowerMap: Record<string, string> = {};
+      currentVarKeys.forEach(k => { lowerMap[k.toLowerCase()] = k; });
+      varKeysCache.current = { keys: currentVarKeys, lowerMap };
     }
+    const { lowerMap } = varKeysCache.current;
+
+    // 1. Direct variable match fallback
+    const globalDirectKey = lowerMap[contentTrimmed];
+    if (globalDirectKey) return String(variables[globalDirectKey]);
 
     // 2. Template match
-    // Using a quick stringify of relevant variables for cache key
     const relevantVars = content.match(/\{([\w\s]+)\}/g) || [];
     const varValues = relevantVars.map(v => {
       const name = v.slice(1, -1).trim().toLowerCase();
-      const localKey = localVariables ? Object.keys(localVariables).find(k => k.toLowerCase() === name) : null;
-      const globalKey = Object.keys(variables).find(k => k.toLowerCase() === name);
-
-      const val = localKey ? localVariables![localKey] : (globalKey ? variables[globalKey] : '0');
+      const globalKey = lowerMap[name];
+      const val = globalKey ? variables[globalKey] : '0';
       return `${name}:${val}`;
     }).join('|');
 
@@ -274,15 +339,9 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
     }
 
     const result = content.replace(/\{([\w\s]+)\}/g, (match, varName) => {
-      const trimmedName = varName.trim();
-      if (localVariables) {
-        const found = Object.keys(localVariables).find(k => k.toLowerCase() === trimmedName.toLowerCase());
-        if (found) return localVariables[found].toString();
-      }
-      const foundGlobal = Object.keys(variables).find(k => k.toLowerCase() === trimmedName.toLowerCase());
+      const trimmedName = varName.trim().toLowerCase();
+      const foundGlobal = lowerMap[trimmedName];
       if (foundGlobal !== undefined) return variables[foundGlobal].toString();
-
-      // Default to 0 if the variable hasn't been initialized yet
       return '0';
     });
 
@@ -305,15 +364,18 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
   });
 
   const imageAnimatedStyle = useAnimatedStyle(() => {
-    if (!activeState || !activeState.anim || !currentSprite?.grid?.enabled) return {};
-    const frameWidth = currentSprite.grid.frameWidth;
-    const frameHeight = currentSprite.grid.frameHeight;
+    'worklet';
+    if (!hasAnim.value || !currentSprite?.grid?.enabled) return {};
+    const frameWidth = Math.max(1, currentSprite.grid.frameWidth || width);
+    const frameHeight = Math.max(1, currentSprite.grid.frameHeight || height);
     const scaleW = width / frameWidth;
     const scaleH = height / frameHeight;
 
     return {
-      left: -frameIndex.value * frameWidth * scaleW,
-      top: -(activeState.anim.row || 0) * frameHeight * scaleH,
+      transform: [
+        { translateX: -frameIndex.value * frameWidth * scaleW },
+        { translateY: -animRow.value * frameHeight * scaleH }
+      ],
     };
   });
 
@@ -340,9 +402,11 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
             source={{ uri: bmpUri }}
             style={[
               {
-                width: (imgDimensions.w || currentSprite.width || (currentSprite.grid.frameWidth * (activeState?.anim?.frameCount || 1))) * (width / currentSprite.grid.frameWidth),
-                height: (imgDimensions.h || currentSprite.height || (currentSprite.grid.frameHeight * 1)) * (height / currentSprite.grid.frameHeight),
+                width: sheetDimensions.w,
+                height: sheetDimensions.h,
                 position: 'absolute',
+                left: 0,
+                top: 0,
               },
               imageAnimatedStyle
             ]}
@@ -462,15 +526,15 @@ const FPSCounter = React.memo(({ fps }: { fps: SharedValue<number> }) => {
   );
 });
 
-const ZoomIndicator = React.memo(({ zoom, camX, camY, enabled, roomW, roomH, gameW, gameH, targetName, inSidebar }: { 
-  zoom: SharedValue<number>, 
-  camX: SharedValue<number>, 
-  camY: SharedValue<number>, 
-  enabled: boolean, 
-  roomW: number, 
-  roomH: number, 
-  gameW: number, 
-  gameH: number, 
+const ZoomIndicator = React.memo(({ zoom, camX, camY, enabled, roomW, roomH, gameW, gameH, targetName, inSidebar }: {
+  zoom: SharedValue<number>,
+  camX: SharedValue<number>,
+  camY: SharedValue<number>,
+  enabled: boolean,
+  roomW: number,
+  roomH: number,
+  gameW: number,
+  gameH: number,
   targetName: string,
   inSidebar?: boolean
 }) => {
@@ -1481,13 +1545,19 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     let fpsLastTime = Date.now();
     let lastSyncedLength = 0;
 
+
+
+    let bodiesUpdateCounter = 0;
     const update = () => {
       if (!isActiveRef.current) return;
       if (!isPlayingRef.current) { frameId = requestAnimationFrame(update); return; }
       const now = Date.now();
 
-      // Refresh body cache ONCE per frame — used by resolveValue, camera, and scripts
-      cachedBodies = Matter.Composite.allBodies(engine.world);
+      // Refresh body cache — avoid full traversal every frame if possible
+      // (Matter.Composite.allBodies is O(N) but can be expensive with many nested composites)
+      if (bodiesUpdateCounter++ % 2 === 0 || !cachedBodies) {
+        cachedBodies = Matter.Composite.allBodies(engine.world);
+      }
 
       // Calculate FPS
       fpsFrames++;
@@ -1614,9 +1684,13 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           d.sv.y.value = d.body.position.y - d.height / 2;
           d.sv.rot.value = d.body.angle;
 
-          // Run scripts for dynamic elements
+          // Logic Culling for Dynamic Elements (don't run scripts if far away)
+          const distSq = Math.pow(d.body.position.x - (cameraX.value + gameWidth / 2), 2) + Math.pow(d.body.position.y - (cameraY.value + gameHeight / 2), 2);
+          const isFar = distSq > Math.pow(Math.max(gameWidth, gameHeight) * 2, 2);
+
+          // Run scripts for dynamic elements (only if not too far)
           const info = (d.body as any).gameInfo;
-          if (info?.scripts) {
+          if (info?.scripts && !isFar) {
             for (let s = 0; s < info.scripts.length; s++) {
               const script = info.scripts[s];
               if (script.cmd === 'on_tick') {
@@ -1719,13 +1793,14 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         const gh = Math.min(rh, 600);
 
         // Find target body — cache in ref, only re-search when null (avoids allBodies() every frame)
+        // Find target body — cache in ref, only re-search every ~30 frames or when null
         let targetBody = cameraTargetBodyRef.current;
-        if (!targetBody) {
+        if (!targetBody || bodiesUpdateCounter % 30 === 0) {
           targetBody = cachedBodies.find(b => {
             const info = (b as any).gameInfo;
             if (!info || !info.obj) return false;
             return (camSettings.targetObjectId && info.obj.id === camSettings.targetObjectId) ||
-                   (camSettings.targetObjectId && info.id === camSettings.targetObjectId);
+              (camSettings.targetObjectId && info.id === camSettings.targetObjectId);
           }) || cachedBodies.find(b => {
             const bBeh = (b as any).gameInfo?.obj?.behavior?.toLowerCase() || '';
             const bName = (b as any).gameInfo?.obj?.name?.toLowerCase() || '';
@@ -1808,7 +1883,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         const isGrid = !!sprite?.grid?.enabled;
         const fw = isGrid ? sprite.grid.frameWidth : sprite?.width;
         const fh = isGrid ? sprite.grid.frameHeight : sprite?.height;
-        const width  = isGrid ? fw : (obj.width  || inst.width  || fw || 32);
+        const width = isGrid ? fw : (obj.width || inst.width || fw || 32);
         const height = isGrid ? fh : (obj.height || inst.height || fh || 32);
 
         // NOTE: Per-instance viewport culling is done inside animatedStyle (UI thread worklet)
@@ -1858,7 +1933,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       visible={visible}
       animationType="fade"
       transparent={false}
-statusBarTranslucent={true}
+      statusBarTranslucent={true}
       onRequestClose={onClose}
     >
       <View style={[styles.container, { width: screenWidth, height: screenHeight, backgroundColor: currentRoom?.settings?.backgroundColor || '#000' }]}>
@@ -1944,8 +2019,8 @@ statusBarTranslucent={true}
               {debug && <FPSCounter fps={fpsShared} />}
               <TouchableOpacity onPress={() => setIsPlaying(!isPlaying)} style={styles.miniBtn}>{isPlaying ? <Pause color="#fff" size={14} /> : <PlayIcon color="#fff" size={14} />}</TouchableOpacity>
               {debug && (
-                <TouchableOpacity 
-                  onPress={() => setShowDebugSidebar(!showDebugSidebar)} 
+                <TouchableOpacity
+                  onPress={() => setShowDebugSidebar(!showDebugSidebar)}
                   style={[styles.miniBtn, showDebugSidebar && { backgroundColor: '#4facfe' }]}
                 >
                   <Database color="#fff" size={14} />
@@ -2016,7 +2091,7 @@ statusBarTranslucent={true}
                 <X color="#fff" size={14} />
               </TouchableOpacity>
             </View>
-            
+
             <ScrollView style={styles.debugScroll} showsVerticalScrollIndicator={false}>
               <Text style={styles.debugLabel}>CAMERA & VIEWPORT</Text>
               <ZoomIndicator
@@ -2035,11 +2110,11 @@ statusBarTranslucent={true}
               <Text style={[styles.debugLabel, { marginTop: 15 }]}>ROOM INFO</Text>
               <Text style={styles.debugValue}>{currentRoom?.name || 'Untitled'}</Text>
               <Text style={styles.debugValue}>{roomWidth}x{roomHeight} px</Text>
-              
+
               <Text style={styles.debugLabel}>INSTANCES</Text>
               <Text style={styles.debugValue}>Static: {(currentRoom?.instances || []).length}</Text>
               <Text style={styles.debugValue}>Dynamic: {dynamicElements.length}</Text>
-              
+
               <Text style={[styles.debugLabel, { marginTop: 20 }]}>GLOBAL VARIABLES</Text>
               {Object.entries(variables).map(([key, val]) => (
                 <View key={key} style={styles.debugVarRow}>

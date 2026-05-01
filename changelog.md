@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.4] - 2026-05-02 - Animation & Gameplay Stability
+### Fixed
+- **Worklet Animations**: Fixed 'Animations not working' bug by implementing robust animation state fallback (auto-selecting first animation if "idle" is missing) and case-insensitive state matching.
+- **Transform-Based Spritesheets**: Migrated spritesheet offsets from `left/top` to `translateX/translateY` for better performance on Android and to avoid layout jitter.
+- **UI-Thread Animation Timer**: Moved the global frame timer from the JS thread loop to `useFrameCallback`, ensuring animations run with high precision on the UI thread even during heavy physics calculations.
+- **Worklet Context Fix**: Fixed worklet capture issues in `PhysicsBodyBase` to ensure the latest animation state is always applied.
+
 ## [1.2.3] - 2026-05-02 - Build Fix & ProGuard Refinement
 ### Fixed
 - **Gradle Build Failure**: Fixed the "Unknown Gradle error" during EAS build by adding explicit ProGuard "keep" rules for Reanimated and TurboModules.
