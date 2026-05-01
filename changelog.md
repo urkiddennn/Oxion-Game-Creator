@@ -9,7 +9,9 @@
 - **Camera Target Ref Reset on Restart**: `cameraTargetBodyRef` is now explicitly cleared when the game loop restarts, preventing stale body references after room transitions.
 - **UI-Thread Viewport Culling**: Implemented high-performance viewport culling in `PhysicsBodyBase` using Reanimated worklets. Off-screen objects now have `display: 'none'` applied entirely on the UI thread, significantly reducing GPU draw calls and layout overhead without blocking the JS thread.
 - **Room Grid Visibility**: The room editor grid is now rendered on top of all objects (with `zIndex: 10000`), ensuring it remains visible while painting or placing objects over large sprites.
-- **Scrollable High-Density Color Grid**: Upgraded the color picker to a wide-layout, scrollable grid featuring over **70 curated colors**. The modal is now wider for better visibility, and colors are arranged in high-density rows for rapid selection.
+- **Editable Grid Size**: Added a "Grid Size" property to the Room Settings sidebar. Users can now dynamically change the snapping and visual grid resolution for each room.
+- **Sidebar Dividers**: Added subtle horizontal divider lines between sidebar sections (Instances, Room Settings, Camera, Controls), improving visual organization and scannability of the room editor's properties.
+- **Scrollable High-Density Color Grid**: Upgraded the color picker to a wide-layout, scrollable grid featuring over **70 curated colors**.
 
 ## [1.2.0] - 2026-05-01 - Rendering Performance Overhaul
 ### Performance

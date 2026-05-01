@@ -219,6 +219,16 @@ const RoomSettingInput = ({ label, value, onChange }: { label: string, value: nu
   );
 };
 
+const SidebarDivider = () => (
+  <View style={{
+    height: 1,
+    backgroundColor: theme.colors.border,
+    opacity: 0.15,
+    marginVertical: 12,
+    marginHorizontal: -8
+  }} />
+);
+
 export default function RoomsScreen() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { activeProject: currentProject, updateRoom, addInstanceToRoom, updateInstancePosition, updateInstanceSize, updateInstanceAngle, removeInstanceFromRoom, reorderInstance, addRoom, addLayer, removeLayer, updateLayer, reorderLayer, activeRoomId, setActiveRoomId } = useProjectStore();
@@ -325,7 +335,7 @@ export default function RoomsScreen() {
   const offsetY = useSharedValue(0);
   const savedOffsetX = useSharedValue(0);
   const savedOffsetY = useSharedValue(0);
-  const GRID_SIZE = 32;
+  const GRID_SIZE = currentRoom?.settings?.gridSize ?? 32;
 
   const handleDragEnd = (instId: string, x: number, y: number) => {
     if (currentRoom) {
@@ -830,6 +840,7 @@ export default function RoomsScreen() {
             )}
 
             <View style={styles.sidebarSection}>
+              <SidebarDivider />
               <View style={styles.sectionHeader}>
                 <Settings color={theme.colors.primary} size={16} />
                 <Text style={styles.sectionTitle}>Room Settings</Text>
@@ -850,6 +861,13 @@ export default function RoomsScreen() {
                   value={currentRoom?.settings?.gravity ?? 9.8}
                   onChange={(v) => currentRoom && updateRoom(currentRoom.id, {
                     settings: { ...(currentRoom.settings || {}), gravity: v }
+                  })}
+                />
+                <RoomSettingInput
+                  label="Grid Size"
+                  value={currentRoom?.settings?.gridSize ?? 32}
+                  onChange={(v) => currentRoom && updateRoom(currentRoom.id, {
+                    settings: { ...(currentRoom.settings || {}), gridSize: Math.max(1, v) }
                   })}
                 />
 
@@ -883,7 +901,8 @@ export default function RoomsScreen() {
                 </View>
               </View>
 
-              <View style={{ marginTop: 24 }}>
+              <SidebarDivider />
+              <View style={{ marginTop: 12 }}>
                 <View style={[styles.sectionHeader, { marginBottom: 12 }]}>
                   <View style={{ width: 16, height: 16, backgroundColor: theme.colors.primary, borderRadius: 4, marginRight: 8 }} />
                   <Text style={styles.sectionTitle}>Camera</Text>
@@ -946,7 +965,8 @@ export default function RoomsScreen() {
                 )}
               </View>
 
-              <View style={{ marginTop: 24 }}>
+              <SidebarDivider />
+              <View style={{ marginTop: 12 }}>
                 <Text style={[styles.sectionTitle, { fontSize: 10, marginBottom: 12 }]}>Built-in Controls</Text>
                 <View style={{ gap: 8 }}>
                   {['left', 'right', 'jump', 'shoot'].map((btn) => {
