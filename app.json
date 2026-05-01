@@ -2,7 +2,7 @@
   "expo": {
     "name": "Oxion Game Creator",
     "slug": "oxion-game-creator",
-    "version": "1.0.13",
+    "version": "1.2.3",
     "orientation": "landscape",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -44,6 +44,18 @@
     },
     "updates": {
       "url": "https://u.expo.dev/96f74b74-c465-42b8-b118-d4451765b06d"
-    }
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": false,
+            "extraProguardRules": "-keep class com.facebook.react.turbomodule.** { *; }\n-keep class com.swmansion.reanimated.** { *; }\n-keep class com.facebook.yoga.** { *; }\n-keep class com.facebook.react.bridge.Systrace { *; }"
+          }
+        }
+      ]
+    ]
   }
 }

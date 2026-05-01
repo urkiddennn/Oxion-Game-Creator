@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.2.3] - 2026-05-02 - Build Fix & ProGuard Refinement
+### Fixed
+- **Gradle Build Failure**: Fixed the "Unknown Gradle error" during EAS build by adding explicit ProGuard "keep" rules for Reanimated and TurboModules.
+- **Resource Shrinking**: Disabled `enableShrinkResourcesInReleaseBuilds` which was causing reference errors in the Android build pipeline.
+
+## [1.2.2] - 2026-05-02 - Build Size Optimization
+### Performance
+- **ProGuard/R8 Enabled**: Enabled ProGuard for Android builds via `expo-build-properties`. This minifies the Java/Kotlin code and removes unused classes, typically reducing APK size by 5–15MB.
+- **Resource Shrinking**: Enabled `enableShrinkResourcesInReleaseBuilds` to strip away unused resources (drawables, layouts) from the final Android binary.
+- **Version Sync**: Synchronized `package.json` and `app.json` versions to 1.2.2.
+
 ## [1.2.1] - 2026-05-02 - Game Loop FPS Optimizations
 ### Performance
 - **Cached Body Lookups**: `Matter.Composite.allBodies()` is now called **once per frame** and cached. Previously it was called 3–4× per frame (in camera search, `resolveValue`, and `point_towards`), each allocating a new array on every physics tick.
