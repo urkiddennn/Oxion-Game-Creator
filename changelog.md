@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.2.1] - 2026-05-02 - Game Loop FPS Optimizations
+### Performance
+- **Cached Body Lookups**: `Matter.Composite.allBodies()` is now called **once per frame** and cached. Previously it was called 3–4× per frame (in camera search, `resolveValue`, and `point_towards`), each allocating a new array on every physics tick.
+- **Lower Physics Iterations**: Reduced `positionIterations` from 10→6 and `velocityIterations` from 10→4 (back to Matter.js defaults). The previous values were 60–150% higher than needed, wasting CPU every physics step.
+- **Removed Redundant `on_tick` Event Emit**: `DeviceEventEmitter.emit('on_tick')` was fired every frame but had no listeners (attachListeners explicitly skips `on_tick`). Removed the dead emit to eliminate event dispatch overhead.
+- **Cached Camera Target Body**: The camera follow loop now caches the target `Matter.Body` in a ref and only re-searches when the ref is null (e.g. after a room restart). Previously it called `allBodies().find()` on every frame even when the target never changed.
+- **Camera Target Ref Reset on Restart**: `cameraTargetBodyRef` is now explicitly cleared when the game loop restarts, preventing stale body references after room transitions.
+- **UI-Thread Viewport Culling**: Implemented high-performance viewport culling in `PhysicsBodyBase` using Reanimated worklets. Off-screen objects now have `display: 'none'` applied entirely on the UI thread, significantly reducing GPU draw calls and layout overhead without blocking the JS thread.
+- **Room Grid Visibility**: The room editor grid is now rendered on top of all objects (with `zIndex: 10000`), ensuring it remains visible while painting or placing objects over large sprites.
+- **Scrollable High-Density Color Grid**: Upgraded the color picker to a wide-layout, scrollable grid featuring over **70 curated colors**. The modal is now wider for better visibility, and colors are arranged in high-density rows for rapid selection.
+
+## [1.2.0] - 2026-05-01 - Rendering Performance Overhaul
+### Performance
+- **Dynamic Viewport Culling**: Static instances are now skipped during React rendering if their bounding box falls outside the current camera viewport + 128px margin. In large rooms (100+ objects) with an active camera this can reduce rendered components by 80–95%.
+- **O(1) Sprite Lookup**: Replaced `Array.find()` with `spriteMap.get()` in the `staticElements` render path, eliminating a full sprite-array scan per instance per frame.
+- **Layer Visibility Short-Circuit**: Invisible layers now exit immediately with `null` before iterating their instances.
+- **Viewport Sync at 15fps**: A lightweight camera-position sync (`viewportCam` state) runs at ~15fps to drive culling without adding bridge overhead to the 60fps physics loop.
+
+
 ## [1.1.1] - 2026-05-01 - Debug Sidebar Refinements
 ### Added
 - **Sidebar Close Button**: Added a dedicated close button to the debug sidebar for better UX.

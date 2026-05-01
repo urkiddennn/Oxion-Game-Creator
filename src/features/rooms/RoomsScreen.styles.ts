@@ -375,6 +375,7 @@ export const styles = StyleSheet.create({
     marginRight: 8,
   },
   pickerOverlay: {
+
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
@@ -399,7 +400,7 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    padding: 5,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border + '40',
   },

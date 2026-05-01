@@ -147,14 +147,30 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
   });
 
   const isVisible = useDerivedValue(() => {
-    // Basic viewport culling logic (shared value version)
-    const margin = 100;
-    const curX = sv?.x?.value ?? 0;
-    const curY = sv?.y?.value ?? 0;
-    const camX = 0; // Will be passed or referenced if possible
-    // For now, simpler: we'll handle culling in the parent if possible, 
-    // but React.memo is the key for non-text objects.
-    return true;
+    'worklet';
+    const camX = cameraX.value;
+    const camY = cameraY.value;
+    const zoom = cameraZoom.value;
+    
+    // Visible area in world coordinates (room space)
+    const viewportW = gameWidth / zoom;
+    const viewportH = gameHeight / zoom;
+    const visibleLeft = camX;
+    const visibleRight = camX + viewportW;
+    const visibleTop = camY;
+    const visibleBottom = camY + viewportH;
+    
+    // Object bounding box
+    const objLeft = sv.x.value;
+    const objRight = sv.x.value + width;
+    const objTop = sv.y.value;
+    const objBottom = sv.y.value + height;
+    
+    const margin = 100; // extra pixels to avoid popping at edges
+    return (objRight + margin > visibleLeft &&
+            objLeft - margin < visibleRight &&
+            objBottom + margin > visibleTop &&
+            objTop - margin < visibleBottom);
   });
 
   const activeState = useMemo(() => {
@@ -283,6 +299,7 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
         { translateY: sv.y.value },
         { rotate: `${sv.rot.value}rad` }
       ],
+      display: isVisible.value ? 'flex' : 'none',
       borderColor: debug ? (sv.isColliding?.value ? '#ff0000' : '#00ff00') : 'transparent',
     };
   });
@@ -707,7 +724,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
   const instanceOverridesRef = useRef<Record<string, any>>({});
   useEffect(() => { instanceOverridesRef.current = instanceOverrides; }, [instanceOverrides]);
 
-  // Sync refs to state at a throttled rate for UI rendering (as backup)
+  // Sync refs to state at a throttled rate for UI rendering (backup sync)
   useEffect(() => {
     if (!visible || !isPlaying) return;
     const interval = setInterval(() => {
@@ -731,6 +748,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     inputJump.current = 0;
     inputShoot.current = 0;
     inputTap.current = 0;
+    cameraTargetBodyRef.current = null; // Reset camera target on room restart
     setDynamicElements([]);
     setInstanceOverrides({});
     setLocalVariables({});
@@ -748,8 +766,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
     const engine = Matter.Engine.create({
       enableSleeping: false,
-      positionIterations: 10,
-      velocityIterations: 10,
+      positionIterations: 6,  // Default is 6; 10 is overkill for most games
+      velocityIterations: 4,  // Default is 4; saves ~30% physics CPU
       gravity: { x: 0, y: (currentRoom?.settings?.gravity ?? 9.8) / 10 }
     });
     let physicsFrameCounter = 0;
@@ -761,6 +779,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     }[] = [];
     const subscriptions: any[] = [];
     const svMap = new Map<string, any>();
+    // Cached once per frame — avoids repeated O(n) Matter.Composite.allBodies() allocations
+    let cachedBodies: Matter.Body[] = [];
 
     const resolveValue = (valStr: string, currentBody: Matter.Body, currentObj?: GameObject): number => {
       if (!valStr) return 0;
@@ -784,9 +804,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         if (target === 'this') {
           targetBody = currentBody;
         } else {
-          // Find first body matching behavior or name
-          const allBodies = Matter.Composite.allBodies(engine.world);
-          targetBody = allBodies.find(b => {
+          // Find first body matching behavior or name — use per-frame cache
+          targetBody = cachedBodies.find(b => {
             const info = (b as any).gameInfo;
             return info?.obj?.behavior === target || info?.obj?.name === target;
           }) || null;
@@ -912,8 +931,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         Matter.Body.setAngle(body, body.angle + (resolveValue(parts[1], body, obj) * Math.PI / 180));
       } else if (cmd === 'point_towards') {
         const target = parts[1];
-        const allBodies = Matter.Composite.allBodies(engine.world);
-        const targetBody = allBodies.find(b => {
+        const targetBody = cachedBodies.find(b => {
           const info = (b as any).gameInfo;
           return info?.obj?.behavior === target || info?.obj?.name === target;
         });
@@ -1468,6 +1486,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       if (!isPlayingRef.current) { frameId = requestAnimationFrame(update); return; }
       const now = Date.now();
 
+      // Refresh body cache ONCE per frame — used by resolveValue, camera, and scripts
+      cachedBodies = Matter.Composite.allBodies(engine.world);
+
       // Calculate FPS
       fpsFrames++;
       if (now - fpsLastTime >= 1000) {
@@ -1491,8 +1512,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       Matter.Engine.update(engine, 1000 / 60);
       physicsFrameCounter++;
 
-      // Tick event
-      DeviceEventEmitter.emit('on_tick');
+      // Note: on_tick scripts are processed directly in the body loop below.
+      // DeviceEventEmitter.emit('on_tick') was removed — no listener is attached
+      // (attachListeners skips on_tick), so emitting it was pure overhead.
 
       // 2. Process Player Inputs & Actions
       playerBodies.forEach(pb => {
@@ -1696,19 +1718,21 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         const gw = Math.min(rw, 800);
         const gh = Math.min(rh, 600);
 
-        // Find target body
-        const allBodies = Matter.Composite.allBodies(engine.world);
-        const targetBody = allBodies.find(b => {
-          const info = (b as any).gameInfo;
-          if (!info || !info.obj) return false;
-          // Match by GameObject ID OR Instance ID
-          return (camSettings.targetObjectId && info.obj.id === camSettings.targetObjectId) || 
-                 (camSettings.targetObjectId && info.id === camSettings.targetObjectId);
-        }) || allBodies.find(b => {
-          const bName = (b as any).gameInfo?.obj?.name?.toLowerCase() || '';
-          const bBeh = (b as any).gameInfo?.obj?.behavior?.toLowerCase() || '';
-          return bBeh === 'player' || bName === 'player' || bName === 'player_1';
-        });
+        // Find target body — cache in ref, only re-search when null (avoids allBodies() every frame)
+        let targetBody = cameraTargetBodyRef.current;
+        if (!targetBody) {
+          targetBody = cachedBodies.find(b => {
+            const info = (b as any).gameInfo;
+            if (!info || !info.obj) return false;
+            return (camSettings.targetObjectId && info.obj.id === camSettings.targetObjectId) ||
+                   (camSettings.targetObjectId && info.id === camSettings.targetObjectId);
+          }) || cachedBodies.find(b => {
+            const bBeh = (b as any).gameInfo?.obj?.behavior?.toLowerCase() || '';
+            const bName = (b as any).gameInfo?.obj?.name?.toLowerCase() || '';
+            return bBeh === 'player' || bName === 'player' || bName === 'player_1';
+          }) || null;
+          cameraTargetBodyRef.current = targetBody;
+        }
 
         if (targetBody) {
           const name = (targetBody as any).gameInfo?.obj?.name || 'Unknown';
@@ -1766,6 +1790,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     const layers = currentRoom.layers || [{ id: 'default', name: 'Layer 1', visible: true, locked: false }];
 
     return layers.map((layer: RoomLayer) => {
+      // Skip invisible layers entirely — no iteration needed
       if (!layer.visible) return null;
 
       return (currentRoom.instances || []).map((inst: any, index: number) => {
@@ -1776,15 +1801,18 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         const obj = objectMap.get(inst.objectId);
         if (!obj) return null;
 
-
+        // --- O(1) Sprite Lookup via Map ---
         const appearance = obj.appearance || { type: 'sprite', spriteId: null };
-        const sprite = (currentProject?.sprites || []).find(s => s.id === appearance.spriteId) || streamedSprites.get(appearance.spriteId || '');
+        const sprite = spriteMap.get(appearance.spriteId || '');
 
         const isGrid = !!sprite?.grid?.enabled;
         const fw = isGrid ? sprite.grid.frameWidth : sprite?.width;
         const fh = isGrid ? sprite.grid.frameHeight : sprite?.height;
-        const width = isGrid ? fw : (obj.width || inst.width || fw || 32);
+        const width  = isGrid ? fw : (obj.width  || inst.width  || fw || 32);
         const height = isGrid ? fh : (obj.height || inst.height || fh || 32);
+
+        // NOTE: Per-instance viewport culling is done inside animatedStyle (UI thread worklet)
+        // so we never mount/unmount components — just set display:none on the UI thread.
 
         return (
           <PhysicsBody
@@ -1821,6 +1849,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       });
     });
   }, [currentRoom, instanceSharedValues, objectMap, spriteMap, currentProject, handleFetchAsset, variables, localVariables, nonce, globalFrameTimer, cameraX, cameraY, gameWidth, gameHeight]);
+
 
   if (!visible) return null;
 

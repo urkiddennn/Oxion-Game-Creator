@@ -20,6 +20,8 @@ import { useProjectStore, ObjectInstance } from '../../store/useProjectStore';
 import { PixelSprite } from '../../components/PixelSprite';
 import { Svg, Rect, Path } from 'react-native-svg';
 import { styles } from './RoomsScreen.styles';
+import { ColorPickerWrapper } from '../../components/ColorPicker';
+
 
 
 
@@ -228,6 +230,8 @@ export default function RoomsScreen() {
   const [activeTool, setActiveTool] = useState<'select' | 'move' | 'erase' | 'duplicate'>('select');
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [cameraTargetPickerVisible, setCameraTargetPickerVisible] = useState(false);
+  const [colorPickerVisible, setColorPickerVisible] = useState(false);
+
 
   useEffect(() => {
     if (!activeRoomId && currentProject?.rooms?.length) {
@@ -545,9 +549,11 @@ export default function RoomsScreen() {
               }} />
 
 
-              {/* Infinite Grid Layer */}
+
+
+              {/* Infinite Grid Layer - Always on Top */}
               {showGrid && (
-                <View style={{ position: 'absolute', pointerEvents: 'none', zIndex: -2 }}>
+                <View style={{ position: 'absolute', pointerEvents: 'none', zIndex: 10000 }}>
                   {Array.from({ length: 120 }).map((_, i) => (
                     <View key={`h-${i}`} pointerEvents="none" style={[styles.gridLineH, {
                       top: (i - 60) * GRID_SIZE,
@@ -846,32 +852,34 @@ export default function RoomsScreen() {
                     settings: { ...(currentRoom.settings || {}), gravity: v }
                   })}
                 />
-                
+
                 <View style={{ marginTop: 12 }}>
                   <Text style={[styles.settingLabel, { marginBottom: 8 }]}>Background Color</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-                    {['#000000', '#2E333D', '#1a1c2c', '#5d275d', '#b13e53', '#ef7d57', '#ffcd75', '#a7f070', '#38b764', '#257179', '#29366f', '#3b5dc9', '#41a6f6', '#73eff7', '#f4f4f4', '#94b0c2'].map(c => (
-                      <TouchableOpacity
-                        key={c}
-                        style={[
-                          { width: 22, height: 22, borderRadius: 4, backgroundColor: c, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-                          currentRoom?.settings?.backgroundColor === c && { borderColor: theme.colors.primary, borderWidth: 2 }
-                        ]}
-                        onPress={() => currentRoom && updateRoom(currentRoom.id, {
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <TouchableOpacity
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 8,
+                        backgroundColor: currentRoom?.settings?.backgroundColor || '#2E333D',
+                        borderWidth: 2,
+                        borderColor: 'rgba(255,255,255,0.1)'
+                      }}
+                      onPress={() => setColorPickerVisible(true)}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <TextInput
+                        style={[styles.settingInput, { textAlign: 'left', width: '100%', paddingVertical: 8 }]}
+                        value={currentRoom?.settings?.backgroundColor?.toUpperCase() || '#2E333D'}
+                        onChangeText={(c) => currentRoom && updateRoom(currentRoom.id, {
                           settings: { ...(currentRoom.settings || {}), backgroundColor: c }
                         })}
+                        placeholder="#HEX"
+                        placeholderTextColor={theme.colors.textMuted}
+                        maxLength={7}
                       />
-                    ))}
+                    </View>
                   </View>
-                  <TextInput
-                    style={[styles.settingInput, { textAlign: 'left', width: '100%', paddingVertical: 6 }]}
-                    value={currentRoom?.settings?.backgroundColor || '#000000'}
-                    onChangeText={(c) => currentRoom && updateRoom(currentRoom.id, {
-                      settings: { ...(currentRoom.settings || {}), backgroundColor: c }
-                    })}
-                    placeholder="#HEX"
-                    placeholderTextColor={theme.colors.textMuted}
-                  />
                 </View>
               </View>
 
@@ -978,6 +986,14 @@ export default function RoomsScreen() {
         currentRoom={currentRoom}
         updateRoom={updateRoom}
       />
+      <ColorPickerModal
+        visible={colorPickerVisible}
+        onClose={() => setColorPickerVisible(false)}
+        color={currentRoom?.settings?.backgroundColor || '#2E333D'}
+        onColorChange={(c) => currentRoom && updateRoom(currentRoom.id, {
+          settings: { ...(currentRoom.settings || {}), backgroundColor: c }
+        })}
+      />
     </View>
   );
 }
@@ -1055,6 +1071,82 @@ const CameraTargetPicker = ({ visible, onClose, currentProject, currentRoom, upd
               );
             })}
           </ScrollView>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+};
+
+const ColorPickerModal = ({ visible, onClose, color, onColorChange }: any) => {
+  if (!visible) return null;
+
+  return (
+    <Modal
+      transparent
+      visible={visible}
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <TouchableOpacity
+        style={styles.pickerOverlay}
+        activeOpacity={1}
+        onPress={onClose}
+      >
+        <View style={[styles.pickerContent, { width: 420, padding: 24, alignItems: 'center' }]}>
+          <View style={[styles.pickerHeader, { width: '100%', marginBottom: 20, borderBottomWidth: 0 }]}>
+            <Text style={styles.pickerTitle}>Background Color</Text>
+            <TouchableOpacity onPress={onClose}>
+              <X color={theme.colors.textMuted} size={20} />
+            </TouchableOpacity>
+          </View>
+
+          <ColorPickerWrapper
+            color={color}
+            onColorChange={onColorChange}
+          />
+
+          <View style={{
+            marginTop: 20,
+            width: '100%',
+            height: 44,
+            backgroundColor: color,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.1)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            flexDirection: 'row',
+            gap: 12
+          }}>
+            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#fff', opacity: 0.8 }} />
+            <Text style={{
+              color: '#fff',
+              fontFamily: 'Pixel',
+              fontSize: 14,
+              letterSpacing: 1
+            }}>
+              {color.toUpperCase()}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={{
+              marginTop: 20,
+              backgroundColor: theme.colors.primary,
+              paddingVertical: 14,
+              borderRadius: 8,
+              width: '100%',
+              alignItems: 'center',
+              shadowColor: theme.colors.primary,
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 8,
+              elevation: 4
+            }}
+            onPress={onClose}
+          >
+            <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Apply Selection</Text>
+          </TouchableOpacity>
         </View>
       </TouchableOpacity>
     </Modal>
