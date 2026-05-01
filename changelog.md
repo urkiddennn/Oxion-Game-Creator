@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.1.1] - 2026-05-01 - Debug Sidebar Refinements
+### Added
+- **Sidebar Close Button**: Added a dedicated close button to the debug sidebar for better UX.
+- **Integrated Debug Info**: Relocated Camera, Viewport, and Tracking info into the debug sidebar, keeping the main game view clean.
+
+## [1.1.0] - 2026-05-01 - Debug System Enhancements
+### Added
+- **Engine Debug Sidebar**: Added a toggleable sidebar (Database icon) in debug mode to inspect real-time engine state.
+  - Inspect Global Variables.
+  - Inspect Local Variables for all active instances.
+  - View Room metadata and live instance counts.
+- **Conditional Debug Overlay**: The camera and room debug information (CAM, Room, View, etc.) is now hidden during normal gameplay and only visible when "Play Debug" is active.
+
+### Changed
+- **UI/UX**: Compacted the top control bar in GamePlayer to include the new debug toggle.
+
 ## [2026-05-01] - Camera Follow & Coordinate Fixes
 ### Fixed
 - **Camera Tracking Failure**: Fixed the issue where the camera viewport wouldn't follow the player by aligning world-to-screen coordinate mapping (incorporating screen scale).

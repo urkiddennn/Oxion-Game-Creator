@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, DeviceEventEmitter, TextInput, Image, Pressable, Modal, Dimensions } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Text, DeviceEventEmitter, TextInput, Image, Pressable, Modal, Dimensions, ScrollView } from 'react-native';
 import { styles } from './GamePlayer.styles';
 import Matter from 'matter-js';
-import { X, RotateCcw, Play as PlayIcon, Pause, ArrowLeft, ArrowRight, ChevronUp, Bolt } from 'lucide-react-native';
+import { X, RotateCcw, Play as PlayIcon, Pause, ArrowLeft, ArrowRight, ChevronUp, Bolt, Database } from 'lucide-react-native';
 import { theme } from '../../../theme';
 import { useProjectStore, GameObject, RoomLayer } from '../../../store/useProjectStore';
 import Animated, {
@@ -445,7 +445,18 @@ const FPSCounter = React.memo(({ fps }: { fps: SharedValue<number> }) => {
   );
 });
 
-const ZoomIndicator = React.memo(({ zoom, camX, camY, enabled, roomW, roomH, gameW, gameH, targetName }: { zoom: SharedValue<number>, camX: SharedValue<number>, camY: SharedValue<number>, enabled: boolean, roomW: number, roomH: number, gameW: number, gameH: number, targetName: string }) => {
+const ZoomIndicator = React.memo(({ zoom, camX, camY, enabled, roomW, roomH, gameW, gameH, targetName, inSidebar }: { 
+  zoom: SharedValue<number>, 
+  camX: SharedValue<number>, 
+  camY: SharedValue<number>, 
+  enabled: boolean, 
+  roomW: number, 
+  roomH: number, 
+  gameW: number, 
+  gameH: number, 
+  targetName: string,
+  inSidebar?: boolean
+}) => {
   const [displayZoom, setDisplayZoom] = useState(1);
   const [displayX, setDisplayX] = useState(0);
   const [displayY, setDisplayY] = useState(0);
@@ -453,6 +464,31 @@ const ZoomIndicator = React.memo(({ zoom, camX, camY, enabled, roomW, roomH, gam
   useAnimatedReaction(() => zoom.value, (val) => runOnJS(setDisplayZoom)(val));
   useAnimatedReaction(() => camX.value, (val) => runOnJS(setDisplayX)(val));
   useAnimatedReaction(() => camY.value, (val) => runOnJS(setDisplayY)(val));
+
+  if (inSidebar) {
+    return (
+      <View style={{ gap: 4 }}>
+        <View style={styles.debugVarRow}>
+          <Text style={styles.debugLabel}>CAMERA</Text>
+          <Text style={styles.debugVarVal}>{enabled ? `${displayZoom.toFixed(1)}x` : 'OFF'}</Text>
+        </View>
+        <View style={styles.debugVarRow}>
+          <Text style={styles.debugLabel}>POSITION</Text>
+          <Text style={styles.debugVarVal}>{Math.round(displayX)}, {Math.round(displayY)}</Text>
+        </View>
+        <View style={styles.debugVarRow}>
+          <Text style={styles.debugLabel}>VIEWPORT</Text>
+          <Text style={styles.debugVarVal}>{gameW}x{gameH}</Text>
+        </View>
+        {enabled && (
+          <View style={styles.debugVarRow}>
+            <Text style={styles.debugLabel}>FOLLOWING</Text>
+            <Text style={styles.debugVarVal}>{targetName || '???'}</Text>
+          </View>
+        )}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.fpsOverlay}>
@@ -497,6 +533,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
   const [restartKey, setRestartKey] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
+  const [showDebugSidebar, setShowDebugSidebar] = useState(false);
   const [nonce, setNonce] = useState(0);
   const varCooldowns = useRef<Record<string, number>>({});
   const lastRestartRef = useRef(0);
@@ -1862,19 +1899,29 @@ statusBarTranslucent={true}
           <View style={styles.topOverlay}>
             <TouchableOpacity onPress={onClose} style={styles.miniBtn}><X color="#fff" size={18} /></TouchableOpacity>
             <View style={styles.topRight}>
-              <ZoomIndicator
-                zoom={cameraZoom}
-                camX={cameraX}
-                camY={cameraY}
-                enabled={camEnabled}
-                roomW={roomWidth}
-                roomH={roomHeight}
-                gameW={gameWidth}
-                gameH={gameHeight}
-                targetName={targetName}
-              />
+              {debug && !showDebugSidebar && (
+                <ZoomIndicator
+                  zoom={cameraZoom}
+                  camX={cameraX}
+                  camY={cameraY}
+                  enabled={camEnabled}
+                  roomW={roomWidth}
+                  roomH={roomHeight}
+                  gameW={gameWidth}
+                  gameH={gameHeight}
+                  targetName={targetName}
+                />
+              )}
               {debug && <FPSCounter fps={fpsShared} />}
               <TouchableOpacity onPress={() => setIsPlaying(!isPlaying)} style={styles.miniBtn}>{isPlaying ? <Pause color="#fff" size={14} /> : <PlayIcon color="#fff" size={14} />}</TouchableOpacity>
+              {debug && (
+                <TouchableOpacity 
+                  onPress={() => setShowDebugSidebar(!showDebugSidebar)} 
+                  style={[styles.miniBtn, showDebugSidebar && { backgroundColor: '#4facfe' }]}
+                >
+                  <Database color="#fff" size={14} />
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={styles.miniBtn}
                 onPress={() => {
@@ -1931,6 +1978,68 @@ statusBarTranslucent={true}
             </View>
           </View>
         </View>
+
+        {debug && showDebugSidebar && (
+          <View style={styles.debugSidebar}>
+            <View style={styles.debugSidebarHeader}>
+              <Text style={styles.debugTitle}>ENGINE DEBUG</Text>
+              <TouchableOpacity onPress={() => setShowDebugSidebar(false)} style={styles.debugCloseBtn}>
+                <X color="#fff" size={14} />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.debugScroll} showsVerticalScrollIndicator={false}>
+              <Text style={styles.debugLabel}>CAMERA & VIEWPORT</Text>
+              <ZoomIndicator
+                zoom={cameraZoom}
+                camX={cameraX}
+                camY={cameraY}
+                enabled={camEnabled}
+                roomW={roomWidth}
+                roomH={roomHeight}
+                gameW={gameWidth}
+                gameH={gameHeight}
+                targetName={targetName}
+                inSidebar
+              />
+
+              <Text style={[styles.debugLabel, { marginTop: 15 }]}>ROOM INFO</Text>
+              <Text style={styles.debugValue}>{currentRoom?.name || 'Untitled'}</Text>
+              <Text style={styles.debugValue}>{roomWidth}x{roomHeight} px</Text>
+              
+              <Text style={styles.debugLabel}>INSTANCES</Text>
+              <Text style={styles.debugValue}>Static: {(currentRoom?.instances || []).length}</Text>
+              <Text style={styles.debugValue}>Dynamic: {dynamicElements.length}</Text>
+              
+              <Text style={[styles.debugLabel, { marginTop: 20 }]}>GLOBAL VARIABLES</Text>
+              {Object.entries(variables).map(([key, val]) => (
+                <View key={key} style={styles.debugVarRow}>
+                  <Text style={styles.debugVarName}>{key}</Text>
+                  <Text style={styles.debugVarVal}>{val}</Text>
+                </View>
+              ))}
+              {Object.keys(variables).length === 0 && <Text style={[styles.debugValue, { opacity: 0.5 }]}>None</Text>}
+
+              <Text style={[styles.debugLabel, { marginTop: 20 }]}>LOCAL VARIABLES</Text>
+              {Object.entries(localVariables).map(([instId, vars]) => {
+                const inst = currentRoom?.instances?.find(i => i.id === instId);
+                const obj = objectMap.get(inst?.objectId || '');
+                return (
+                  <View key={instId} style={{ marginBottom: 10 }}>
+                    <Text style={[styles.debugVarName, { color: '#aaa' }]}>{obj?.name || 'Unknown'} ({instId.slice(0, 4)})</Text>
+                    {Object.entries(vars).map(([vk, vv]) => (
+                      <View key={vk} style={styles.debugVarRow}>
+                        <Text style={[styles.debugVarName, { fontSize: 9, paddingLeft: 10 }]}>{vk}</Text>
+                        <Text style={[styles.debugVarVal, { fontSize: 9 }]}>{vv}</Text>
+                      </View>
+                    ))}
+                  </View>
+                );
+              })}
+              {Object.keys(localVariables).length === 0 && <Text style={[styles.debugValue, { opacity: 0.5 }]}>None active</Text>}
+            </ScrollView>
+          </View>
+        )}
       </View>
     </Modal>
   );
