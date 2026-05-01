@@ -356,7 +356,8 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
       transform: [
         { translateX: sv.x.value },
         { translateY: sv.y.value },
-        { rotate: `${sv.rot.value}rad` }
+        { rotate: `${sv.rot.value}rad` },
+        { scaleX: sv.flipX ? sv.flipX.value : 1 }
       ],
       display: isVisible.value ? 'flex' : 'none',
       borderColor: debug ? (sv.isColliding?.value ? '#ff0000' : '#00ff00') : 'transparent',
@@ -706,6 +707,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       x: makeMutable(0), y: makeMutable(0), rot: makeMutable(0),
       isColliding: makeMutable(0),
       animState: makeMutable(0), // 0: idle, 1: move, 2: jump, 3: hit, 4: dead
+      flipX: makeMutable(1),
     }));
   }, [currentRoom?.id, (currentRoom?.instances || []).length, restartKey]);
 
@@ -977,7 +979,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       }
 
       if (cmd === 'jump') {
-        Matter.Body.setVelocity(body, { x: body.velocity.x, y: -Math.max(obj?.physics?.jumpStrength || 10, 13) });
+        const jmp = obj?.physics?.jumpStrength !== undefined ? obj.physics.jumpStrength : 10;
+        Matter.Body.setVelocity(body, { x: body.velocity.x, y: -jmp });
       } else if (cmd === 'move_left') {
         Matter.Body.setVelocity(body, { x: -(obj?.physics?.moveSpeed || 5) * 0.8, y: body.velocity.y });
       } else if (cmd === 'move_right') {
@@ -1282,7 +1285,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         y: makeMutable(y - height / 2),
         rot: makeMutable(0),
         isColliding: makeMutable(0),
-        animState: makeMutable(0)
+        animState: makeMutable(0),
+        flipX: makeMutable(1)
       };
       svMap.set(body.label, sv);
 
@@ -1415,6 +1419,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         sv.y.value = inst.y;
         sv.rot.value = (inst.angle || 0) * Math.PI / 180;
         sv.isColliding.value = 0;
+        if (sv.flipX) sv.flipX.value = 1;
         svMap.set(inst.id, sv);
       }
 
@@ -1626,8 +1631,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           if (!pb.jumpedThisPress && canJump) {
             // "Hard Jump": Physically lift the body 2 pixels to clear any floor friction/stuck state
             Matter.Body.setPosition(b, { x: b.position.x, y: b.position.y - 2 });
-            // Set a powerful upward velocity
-            nVy = -Math.max(c.jumpStrength || 12, 18);
+            // Set the exact jump velocity requested by the object properties
+            const jmp = c.jumpStrength !== undefined ? c.jumpStrength : 12;
+            nVy = -jmp;
             didJump = true;
             pb.jumpedThisPress = true;
           }
@@ -1638,8 +1644,10 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         // Horizontal Movement
         if (inputLeft.current === 1) {
           nVx = -(c.moveSpeed || 5) * 0.8;
+          if (pb.sv && pb.sv.flipX) pb.sv.flipX.value = -1;
         } else if (inputRight.current === 1) {
           nVx = (c.moveSpeed || 5) * 0.8;
+          if (pb.sv && pb.sv.flipX) pb.sv.flipX.value = 1;
         } else {
           nVx *= 0.85;
         }
