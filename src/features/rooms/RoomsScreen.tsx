@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Image, DeviceEventEmitter, Alert, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Image, DeviceEventEmitter, Alert, useWindowDimensions, Switch, Modal } from 'react-native';
 import { theme } from '../../theme';
 import {
   Grid3X3, ChevronLeft, ChevronRight, Box, Settings,
@@ -227,6 +227,7 @@ export default function RoomsScreen() {
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<'select' | 'move' | 'erase' | 'duplicate'>('select');
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const [cameraTargetPickerVisible, setCameraTargetPickerVisible] = useState(false);
 
   useEffect(() => {
     if (!activeRoomId && currentProject?.rooms?.length) {
@@ -848,6 +849,69 @@ export default function RoomsScreen() {
               </View>
 
               <View style={{ marginTop: 24 }}>
+                <View style={[styles.sectionHeader, { marginBottom: 12 }]}>
+                  <View style={{ width: 16, height: 16, backgroundColor: theme.colors.primary, borderRadius: 4, marginRight: 8 }} />
+                  <Text style={styles.sectionTitle}>Camera</Text>
+                  <Switch
+                    value={currentRoom?.settings?.camera?.enabled ?? false}
+                    onValueChange={(enabled) => {
+                      if (!currentRoom) return;
+                      const cam = currentRoom.settings?.camera || { targetObjectId: null, smoothing: 0.1, zoom: 1, enabled: false };
+                      updateRoom(currentRoom.id, {
+                        settings: { ...currentRoom.settings, camera: { ...cam, enabled } }
+                      });
+                    }}
+                    trackColor={{ false: '#333', true: theme.colors.primary + '80' }}
+                    thumbColor={(currentRoom?.settings?.camera?.enabled) ? theme.colors.primary : '#666'}
+                  />
+                </View>
+
+                {currentRoom?.settings?.camera?.enabled && (
+                  <View style={styles.settingsList}>
+                    <View style={styles.settingItem}>
+                      <Text style={styles.settingLabel}>Follow</Text>
+                      <TouchableOpacity
+                        style={styles.dropdownButton}
+                        onPress={() => setCameraTargetPickerVisible(true)}
+                      >
+                        <Text style={styles.dropdownText} numberOfLines={1}>
+                          {currentRoom?.settings?.camera?.targetObjectId
+                            ? (currentProject?.objects || []).find(o => o.id === currentRoom.settings?.camera?.targetObjectId)?.name || 'None'
+                            : 'None'
+                          }
+                        </Text>
+                        <ChevronDown color={theme.colors.textMuted} size={14} />
+                      </TouchableOpacity>
+                    </View>
+
+                    <RoomSettingInput
+                      label="Smoothing (0-1)"
+                      value={currentRoom?.settings?.camera?.smoothing ?? 0.1}
+                      onChange={(v) => {
+                        if (!currentRoom) return;
+                        const cam = currentRoom.settings?.camera || { targetObjectId: null, smoothing: 0.1, zoom: 1, enabled: true };
+                        updateRoom(currentRoom.id, {
+                          settings: { ...currentRoom.settings, camera: { ...cam, smoothing: Math.max(0, Math.min(1, v)) } }
+                        });
+                      }}
+                    />
+
+                    <RoomSettingInput
+                      label="Zoom"
+                      value={currentRoom?.settings?.camera?.zoom ?? 1}
+                      onChange={(v) => {
+                        if (!currentRoom) return;
+                        const cam = currentRoom.settings?.camera || { targetObjectId: null, smoothing: 0.1, zoom: 1, enabled: true };
+                        updateRoom(currentRoom.id, {
+                          settings: { ...currentRoom.settings, camera: { ...cam, zoom: Math.max(0.1, v) } }
+                        });
+                      }}
+                    />
+                  </View>
+                )}
+              </View>
+
+              <View style={{ marginTop: 24 }}>
                 <Text style={[styles.sectionTitle, { fontSize: 10, marginBottom: 12 }]}>Built-in Controls</Text>
                 <View style={{ gap: 8 }}>
                   {['left', 'right', 'jump', 'shoot'].map((btn) => {
@@ -880,7 +944,93 @@ export default function RoomsScreen() {
           </ScrollView>
         </View>
       )}
+      <CameraTargetPicker
+        visible={cameraTargetPickerVisible}
+        onClose={() => setCameraTargetPickerVisible(false)}
+        currentProject={currentProject}
+        currentRoom={currentRoom}
+        updateRoom={updateRoom}
+      />
     </View>
   );
 }
+
+const CameraTargetPicker = ({ visible, onClose, currentProject, currentRoom, updateRoom }: any) => {
+  if (!visible) return null;
+
+  return (
+    <Modal
+      transparent
+      visible={visible}
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <TouchableOpacity
+        style={styles.pickerOverlay}
+        activeOpacity={1}
+        onPress={onClose}
+      >
+        <View style={[styles.pickerContent, { maxHeight: '100%', width: '100%' }]}>
+          <View style={styles.pickerHeader}>
+            <Text style={styles.pickerTitle}>Select Follow Target</Text>
+            <TouchableOpacity onPress={onClose}>
+              <X color={theme.colors.textMuted} size={18} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.pickerGrid}>
+            <TouchableOpacity
+              style={[
+                styles.pickerGridItem,
+                !currentRoom?.settings?.camera?.targetObjectId && styles.pickerGridItemActive
+              ]}
+              onPress={() => {
+                const cam = currentRoom.settings?.camera || { targetObjectId: null, smoothing: 0.1, zoom: 1, enabled: true };
+                updateRoom(currentRoom.id, {
+                  settings: { ...currentRoom.settings, camera: { ...cam, targetObjectId: null } }
+                });
+                onClose();
+              }}
+            >
+              <View style={styles.pickerPreviewBox}>
+                <X color={theme.colors.textMuted} size={24} />
+              </View>
+              <Text style={[styles.pickerGridLabel, !currentRoom?.settings?.camera?.targetObjectId && styles.pickerGridLabelActive]} numberOfLines={1}>None</Text>
+            </TouchableOpacity>
+
+            {(currentProject?.objects || []).map((obj: any) => {
+              const sprite = currentProject?.sprites.find((s: any) => s.id === obj.appearance?.spriteId);
+              return (
+                <TouchableOpacity
+                  key={obj.id}
+                  style={[
+                    styles.pickerGridItem,
+                    currentRoom?.settings?.camera?.targetObjectId === obj.id && styles.pickerGridItemActive
+                  ]}
+                  onPress={() => {
+                    const cam = currentRoom.settings?.camera || { targetObjectId: null, smoothing: 0.1, zoom: 1, enabled: true };
+                    updateRoom(currentRoom.id, {
+                      settings: { ...currentRoom.settings, camera: { ...cam, targetObjectId: obj.id } }
+                    });
+                    onClose();
+                  }}
+                >
+                  <View style={styles.pickerPreviewBox}>
+                    <PixelSprite
+                      sprite={sprite}
+                      size={40}
+                      animationState={obj.appearance?.animationState}
+                    />
+                  </View>
+                  <Text style={[styles.pickerGridLabel, currentRoom?.settings?.camera?.targetObjectId === obj.id && styles.pickerGridLabelActive]} numberOfLines={1}>
+                    {obj.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+};
 

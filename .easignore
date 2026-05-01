@@ -1,0 +1,34 @@
+# Ignore dependencies and artifacts
+node_modules/
+.expo/
+dist/
+web-build/
+android/
+ios/
+
+# Ignore local keys and credentials
+*.jks
+*.p12
+*.p8
+*.mobileprovision
+*.key
+credentials.json
+
+
+# Include a file not in source control
+!temp_file.json
+
+# Ignore temporary and log files
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.DS_Store
+*.pem
+.env*.local
+*.tsbuildinfo
+
+# Ignore design assets not needed for the build
+assets/original-designs/
+Oxion_Documentation.html
+README.md
+docs/

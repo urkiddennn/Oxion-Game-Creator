@@ -12,7 +12,8 @@ import Animated, {
   useAnimatedProps,
   SharedValue,
   useAnimatedReaction,
-  runOnJS
+  runOnJS,
+  useDerivedValue
 } from 'react-native-reanimated';
 import { useWindowDimensions } from 'react-native';
 
@@ -94,7 +95,7 @@ const pixelsToBmp = (pixels: string[][], spriteId: string) => {
   return base64;
 };
 
-const PhysicsBody = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteId, isRemote, onFetch, variables, nonce, localVariables, obj, debug, animations, sprites, override }: {
+const PhysicsBody = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteId, isRemote, onFetch, variables, nonce, localVariables, obj, debug, animations, sprites, override, globalFrameTimer }: {
   sprite: any,
   sv: any,
   width?: number,
@@ -111,14 +112,15 @@ const PhysicsBody = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteI
   debug?: boolean,
   animations?: any[],
   sprites?: any[],
-  override?: { spriteId?: string, animName?: string }
+  override?: { spriteId?: string, animName?: string },
+  globalFrameTimer: SharedValue<number>
 }) => {
-  const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [imgDimensions, setImgDimensions] = useState({ w: 0, h: 0 });
   const [currentDimId, setCurrentDimId] = useState<string | null>(null);
   const [localAnimState, setLocalAnimState] = useState(sv?.animState?.value ?? 0);
 
-  // Sync shared animation state back to React state to trigger re-renders
+  // Sync high-level animation state (idle, move, etc.) to trigger re-render
+  // This is much less frequent than frame changes (60fps vs ~2-5 changes per second)
   useAnimatedReaction(
     () => sv?.animState?.value ?? 0,
     (val) => {
@@ -129,16 +131,26 @@ const PhysicsBody = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteI
     [localAnimState]
   );
 
+  // Animation frame calculation moved to worklet
+  const frameIndex = useDerivedValue(() => {
+    if (!activeState || !activeState.anim || activeState.anim.frameCount <= 1) return 0;
+    const fps = activeState.anim.fps || 10;
+    const interval = 1000 / fps;
+    const elapsed = globalFrameTimer.value % (activeState.anim.frameCount * interval);
+    const frame = Math.floor(elapsed / interval);
+    return activeState.anim.loop ? frame : Math.min(frame, activeState.anim.frameCount - 1);
+  });
+
   const activeState = useMemo(() => {
     const stateNames = ['idle', 'move', 'jump', 'hit', 'dead'];
-    
+
     // Priority:
     // 1. Manual override (from script action)
     // 2. Physics-driven state (from velocity, if not idle)
     // 3. Object-level default state (from Appearance settings)
     // 4. Fallback to "idle"
     let currentStateName: string = override?.animName || '';
-    
+
     if (!currentStateName) {
       const physicsState = stateNames[localAnimState];
       if (physicsState && physicsState !== 'idle') {
@@ -191,23 +203,7 @@ const PhysicsBody = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteI
     }
   }, [currentSprite?.uri, currentSprite?.id]);
 
-  useEffect(() => {
-    setCurrentFrameIndex(0); // Reset index whenever animation/sprite sheet changes
-    if (activeState && activeState.anim.frameCount > 1) {
-      const interval = 1000 / (activeState.anim.fps || 10);
-      const timer = setInterval(() => {
-        setCurrentFrameIndex(prev => {
-          if (prev >= activeState.anim.frameCount - 1) {
-            return activeState.anim.loop ? 0 : prev;
-          }
-          return prev + 1;
-        });
-      }, interval);
-      return () => clearInterval(timer);
-    } else {
-      setCurrentFrameIndex(0);
-    }
-  }, [activeState]);
+  // Per-instance interval removed in favor of global worklet timer
 
   useEffect(() => {
     if (!sprite && isRemote && spriteId && onFetch) {
@@ -215,20 +211,51 @@ const PhysicsBody = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteI
     }
   }, [sprite, spriteId, isRemote]);
 
+  const lastResolvedText = useRef<{ content: string, vars: string, result: string }>({ content: '', vars: '', result: '' });
+
   const resolveText = (content: string) => {
     if (!content) return '';
-    return content.replace(/\{([\w\s]+)\}/g, (match, varName) => {
+
+    const contentTrimmed = content.trim().toLowerCase();
+    
+    // 1. Direct variable match fallback (if user just typed "var_0" without {})
+    const localDirectKey = localVariables ? Object.keys(localVariables).find(k => k.toLowerCase() === contentTrimmed) : null;
+    const globalDirectKey = Object.keys(variables).find(k => k.toLowerCase() === contentTrimmed);
+    if (localDirectKey || globalDirectKey) {
+      return String(localDirectKey ? localVariables![localDirectKey] : variables[globalDirectKey!]);
+    }
+
+    // 2. Template match
+    // Using a quick stringify of relevant variables for cache key
+    const relevantVars = content.match(/\{([\w\s]+)\}/g) || [];
+    const varValues = relevantVars.map(v => {
+      const name = v.slice(1, -1).trim().toLowerCase();
+      const localKey = localVariables ? Object.keys(localVariables).find(k => k.toLowerCase() === name) : null;
+      const globalKey = Object.keys(variables).find(k => k.toLowerCase() === name);
+      
+      const val = localKey ? localVariables![localKey] : (globalKey ? variables[globalKey] : '0');
+      return `${name}:${val}`;
+    }).join('|');
+
+    if (lastResolvedText.current.content === content && lastResolvedText.current.vars === varValues) {
+      return lastResolvedText.current.result;
+    }
+
+    const result = content.replace(/\{([\w\s]+)\}/g, (match, varName) => {
       const trimmedName = varName.trim();
-      // Check local variables (case-insensitive)
       if (localVariables) {
         const found = Object.keys(localVariables).find(k => k.toLowerCase() === trimmedName.toLowerCase());
         if (found) return localVariables[found].toString();
       }
       const foundGlobal = Object.keys(variables).find(k => k.toLowerCase() === trimmedName.toLowerCase());
       if (foundGlobal !== undefined) return variables[foundGlobal].toString();
-
-      return match;
+      
+      // Default to 0 if the variable hasn't been initialized yet
+      return '0';
     });
+
+    lastResolvedText.current = { content, vars: varValues, result };
+    return result;
   };
 
   const animatedStyle = useAnimatedStyle(() => {
@@ -240,6 +267,19 @@ const PhysicsBody = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteI
         { rotate: `${sv.rot.value}rad` }
       ],
       borderColor: debug ? (sv.isColliding?.value ? '#ff0000' : '#00ff00') : 'transparent',
+    };
+  });
+
+  const imageAnimatedStyle = useAnimatedStyle(() => {
+    if (!activeState || !activeState.anim || !currentSprite?.grid?.enabled) return {};
+    const frameWidth = currentSprite.grid.frameWidth;
+    const frameHeight = currentSprite.grid.frameHeight;
+    const scaleW = width / frameWidth;
+    const scaleH = height / frameHeight;
+
+    return {
+      left: -frameIndex.value * frameWidth * scaleW,
+      top: -(activeState.anim.row || 0) * frameHeight * scaleH,
     };
   });
 
@@ -261,19 +301,20 @@ const PhysicsBody = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteI
   const content = bmpUri && !obj?.text ? (
     (currentSprite?.grid?.enabled) ? (
       (currentDimId !== currentSprite.id) ? null : (
-      <View style={{ width, height, overflow: 'hidden' }}>
-        <Image
-          source={{ uri: bmpUri }}
-          style={{
-            width: (imgDimensions.w || currentSprite.width || (currentSprite.grid.frameWidth * (activeState?.anim?.frameCount || 1))) * (width / currentSprite.grid.frameWidth),
-            height: (imgDimensions.h || currentSprite.height || (currentSprite.grid.frameHeight * 1)) * (height / currentSprite.grid.frameHeight),
-            position: 'absolute',
-            left: -currentFrameIndex * currentSprite.grid.frameWidth * (width / currentSprite.grid.frameWidth),
-            top: -(activeState?.anim?.row || 0) * currentSprite.grid.frameHeight * (height / currentSprite.grid.frameHeight),
-          }}
-          resizeMode="stretch"
-        />
-      </View>
+        <View style={{ width, height, overflow: 'hidden' }}>
+          <Animated.Image
+            source={{ uri: bmpUri }}
+            style={[
+              {
+                width: (imgDimensions.w || currentSprite.width || (currentSprite.grid.frameWidth * (activeState?.anim?.frameCount || 1))) * (width / currentSprite.grid.frameWidth),
+                height: (imgDimensions.h || currentSprite.height || (currentSprite.grid.frameHeight * 1)) * (height / currentSprite.grid.frameHeight),
+                position: 'absolute',
+              },
+              imageAnimatedStyle
+            ]}
+            resizeMode="stretch"
+          />
+        </View>
       )
     ) : sprite?.crop ? (
       <View style={{ width, height, overflow: 'hidden' }}>
@@ -457,6 +498,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
   const inputShoot = useRef(0);
   const inputTap = useRef(0);
   const fpsShared = useSharedValue(60);
+  const globalFrameTimer = useSharedValue(0);
 
   const allSprites = useMemo(() => [...(currentProject?.sprites || []), ...Array.from(streamedSprites.values())], [currentProject?.sprites, streamedSprites.size]);
   const allAnimations = useMemo(() => [...(currentProject?.animations || []), ...Array.from(streamedAnimations.values())], [currentProject?.animations, streamedAnimations.size]);
@@ -471,37 +513,41 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
 
-  const updateGlobalVar = useCallback((name: string, amount: number, isSet: boolean = false) => {
+  const updateGlobalVar = useCallback((name: string, amount: number | string, isSet: boolean = false) => {
     const now = Date.now();
     const cooldownKey = `global_${name}`;
     if (!isSet && varCooldowns.current[cooldownKey] && now - varCooldowns.current[cooldownKey] < 50) return;
     varCooldowns.current[cooldownKey] = now;
 
-    const currentVal = variablesRef.current[name] || 0;
-    const newVal = isSet ? amount : currentVal + amount;
+    const currentVal = Number(variablesRef.current[name]) || 0;
+    const numAmount = Number(amount) || 0;
+    const newVal = isSet ? numAmount : currentVal + numAmount;
     const next = { ...variablesRef.current, [name]: newVal };
     variablesRef.current = next;
 
-    // Immediate throttled update for UI
+    // Restore immediate update for reactivity
     setVariables({ ...next });
     setNonce(n => n + 1);
   }, []);
 
-  const updateLocalVar = useCallback((bodyId: string, name: string, amount: number, defaultVars: any, isSet: boolean = false) => {
+  const updateLocalVar = useCallback((bodyId: string, name: string, amount: number | string, defaultVars: any, isSet: boolean = false) => {
     const now = Date.now();
     const cooldownKey = `local_${bodyId}_${name}`;
     if (!isSet && varCooldowns.current[cooldownKey] && now - varCooldowns.current[cooldownKey] < 50) return;
     varCooldowns.current[cooldownKey] = now;
 
     const current = localVariablesRef.current[bodyId] || { ...defaultVars };
-    const currentVal = current[name] || 0;
-    const newVal = isSet ? amount : currentVal + amount;
+    const currentVal = Number(current[name]) || 0;
+    const numAmount = Number(amount) || 0;
+    const newVal = isSet ? numAmount : currentVal + numAmount;
     const next = {
       ...localVariablesRef.current,
       [bodyId]: { ...current, [name]: newVal }
     };
     localVariablesRef.current = next;
 
+    // Restore immediate update and nonce for reactivity
+    setLocalVariables({ ...next });
     setNonce(n => n + 1);
   }, []);
 
@@ -509,13 +555,13 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
   const instanceOverridesRef = useRef<Record<string, any>>({});
   useEffect(() => { instanceOverridesRef.current = instanceOverrides; }, [instanceOverrides]);
 
-  // Sync refs to state at a throttled rate for UI rendering
+  // Sync refs to state at a throttled rate for UI rendering (as backup)
   useEffect(() => {
     if (!visible || !isPlaying) return;
     const interval = setInterval(() => {
       setVariables({ ...variablesRef.current });
       setLocalVariables({ ...localVariablesRef.current });
-    }, 100);
+    }, 500); // Throttled to 500ms
     return () => clearInterval(interval);
   }, [visible, isPlaying]);
 
@@ -529,6 +575,14 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     setDynamicElements([]);
     setInstanceOverrides({});
     setLocalVariables({});
+    localVariablesRef.current = {};
+
+    // Reset global variables to project defaults on every play session
+    const defaultGlobals = { ...(currentProject?.variables?.global || {}) };
+    variablesRef.current = defaultGlobals;
+    setVariables(defaultGlobals);
+    varCooldowns.current = {};
+
     const isActiveRef = { current: true };
 
     const engine = Matter.Engine.create({
@@ -605,11 +659,62 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       return name.includes('player') || behavior.includes('player');
     };
 
-    const executeAction = (actionData: string | { cmd: string, parts: string[] }, body: Matter.Body, obj?: GameObject, source: string = 'unknown') => {
+    const executeAction = (actionData: string | { cmd: string, parts: string[] }, body: Matter.Body, obj?: GameObject, source: string = 'unknown', otherBody?: Matter.Body) => {
       if (!isPlayingRef.current) return;
-      const isParsed = typeof actionData !== 'string';
-      const cmd = isParsed ? (actionData as any).cmd : actionData.split(':')[0];
-      const parts = isParsed ? (actionData as any).parts : actionData.split(':');
+      
+      let finalAction = actionData;
+
+      // --- Natural Syntax Transpiler ---
+      if (typeof actionData === 'string') {
+        const trimmed = actionData.trim();
+        
+        // Pattern: target.prop op value (e.g. self.x += 10, other.health -= 5)
+        const match = trimmed.match(/^([\w]+)\.([\w]+)\s*([\+\-]?=)\s*(.*)$/);
+        if (match) {
+          const [_, target, prop, op, val] = match;
+          const targetBody = target === 'self' ? body : (target === 'other' ? otherBody : null);
+          
+          if (targetBody) {
+            // Mapping common properties to internal commands
+            if (prop === 'x') finalAction = op === '=' ? `set_x:${val}` : `add_x:${val}`;
+            else if (prop === 'y') finalAction = op === '=' ? `set_y:${val}` : `add_y:${val}`;
+            else if (prop === 'vx') finalAction = `set_vx:${val}`;
+            else if (prop === 'vy') finalAction = `set_vy:${val}`;
+            else if (prop === 'angle') finalAction = op === '=' ? `set_angle:${val}` : `add_angle:${val}`;
+            else {
+              // Assume it's a local variable
+              const command = op === '=' ? 'lvar_set' : 'lvar_add';
+              const sign = op === '-=' ? '-' : '';
+              finalAction = `${command}:${prop}:${sign}${val}`;
+            }
+            
+            // If target was 'other', we need to execute on that body instead
+            if (target === 'other' && otherBody) {
+              executeAction(finalAction, otherBody, (otherBody as any).gameInfo?.obj, `${source}:TargetOther`);
+              return;
+            }
+          }
+        } else {
+          // Pattern: var op value (e.g. score += 1) - Assume global variable if no dot
+          const varMatch = trimmed.match(/^([\w]+)\s*([\+\-]?=)\s*(.*)$/);
+          if (varMatch) {
+            const [_, varName, op, val] = varMatch;
+            const command = op === '=' ? 'var_set' : 'var_add';
+            const sign = op === '-=' ? '-' : '';
+            finalAction = `${command}:${varName}:${sign}${val}`;
+          }
+        }
+      }
+
+      const isParsed = typeof finalAction !== 'string';
+      let cmd = isParsed ? (finalAction as any).cmd : finalAction.split(':')[0].trim();
+      let parts = isParsed ? (finalAction as any).parts : finalAction.split(':').map(p => p.trim());
+
+      // Skip 'do' prefix if present
+      if (cmd.toLowerCase() === 'do') {
+        parts = parts.slice(1);
+        cmd = parts[0] || '';
+      }
       if (cmd === 'restart_room' || cmd === 'go_to_room') {
         // Only allow player
         if (!isPlayer(obj)) {
@@ -728,8 +833,55 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       }
     };
 
+    const checkCondition = (conditionStr: string, body: Matter.Body, obj?: GameObject) => {
+      if (!conditionStr) return true;
+      const lhsRaw = conditionStr.split(/[><=!+]/)[0].trim();
+      const op = conditionStr.match(/[><=!]+/)?.[0] || '==';
+      const rhsRaw = conditionStr.split(/[><=!+]/).pop()?.trim() || '0';
+      const lhs = resolveValue(lhsRaw, body, obj);
+      const rhs = resolveValue(rhsRaw, body, obj);
+      if (op === '<') return lhs < rhs;
+      if (op === '>') return lhs > rhs;
+      if (op === '==') return lhs === rhs;
+      if (op === '!=') return lhs !== rhs;
+      return false;
+    };
+
+    const executeListenerLogic = (listener: any, body: Matter.Body, obj: GameObject, source: string) => {
+      // 1. Legacy support
+      if (listener.action) executeAction(listener.action, body, obj, source);
+      if (listener.condition && checkCondition(listener.condition, body, obj)) {
+        if (listener.conditionAction) executeAction(listener.conditionAction, body, obj, source + ':Cond');
+      }
+
+      // 2. New Logic Editor support
+      if (listener.immediateActions) {
+        listener.immediateActions.forEach((act: string) => {
+          if (act) executeAction(act, body, obj, source + ':Imm');
+        });
+      }
+      
+      if (listener.subConditions) {
+        listener.subConditions.forEach((sc: any) => {
+          const met = checkCondition(sc.condition, body, obj);
+          if (met) {
+            if (sc.actions) sc.actions.forEach((act: string) => {
+              if (act) executeAction(act, body, obj, source + ':IfT');
+            });
+          } else {
+            if (sc.elseActions) sc.elseActions.forEach((act: string) => {
+              if (act) executeAction(act, body, obj, source + ':IfF');
+            });
+          }
+        });
+      }
+    };
+
     const attachListeners = (body: Matter.Body, obj: GameObject) => {
       obj.logic?.listeners?.forEach(l => {
+        // Skip events handled elsewhere: on_timer/on_tick run in game loop, on_start runs at spawn, on_tap handled by builtin_tap
+        if (l.eventId?.startsWith('on_timer') || l.eventId === 'on_tick' || l.eventId === 'on_start' || l.eventId === 'on_tap') return;
+
         const sub = DeviceEventEmitter.addListener(l.eventId, (data: any) => {
           // If the event has a targetId, only react if it matches this body
           if (data?.targetId && String(data.targetId) !== String(body.label)) return;
@@ -739,31 +891,32 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             if (data?.otherName !== 'Player' && data?.otherBehavior !== 'player') return;
           }
 
-          if (l.condition) {
-            const lhsRaw = l.condition.split(/[><=!+]/)[0].trim();
-            const op = l.condition.match(/[><=!]+/)?.[0] || '==';
-            const rhsRaw = l.condition.split(/[><=!+]/).pop()?.trim() || '0';
-
-            const lhs = resolveValue(lhsRaw, body, obj);
-            const rhs = resolveValue(rhsRaw, body, obj);
-
-            let met = false;
-            if (op === '<') met = lhs < rhs;
-            else if (op === '>') met = lhs > rhs;
-            else if (op === '==') met = lhs === rhs;
-            else if (op === '!=') met = lhs !== rhs;
-
-            if (met && l.conditionAction) {
-              executeAction(l.conditionAction, body, obj, `Listener:${l.eventId}:Cond`);
-            }
-          }
-
-          if (l.action) {
-            executeAction(l.action, body, obj, `Listener:${l.eventId}`);
-          }
+          executeListenerLogic(l, body, obj, `Listener:${l.eventId}`);
         });
         subscriptions.push(sub);
       });
+
+      // Built-in tap listener for 'on_tap' scripts (legacy) and visual logic
+      const tapSub = DeviceEventEmitter.addListener('builtin_tap', (data: any) => {
+        if (data?.targetId && String(data.targetId) !== String(body.label)) return;
+        // Legacy scripts
+        const info = (body as any).gameInfo;
+        if (info?.scripts) {
+          info.scripts.forEach((s: any) => {
+            if (s.cmd === 'on_tap') {
+              if (s.listenerData) executeListenerLogic(s.listenerData, body, obj, 'TapScript');
+              else if (s.actionPart) executeAction(s.actionPart, body, obj, 'TapScript');
+            }
+          });
+        }
+        // Visual logic listeners for on_tap
+        obj.logic?.listeners?.forEach((l: any) => {
+          if (l.eventId === 'on_tap') {
+            executeListenerLogic(l, body, obj, 'TapListener');
+          }
+        });
+      });
+      subscriptions.push(tapSub);
     };
 
     const spawnInstance = (objectId: string, x: number, y: number, isParticle = false, settings?: any) => {
@@ -795,12 +948,69 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       if (!isParticle) attachListeners(body, pObj);
 
       Matter.World.add(engine.world, body);
+      const parsedScripts: any[] = pObj.logic?.scripts?.map(s => {
+        const doSplit = s.split(/ DO | do /);
+        let actionPart = '';
+        let cmd = '';
+        let timerMs = 0;
+        let p: string[] = [];
+
+        if (doSplit.length > 1) {
+          p = doSplit[0].split(':');
+          actionPart = doSplit[1].trim();
+          cmd = p[0].trim();
+          if (cmd === 'on_timer') timerMs = parseInt(p[1], 10) || 1000;
+        } else {
+          p = s.split(':');
+          cmd = p[0].trim();
+          if (cmd === 'on_timer') timerMs = parseInt(p[1], 10) || 1000;
+          actionPart = p.slice(cmd === 'on_timer' ? 2 : 1).join(':').trim();
+        }
+
+        return { 
+          cmd, 
+          parts: p, 
+          actionPart,
+          timerMs,
+          lastTrigger: Date.now()
+        };
+      }) || [];
+
+      // Process Visual Logic Editor listeners
+      pObj.logic?.listeners?.forEach((l: any) => {
+        if (l.eventId?.startsWith('on_timer') || l.eventId === 'on_tick' || l.eventId === 'on_start') {
+          const cmd = l.eventId.startsWith('on_timer') ? 'on_timer' : l.eventId;
+          const p = l.eventId.split(':');
+          let timerMs = 1000;
+          if (cmd === 'on_timer' && p.length > 1) {
+            timerMs = parseInt(p[1], 10) || 1000;
+          }
+          parsedScripts.push({
+            cmd,
+            parts: p,
+            actionPart: '', // Actions are handled by listenerData
+            timerMs,
+            lastTrigger: Date.now(),
+            listenerData: l
+          });
+        }
+      });
+
       (body as any).gameInfo = {
         width,
         height,
         obj: pObj,
+        scripts: parsedScripts,
         spawnTime: Date.now()
       };
+
+      // Run 'on_start' scripts immediately for spawned instance
+      parsedScripts.forEach((script: any) => {
+        if (script.cmd === 'on_start') {
+          if (script.listenerData) executeListenerLogic(script.listenerData, body, pObj, 'SpawnStart');
+          else if (script.actionPart) executeAction(script.actionPart, body, pObj, 'SpawnStart');
+        }
+      });
 
       const sv = {
         x: makeMutable(x - width / 2),
@@ -836,11 +1046,54 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       const obj = objectMap.get(inst.objectId);
       if (!obj) return;
 
-      // Pre-parse scripts
-      const parsedScripts = obj.logic?.scripts?.map(s => {
-        const p = s.split(':');
-        return { cmd: p[0], parts: p };
+      // Pre-parse scripts (Legacy)
+      const parsedScripts: any[] = obj.logic?.scripts?.map(s => {
+        const doSplit = s.split(/ DO | do /);
+        let actionPart = '';
+        let cmd = '';
+        let timerMs = 0;
+        let p: string[] = [];
+
+        if (doSplit.length > 1) {
+          p = doSplit[0].split(':');
+          actionPart = doSplit[1].trim();
+          cmd = p[0].trim();
+          if (cmd === 'on_timer') timerMs = parseInt(p[1], 10) || 1000;
+        } else {
+          p = s.split(':');
+          cmd = p[0].trim();
+          if (cmd === 'on_timer') timerMs = parseInt(p[1], 10) || 1000;
+          actionPart = p.slice(cmd === 'on_timer' ? 2 : 1).join(':').trim();
+        }
+
+        return { 
+          cmd, 
+          parts: p, 
+          actionPart,
+          timerMs,
+          lastTrigger: Date.now()
+        };
       }) || [];
+
+      // Process Visual Logic Editor listeners
+      obj.logic?.listeners?.forEach(l => {
+        if (l.eventId?.startsWith('on_timer') || l.eventId === 'on_tick') {
+          const cmd = l.eventId.startsWith('on_timer') ? 'on_timer' : 'on_tick';
+          const p = l.eventId.split(':');
+          let timerMs = 1000;
+          if (cmd === 'on_timer' && p.length > 1) {
+            timerMs = parseInt(p[1], 10) || 1000;
+          }
+          parsedScripts.push({
+            cmd,
+            parts: p,
+            actionPart: '', // Actions are handled by listenerData
+            timerMs,
+            lastTrigger: Date.now(),
+            listenerData: l
+          });
+        }
+      });
 
       const physics = obj.physics || {};
       const isStatic = (physics.isStatic || !physics.enabled || obj.behavior === 'emitter') && obj.behavior !== 'player';
@@ -877,6 +1130,20 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         obj,
         spawnTime: roomStartTime
       };
+
+      // Run 'on_start' scripts deferred so the engine/React state is settled
+      const _onStartScripts = parsedScripts.filter((s: any) => s.cmd === 'on_start');
+      if (_onStartScripts.length > 0) {
+        const _body = body;
+        const _obj = obj;
+        setTimeout(() => {
+          if (!isActiveRef.current) return;
+          _onStartScripts.forEach((script: any) => {
+            if (script.listenerData) executeListenerLogic(script.listenerData, _body, _obj, 'StartTrigger');
+            else if (script.actionPart) executeAction(script.actionPart, _body, _obj, 'StartTrigger');
+          });
+        }, 100);
+      }
 
       const sv = instanceSharedValues[index];
       if (sv) {
@@ -940,7 +1207,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         const objB = infoB?.obj;
         if (!objA || !objB) return;
 
-        const runCollisionLogic = (targetBody: Matter.Body, targetObj: GameObject, otherObj: GameObject) => {
+        const runCollisionLogic = (targetBody: Matter.Body, targetObj: GameObject, otherObj: GameObject, otherBody: Matter.Body) => {
           const scripts = targetObj.logic?.scripts || [];
 
           for (const s of scripts) {
@@ -951,7 +1218,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
               const action = s.split(' DO ')[1] || s.split(':').slice(2).join(':');
               if (action) {
                 collisionQueue.push(() =>
-                  executeAction(action, targetBody, targetObj, `Collision:${otherObj.name}`)
+                  executeAction(action, targetBody, targetObj, `Collision:${otherObj.name}`, otherBody)
                 );
               }
             } else if (s.startsWith('on_collision:')) {
@@ -959,7 +1226,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                 const action = s.split(' DO ')[1] || s.split(':').slice(1).join(':');
                 if (action) {
                   collisionQueue.push(() =>
-                    executeAction(action, targetBody, targetObj, `Collision:PlayerGuard`)
+                    executeAction(action, targetBody, targetObj, `Collision:PlayerGuard`, otherBody)
                   );
                 }
               }
@@ -967,8 +1234,24 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           }
         };
 
-        runCollisionLogic(pair.bodyA, objA, objB);
-        runCollisionLogic(pair.bodyB, objB, objA);
+          runCollisionLogic(pair.bodyA, objA, objB, pair.bodyB);
+          runCollisionLogic(pair.bodyB, objB, objA, pair.bodyA);
+
+          // Also run visual logic listeners for on_collision
+          const fireCollisionListeners = (targetBody: Matter.Body, targetObj: GameObject, otherObj: GameObject, otherBody: Matter.Body) => {
+            targetObj.logic?.listeners?.forEach((l: any) => {
+              if (l.eventId === 'on_collision') {
+                // Only fire for player collisions by default
+                if (otherObj.name === 'Player' || otherObj.behavior === 'player' || isPlayer(otherObj)) {
+                  collisionQueue.push(() => executeListenerLogic(l, targetBody, targetObj, 'CollisionListener'));
+                }
+              } else if (l.eventId === `collision:${otherObj.name}` || l.eventId === `collision:${otherObj.behavior}`) {
+                collisionQueue.push(() => executeListenerLogic(l, targetBody, targetObj, 'CollisionListener'));
+              }
+            });
+          };
+          fireCollisionListeners(pair.bodyA, objA, objB, pair.bodyB);
+          fireCollisionListeners(pair.bodyB, objB, objA, pair.bodyA);
 
         // Keep events ONLY for non-critical systems
         const eventDataA = {
@@ -986,7 +1269,10 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         };
 
         DeviceEventEmitter.emit(`collision:${objB.name}`, eventDataA);
+        DeviceEventEmitter.emit('on_collision', eventDataA);
+
         DeviceEventEmitter.emit(`collision:${objA.name}`, eventDataB);
+        DeviceEventEmitter.emit('on_collision', eventDataB);
       });
     });
 
@@ -1028,6 +1314,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         fpsFrames = 0;
         fpsLastTime = now;
       }
+
+      globalFrameTimer.value = now - roomStartTime;
 
       // Drain collision queue (actions queued from physics events this frame)
       if (collisionQueue.length > 0) {
@@ -1136,13 +1424,55 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           d.sv.x.value = d.body.position.x - d.width / 2;
           d.sv.y.value = d.body.position.y - d.height / 2;
           d.sv.rot.value = d.body.angle;
+
+          // Run scripts for dynamic elements
+          const info = (d.body as any).gameInfo;
+          if (info?.scripts) {
+            for (let s = 0; s < info.scripts.length; s++) {
+              const script = info.scripts[s];
+              if (script.cmd === 'on_tick') {
+                if (script.listenerData) executeListenerLogic(script.listenerData, d.body, info.obj, 'DynTick');
+                else if (script.actionPart) executeAction(script.actionPart, d.body, info.obj, 'DynTick');
+              } else if (script.cmd === 'on_timer' && script.timerMs > 0) {
+                if (now - script.lastTrigger >= script.timerMs) {
+                  script.lastTrigger = now;
+                  if (script.listenerData) executeListenerLogic(script.listenerData, d.body, info.obj, 'DynTimer');
+                  else if (script.actionPart) executeAction(script.actionPart, d.body, info.obj, 'DynTimer');
+                }
+              }
+            }
+          }
         }
       }
       const bodyCount = newBodies.length;
       for (let i = 0; i < bodyCount; i++) {
         const body = newBodies[i];
         const info = (body as any).gameInfo;
-        if (!info || (body.isStatic && body.position.x === (body as any).lastX && body.position.y === (body as any).lastY)) continue;
+        if (!info) continue;
+
+        // 1. Always run scripts for this body
+        if (info.scripts && info.scripts.length > 0) {
+          for (let s = 0; s < info.scripts.length; s++) {
+            const script = info.scripts[s];
+            if (script.cmd === 'on_tick') {
+              if (script.listenerData) executeListenerLogic(script.listenerData, body, info.obj, 'TickLoop');
+              else if (script.actionPart) executeAction(script.actionPart, body, info.obj, 'TickLoop');
+            } else if (script.cmd === 'on_timer' && script.timerMs > 0) {
+              if (now - script.lastTrigger >= script.timerMs) {
+                script.lastTrigger = now;
+                if (script.listenerData) executeListenerLogic(script.listenerData, body, info.obj, 'TimerLoop');
+                else if (script.actionPart) executeAction(script.actionPart, body, info.obj, 'TimerLoop');
+              }
+            }
+          }
+        }
+
+        if (info.constantVx !== undefined) {
+          Matter.Body.setVelocity(body, { x: info.constantVx, y: body.velocity.y });
+        }
+
+        // 2. Position Sync Optimization
+        if (body.isStatic && body.position.x === (body as any).lastX && body.position.y === (body as any).lastY) continue;
 
         const sv = instanceSharedValues[i];
         if (sv && sv.x && sv.y) {
@@ -1151,35 +1481,25 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           sv.rot.value = body.angle;
           (body as any).lastX = body.position.x;
           (body as any).lastY = body.position.y;
-
-          // Run 'on_tick' scripts every frame
-          if (info.scripts && info.scripts.length > 0) {
-            for (let s = 0; s < info.scripts.length; s++) {
-              const script = info.scripts[s];
-              if (script.cmd === 'on_tick') {
-                // Execute the action part of the on_tick:ACTION script
-                const actionPart = script.parts.slice(1).join(':');
-                if (actionPart) executeAction(actionPart, body, info.obj, 'TickLoop');
-              }
-            }
-          }
-
-          if (info.constantVx !== undefined) {
-            Matter.Body.setVelocity(body, { x: info.constantVx, y: body.velocity.y });
-          }
         }
       }
 
       if (dynamicChanged || dynamicRef.length !== lastSyncedLength) {
-        setDynamicElements([...dynamicRef.map(dx => ({
-          id: dx.id,
-          gameObject: dx.gameObject,
-          sprite: dx.sprite,
-          sv: dx.sv,
-          width: dx.width,
-          height: dx.height,
-          name: dx.name
-        }))]);
+        // Optimized: Only copy essential data for React state
+        const elements = [];
+        for (let i = 0; i < dynamicRef.length; i++) {
+          const dx = dynamicRef[i];
+          elements.push({
+            id: dx.id,
+            gameObject: dx.gameObject,
+            sprite: dx.sprite,
+            sv: dx.sv,
+            width: dx.width,
+            height: dx.height,
+            name: dx.name
+          });
+        }
+        setDynamicElements(elements);
         lastSyncedLength = dynamicRef.length;
       }
 
@@ -1234,17 +1554,23 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             height={height}
             name={obj?.name}
             nonce={nonce}
-            onTap={obj?.logic?.triggers?.onTap ? () => DeviceEventEmitter.emit(obj.logic.triggers.onTap!) : undefined}
+            onTap={() => {
+              DeviceEventEmitter.emit('builtin_tap', { targetId: inst.id });
+              if (obj?.logic?.triggers?.onTap) {
+                DeviceEventEmitter.emit(obj.logic.triggers.onTap!);
+              }
+            }}
             variables={variables}
             localVariables={localVariables[inst.id]}
             obj={obj}
             override={instanceOverrides[inst.id]}
             debug={debug}
+            globalFrameTimer={globalFrameTimer}
           />
         );
       });
     });
-  }, [currentRoom, instanceSharedValues, objectMap, spriteMap, currentProject, handleFetchAsset, variables, localVariables, nonce]);
+  }, [currentRoom, instanceSharedValues, objectMap, spriteMap, currentProject, handleFetchAsset, variables, localVariables, nonce, globalFrameTimer]);
 
   if (!visible) return null;
 
@@ -1286,8 +1612,13 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                   obj={d.gameObject}
                   sprites={allSprites}
                   override={instanceOverrides[d.id]}
-                  debug={debug}
-                  onTap={() => DeviceEventEmitter.emit('builtin_tap', { targetId: d.id })}
+                  onTap={() => {
+                    DeviceEventEmitter.emit('builtin_tap', { targetId: d.id });
+                    if (d.gameObject?.logic?.triggers?.onTap) {
+                      DeviceEventEmitter.emit(d.gameObject.logic.triggers.onTap!);
+                    }
+                  }}
+                  globalFrameTimer={globalFrameTimer}
                 />
               );
             })}

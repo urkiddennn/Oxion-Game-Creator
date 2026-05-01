@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Modal, Switch } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Modal, Switch, Alert } from 'react-native';
 import { theme } from '../../theme';
 import { styles } from './SpritesScreen.styles';
 import { Image as ImageIcon, Plus, Upload, Palette, X, Trash2, ChevronDown, Save } from 'lucide-react-native';
@@ -107,6 +107,16 @@ export default function SpritesScreen() {
               key={sprite.id}
               style={styles.spriteCard}
               onPress={() => setSelectedSpriteId(sprite.id)}
+              onLongPress={() => {
+                Alert.alert(
+                  "Delete Sprite",
+                  `Are you sure you want to delete "${sprite.name}"?`,
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Delete", style: "destructive", onPress: () => removeSprite(sprite.id) }
+                  ]
+                );
+              }}
             >
               <View style={styles.previewContainer}>
                 {sprite.type === 'imported' ? (
@@ -181,14 +191,6 @@ export default function SpritesScreen() {
                     onChangeText={(v) => updateSprite(selectedSprite.id, { name: v })}
                   />
                   <View style={{ flexDirection: 'row', gap: 12 }}>
-                    <TouchableOpacity
-                      onPress={() => {
-                        removeSprite(selectedSprite.id);
-                        setSelectedSpriteId(null);
-                      }}
-                    >
-                      <Trash2 size={20} color={theme.colors.error} />
-                    </TouchableOpacity>
                     <TouchableOpacity onPress={() => setSelectedSpriteId(null)}>
                       <X size={24} color={theme.colors.text} />
                     </TouchableOpacity>

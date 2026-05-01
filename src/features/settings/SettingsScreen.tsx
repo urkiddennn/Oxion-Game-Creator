@@ -24,9 +24,9 @@ export default function SettingsScreen() {
           text: 'Delete', 
           style: 'destructive',
           onPress: () => {
-            const name = currentProject.name;
+            const id = currentProject.id;
             closeProject();
-            removeProject(name);
+            removeProject(id);
           }
         },
       ]

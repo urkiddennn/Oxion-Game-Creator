@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Modal, TextInput, Alert, Linking } from 'react-native';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { theme } from '../../theme';
-import { SquarePlus, ArrowRight, HandMetal, User, Trash2 } from 'lucide-react-native';
+import { SquarePlus, ArrowRight, User, Trash2, Heart, Play } from 'lucide-react-native';
+import { OxionLogo } from '../../components/OxionLogo';
 import CommunityScreen from '../community/CommunityScreen';
 import AuthModal from '../auth/AuthModal';
 
@@ -77,7 +78,21 @@ export default function LaunchpadScreen() {
                     onPress={() => {
                       openProject(project.name);
                     }}
-                    delayLongPress={200}
+                    onLongPress={() => {
+                      Alert.alert(
+                        'Delete Project',
+                        `Are you sure you want to delete "${project.name}"? This action cannot be undone.`,
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Delete',
+                            style: 'destructive',
+                            onPress: () => removeProject(project.id)
+                          },
+                        ]
+                      );
+                    }}
+                    delayLongPress={500}
                   >
                     <View style={styles.thumbnailPlaceholder} />
                     <View style={styles.projectInfo}>
@@ -101,12 +116,29 @@ export default function LaunchpadScreen() {
           <View style={styles.infoSidebar}>
             <View style={styles.logoContainer}>
               <View style={styles.logoIcon}>
-                <HandMetal color={theme.colors.text} size={48} />
-                <HandMetal color={theme.colors.text} size={48} style={{ transform: [{ scaleX: -1 }, { rotate: '30deg' }] }} />
+                <OxionLogo size={160} />
               </View>
-              <Text style={styles.appTitle}>Oxion Game Creator</Text>
-              <Text style={styles.versionText}>v0.0.1</Text>
+              <Text style={styles.appTitle}>Oxion2d v0.0.13</Text>
             </View>
+
+            <View style={styles.sidebarLinks}>
+              <TouchableOpacity 
+                style={styles.sidebarLinkButton}
+                onPress={() => Linking.openURL('https://paypal.me/yourprofile')}
+              >
+                <Heart size={14} color="#FFF" />
+                <Text style={styles.sidebarLinkText}>Donate</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.sidebarLinkButton}
+                onPress={() => Linking.openURL('https://youtube.com/@yourchannel')}
+              >
+                <Play size={14} color="#FFF" />
+                <Text style={styles.sidebarLinkText}>YouTube</Text>
+              </TouchableOpacity>
+            </View>
+
           </View>
         </View>
       )}
@@ -279,30 +311,50 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
   },
   infoSidebar: {
-    width: 300,
+    width: 250,
     backgroundColor: '#16191E',
-    borderLeftWidth: 1,
-    borderLeftColor: theme.colors.border,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 12,
   },
   logoContainer: {
     alignItems: 'center',
   },
   logoIcon: {
     flexDirection: 'row',
-    marginBottom: 16,
+    marginBottom: 0,
   },
   appTitle: {
     color: theme.colors.text,
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
     marginTop: 8,
   },
   versionText: {
     color: theme.colors.textMuted,
     fontSize: 12,
     marginTop: 4,
+  },
+  sidebarLinks: {
+    width: '100%',
+    paddingHorizontal: 16,
+    marginTop: 24,
+    gap: 8,
+  },
+  sidebarLinkButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 4,
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  sidebarLinkText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFF',
   },
   deleteProjectBtn: {
     position: 'absolute',

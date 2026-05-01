@@ -39,17 +39,33 @@ export default function CommunityScreen({ navigation }: any) {
   const [newComment, setNewComment] = useState('');
   const [loadingComments, setLoadingComments] = useState(false);
 
+  const [sortTab, setSortTab] = useState<'new' | 'played' | 'hearts'>('new');
+  const [searchQuery, setSearchQuery] = useState('');
+
   useEffect(() => {
     fetchGames();
-  }, []);
+  }, [sortTab]);
 
   const fetchGames = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('games')
-        .select('*')
-        .order('created_at', { ascending: false });
+      let query = supabase.from('games').select('*');
+
+      // Sorting
+      if (sortTab === 'played') {
+        query = query.order('play_count', { ascending: false });
+      } else if (sortTab === 'hearts') {
+        query = query.order('likes', { ascending: false });
+      } else {
+        query = query.order('created_at', { ascending: false });
+      }
+
+      // Searching
+      if (searchQuery.trim()) {
+        query = query.ilike('title', `%${searchQuery.trim()}%`);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -250,30 +266,20 @@ export default function CommunityScreen({ navigation }: any) {
       onPress={() => setSelectedGame(item)}
     >
       <View style={styles.gameImagePlaceholder}>
-        {renderIcon(item.icon_preview)}
+        {renderIcon(item.icon_preview, 50)}
       </View>
       <View style={styles.gameInfo}>
-        <Text style={styles.gameTitle}>{item.title}</Text>
-        <Text style={styles.gameAuthor}>by @{item.author_name}</Text>
+        <Text style={styles.gameTitle} numberOfLines={1}>{item.title}</Text>
+        <Text style={styles.gameAuthor} numberOfLines={1}>@{item.author_name}</Text>
 
         <View style={styles.statsRow}>
           <View style={styles.stat}>
-            <Play size={12} color={theme.colors.textMuted} />
+            <Play size={8} color={theme.colors.textMuted} />
             <Text style={styles.statText}>{item.play_count}</Text>
           </View>
-          <TouchableOpacity 
-            style={styles.stat}
-            onPress={(e) => {
-              e.stopPropagation();
-              handleLike(item.id);
-            }}
-          >
-            <Heart size={12} color={item.likes > 0 ? '#ff4b4b' : theme.colors.textMuted} fill={item.likes > 0 ? '#ff4b4b' : 'transparent'} />
-            <Text style={[styles.statText, item.likes > 0 && { color: '#ff4b4b' }]}>{item.likes}</Text>
-          </TouchableOpacity>
           <View style={styles.stat}>
-            <MessageSquare size={12} color={theme.colors.textMuted} />
-            <Text style={styles.statText}>{item.comments_count}</Text>
+            <Heart size={8} color={item.likes > 0 ? '#ff4b4b' : theme.colors.textMuted} fill={item.likes > 0 ? '#ff4b4b' : 'transparent'} />
+            <Text style={[styles.statText, item.likes > 0 && { color: '#ff4b4b' }]}>{item.likes}</Text>
           </View>
         </View>
       </View>
@@ -305,13 +311,39 @@ export default function CommunityScreen({ navigation }: any) {
         </View>
       </View>
 
-      <View style={styles.searchContainer}>
-        <Search size={14} color={theme.colors.textMuted} style={styles.searchIcon} />
-        <TextInput
-          placeholder="Search games..."
-          placeholderTextColor={theme.colors.textMuted}
-          style={styles.searchInput}
-        />
+      <View style={styles.filterRow}>
+        <View style={styles.tabsContainer}>
+          <TouchableOpacity 
+            style={[styles.sortTab, sortTab === 'new' && styles.sortTabActive]} 
+            onPress={() => setSortTab('new')}
+          >
+            <Text style={[styles.sortTabText, sortTab === 'new' && styles.sortTabTextActive]}>New</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.sortTab, sortTab === 'played' && styles.sortTabActive]} 
+            onPress={() => setSortTab('played')}
+          >
+            <Text style={[styles.sortTabText, sortTab === 'played' && styles.sortTabTextActive]}>Played</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.sortTab, sortTab === 'hearts' && styles.sortTabActive]} 
+            onPress={() => setSortTab('hearts')}
+          >
+            <Text style={[styles.sortTabText, sortTab === 'hearts' && styles.sortTabTextActive]}>Hearts</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.searchContainer}>
+          <Search size={12} color={theme.colors.textMuted} style={styles.searchIcon} />
+          <TextInput
+            placeholder="Search..."
+            placeholderTextColor={theme.colors.textMuted}
+            style={styles.searchInput}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            onSubmitEditing={fetchGames}
+          />
+        </View>
       </View>
 
       {loading ? (
@@ -320,12 +352,14 @@ export default function CommunityScreen({ navigation }: any) {
         </View>
       ) : (
         <FlatList
+          key="community-grid-compact"
           data={games}
           keyExtractor={(item) => item.id}
           renderItem={renderGameCard}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
-          numColumns={1}
+          numColumns={5}
+          columnWrapperStyle={styles.columnWrapper}
         />
       )}
 
@@ -587,73 +621,119 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  searchContainer: {
+  filterRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1A1D23',
-    marginHorizontal: 16,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
     marginBottom: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 10,
+    gap: 12,
+  },
+  tabsContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#16191E',
+    borderRadius: 8,
+    padding: 3,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
+  sortTab: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  sortTabActive: {
+    backgroundColor: '#2A2E35',
+  },
+  sortTabText: {
+    color: theme.colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  sortTabTextActive: {
+    color: theme.colors.primary,
+  },
+  searchContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1A1D23',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    maxWidth: 200,
+  },
   searchIcon: {
-    marginRight: 10,
+    marginRight: 6,
     opacity: 0.5,
   },
   searchInput: {
     flex: 1,
     color: theme.colors.text,
-    fontSize: 14,
+    fontSize: 12,
     padding: 0,
     fontWeight: '500',
   },
   listContent: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
     paddingBottom: 32,
   },
+  columnWrapper: {
+    justifyContent: 'flex-start',
+  },
   gameCard: {
-    flexDirection: 'row',
+    flex: 1/5,
     backgroundColor: '#1E2228',
-    borderRadius: 12,
-    padding: 10,
-    marginBottom: 10,
+    borderRadius: 8,
+    marginBottom: 8,
+    marginHorizontal: 4,
     borderWidth: 1,
     borderColor: theme.colors.border,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: 2,
     elevation: 2,
+    overflow: 'hidden',
+    minWidth: 60,
   },
   gameImagePlaceholder: {
-    width: 70,
-    height: 70,
+    width: '100%',
+    height: 60,
     backgroundColor: '#16191E',
-    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
-    overflow: 'hidden',
-    borderWidth: 1,
+    borderBottomWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
   },
   gameInfo: {
-    flex: 1,
-    justifyContent: 'center',
+    padding: 6,
   },
   gameTitle: {
-    fontSize: 15,
+    fontSize: 9,
     fontWeight: '800',
     color: theme.colors.text,
-    marginBottom: 2,
+    marginBottom: 1,
   },
   gameAuthor: {
-    fontSize: 10,
+    fontSize: 7,
     color: theme.colors.primary,
-    marginTop: -2,
+    marginBottom: 4,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  stat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  statText: {
+    color: theme.colors.textMuted,
+    fontSize: 7,
   },
   statsRow: {
     flexDirection: 'row',

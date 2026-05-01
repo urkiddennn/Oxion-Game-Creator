@@ -98,6 +98,7 @@ export interface GameObject {
     moveSpeed: number;
     ignoreCollision: boolean;
     angle?: number;
+    scale?: number;
   };
 
   combat: {
@@ -131,9 +132,12 @@ export interface GameObject {
     };
     listeners: {
       eventId: string;
-      action: string;
-      condition?: string;
-      conditionAction?: string;
+      immediateActions: string[]; // DO part
+      subConditions: {
+        condition: string; // IF part
+        actions: string[]; // THEN part
+        elseActions?: string[]; // Optional ELSE part
+      }[];
     }[];
     constantVelocityX?: number;
     constantVelocityY?: number;
@@ -161,6 +165,10 @@ export interface GameObject {
     fontSize: number;
     color: string;
     textAlign: 'left' | 'center' | 'right';
+  };
+  button?: {
+    clickSpriteId?: string;
+    releaseSpriteId?: string;
   };
 }
 export interface RoomLayer {
@@ -199,6 +207,12 @@ export interface Room {
     backgroundColor: string;
     showGrid: boolean;
     gridSize: number;
+    camera?: {
+      targetObjectId: string | null;
+      smoothing: number;
+      zoom: number;
+      enabled: boolean;
+    };
   };
 }
 
@@ -252,7 +266,7 @@ interface ProjectState {
   updateSound: (id: string, updates: Partial<SoundAsset>) => void;
   removeSound: (id: string) => void;
   removeObject: (id: string) => void;
-  removeProject: (name: string) => void;
+  removeProject: (id: string) => void;
   closeProject: () => void;
   publishProject: (description?: string) => Promise<{ success: boolean, error?: string }>;
   fetchRemoteProject: (id: string) => Promise<any>;
@@ -305,7 +319,13 @@ export const useProjectStore = create<ProjectState>()(
               gravity: 9.8,
               backgroundColor: '#111111',
               showGrid: true,
-              gridSize: 32
+              gridSize: 32,
+              camera: {
+                targetObjectId: null,
+                smoothing: 0.1,
+                zoom: 1,
+                enabled: false
+              }
             }
           }],
           sounds: [],
@@ -325,11 +345,17 @@ export const useProjectStore = create<ProjectState>()(
           activeRoomId: 'main'
         };
       }),
-      removeProject: (name) => set((state) => ({
-        projects: state.projects.filter(p => p.name !== name),
-        selectedProject: state.selectedProject?.name === name ? null : state.selectedProject,
-        activeProject: state.activeProject?.name === name ? null : state.activeProject,
-      })),
+      removeProject: (id) => set((state) => {
+        const project = state.projects.find(p => p.id === id);
+        if (project) {
+          FileSystemManager.deleteProjectFolder(project.id);
+        }
+        return {
+          projects: state.projects.filter(p => p.id !== id),
+          selectedProject: state.selectedProject?.id === id ? null : state.selectedProject,
+          activeProject: state.activeProject?.id === id ? null : state.activeProject,
+        };
+      }),
       selectProject: (name) => set((state) => ({
         selectedProject: state.projects.find(p => p.name === name) || null
       })),
@@ -508,6 +534,7 @@ export const useProjectStore = create<ProjectState>()(
             obj.id === id ? { ...obj, ...updates } : obj
           )
         };
+        FileSystemManager.saveProjectJson(updated.id, updated);
         return {
           activeProject: updated,
           selectedProject: state.selectedProject?.name === updated.name ? updated : state.selectedProject,
@@ -552,6 +579,7 @@ export const useProjectStore = create<ProjectState>()(
             room.id === roomId ? { ...room, instances: [...(room.instances || []), instance] } : room
           )
         };
+        FileSystemManager.saveProjectJson(updated.id, updated);
         return {
           activeProject: updated,
           selectedProject: state.selectedProject?.name === updated.name ? updated : state.selectedProject,
@@ -846,6 +874,47 @@ export const useProjectStore = create<ProjectState>()(
             project.iconSpriteId = ensureUUID(project.iconSpriteId);
           }
 
+          project.rooms = (project.rooms || []).map((room: any) => {
+            room.id = ensureUUID(room.id);
+            if (room.settings?.camera?.targetObjectId) {
+              room.settings.camera.targetObjectId = ensureUUID(room.settings.camera.targetObjectId);
+            }
+            room.instances = (room.instances || []).map((inst: any) => {
+              inst.id = ensureUUID(inst.id);
+              inst.objectId = ensureUUID(inst.objectId);
+              return inst;
+            });
+            return room;
+          });
+
+          if (project.mainRoomId) {
+            project.mainRoomId = ensureUUID(project.mainRoomId);
+          }
+
+          // Migrate logic listener references (new structure)
+          const migrateAction = (actionStr: string) => {
+            if (!actionStr) return actionStr;
+            const parts = actionStr.split(':');
+            const cmd = parts[0];
+            // Actions that reference object IDs
+            if (cmd === 'spawn' || cmd === 'create_instance' || cmd === 'destroy') {
+              if (parts[1]) return `${cmd}:${ensureUUID(parts[1])}${parts.slice(2).length ? ':' + parts.slice(2).join(':') : ''}`;
+            }
+            // Actions that reference room IDs
+            if (cmd === 'go_to_room') {
+              if (parts[1]) return `${cmd}:${ensureUUID(parts[1])}`;
+            }
+            // Actions that might reference sprite IDs
+            if (cmd === 'change_sprite' || cmd === 'set_animation') {
+              if (parts[1] && parts[1].includes('-')) { // Heuristic: IDs usually have dashes in this engine if they are UUIDs or migrated
+                 // But wait, many names don't have dashes. 
+                 // Actually, if it's in our sprite list, we should migrate it.
+                 // For now, let's just do objects and rooms which are most critical.
+              }
+            }
+            return actionStr;
+          };
+
           project.objects = (project.objects || []).map((obj: any) => {
             const newObjId = ensureUUID(obj.id);
             if (obj.appearance?.spriteId) {
@@ -863,27 +932,62 @@ export const useProjectStore = create<ProjectState>()(
               obj.combat.explosionSpriteId = ensureUUID(obj.combat.explosionSpriteId);
             }
 
-            // Logic references (actions that might target IDs)
-            if (obj.logic?.listeners) {
-              obj.logic.listeners = obj.logic.listeners.map((l: any) => {
-                if (l.action?.startsWith('spawn:')) {
-                  const parts = l.action.split(':');
-                  return { ...l, action: `spawn:${ensureUUID(parts[1])}` };
-                }
-                return l;
+            // Sound references
+            if (obj.sounds) {
+              Object.keys(obj.sounds).forEach(k => {
+                if ((obj.sounds as any)[k]) (obj.sounds as any)[k] = ensureUUID((obj.sounds as any)[k]);
               });
+            }
+
+            // Migrate logic listener references (new structure)
+            if (obj.logic?.listeners) {
+              obj.logic.listeners = obj.logic.listeners.map((l: any) => ({
+                ...l,
+                immediateActions: (l.immediateActions || []).map(migrateAction),
+                subConditions: (l.subConditions || []).map((sc: any) => ({
+                  ...sc,
+                  actions: (sc.actions || []).map(migrateAction),
+                  elseActions: (sc.elseActions || []).map(migrateAction)
+                }))
+              }));
             }
 
             return { ...obj, id: newObjId };
           });
 
-          project.rooms = (project.rooms || []).map((room: any) => {
-            room.instances = (room.instances || []).map((inst: any) => {
-              inst.id = ensureUUID(inst.id);
-              inst.objectId = ensureUUID(inst.objectId);
-              return inst;
-            });
-            return room;
+          // Add sprite ID migration to migrateAction
+          const originalMigrateAction = migrateAction;
+          const extendedMigrateAction = (actionStr: string) => {
+            let result = originalMigrateAction(actionStr);
+            if (!result) return result;
+            const parts = result.split(':');
+            const cmd = parts[0];
+            if (cmd === 'change_sprite' || cmd === 'set_animation') {
+              // If it's SPRITE_ID:ANIM or just SPRITE_ID
+              if (parts[1] && parts[1].includes('-')) {
+                // Heuristic: already a UUID, or looks like one. 
+                // But we should try to map it anyway.
+                parts[1] = ensureUUID(parts[1]);
+                return parts.join(':');
+              }
+              // If we have a colon and the first part is NOT a name we know, it might be an ID.
+              // This is tricky. Let's just trust ensureUUID for now.
+            }
+            return result;
+          };
+          // Apply extended migration to objects (re-mapping is safe)
+          project.objects.forEach((obj: any) => {
+            if (obj.logic?.listeners) {
+              obj.logic.listeners = obj.logic.listeners.map((l: any) => ({
+                ...l,
+                immediateActions: (l.immediateActions || []).map(extendedMigrateAction),
+                subConditions: (l.subConditions || []).map((sc: any) => ({
+                  ...sc,
+                  actions: (sc.actions || []).map(extendedMigrateAction),
+                  elseActions: (sc.elseActions || []).map(extendedMigrateAction)
+                }))
+              }));
+            }
           });
 
           // 3. Prepare Payloads

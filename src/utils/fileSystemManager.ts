@@ -60,5 +60,13 @@ export const FileSystemManager = {
   /**
    * Gets the assets directory for a project
    */
-  getAssetsDir: (projectId: string) => PROJECTS_DIR + projectId + '/assets/'
+  getAssetsDir: (projectId: string) => PROJECTS_DIR + projectId + '/assets/',
+
+  /**
+   * Deletes a project folder
+   */
+  deleteProjectFolder: async (projectId: string) => {
+    const projectDir = PROJECTS_DIR + projectId + '/';
+    await FileSystem.deleteAsync(projectDir, { idempotent: true });
+  }
 };

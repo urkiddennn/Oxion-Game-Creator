@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useProjectStore } from '../store/useProjectStore';
@@ -9,6 +9,12 @@ const Stack = createStackNavigator();
 
 export default function RootNavigator() {
   const activeProject = useProjectStore((state) => state.activeProject);
+  const closeProject = useProjectStore((state) => state.closeProject);
+
+  useEffect(() => {
+    // Force launchpad on startup
+    closeProject();
+  }, []);
 
   return (
     <NavigationContainer>

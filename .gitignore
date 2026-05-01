@@ -2,7 +2,9 @@
 
 # dependencies
 node_modules/
-
+.env.production
+.env.development
+.env
 # Expo
 .expo/
 dist/
@@ -39,3 +41,15 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+.html
+.md
+
+# documentation
+
+Oxion Game Creator_design_doc.docx
+Oxion_Documentation.html
+
+.env.production
+.env.development
+.env
