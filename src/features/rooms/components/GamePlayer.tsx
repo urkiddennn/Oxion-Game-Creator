@@ -147,7 +147,7 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
   const frameIndex = useDerivedValue(() => {
     'worklet';
     if (!hasAnim.value || animFrameCount.value <= 1) return 0;
-    
+
     const interval = 1000 / animFps.value;
     const elapsed = globalFrameTimer.value % (animFrameCount.value * interval);
     const frame = Math.floor(elapsed / interval);
@@ -215,17 +215,17 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
     }
 
     const trimmedTargetAnimName = targetAnimName.trim().toLowerCase();
-    
+
     // Find animation with robust fallback (case-insensitive and trimmed)
-    let foundAnim = targetSprite.animations?.find((a: any) => 
+    let foundAnim = targetSprite.animations?.find((a: any) =>
       a.name && a.name.trim().toLowerCase() === trimmedTargetAnimName
     );
-    
+
     // Fallback 1: If searching for 'idle' (or common defaults) and not found, take the first animation
     if (!foundAnim && (trimmedTargetAnimName === 'idle' || trimmedTargetAnimName === 'default') && targetSprite.animations?.length > 0) {
       foundAnim = targetSprite.animations[0];
     }
-    
+
     // Fallback 2: If we have multiple frames (assumed by grid) but no named animation, create a virtual one for the first row
     if (!foundAnim && targetSprite.grid?.enabled) {
       if (!targetSprite.animations?.length) {
@@ -235,9 +235,9 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
       }
     }
 
-    return foundAnim ? { 
-      anim: { ...foundAnim, frameCount: foundAnim.frameCount || 1, fps: foundAnim.fps || 10 }, 
-      sprite: targetSprite 
+    return foundAnim ? {
+      anim: { ...foundAnim, frameCount: foundAnim.frameCount || 1, fps: foundAnim.fps || 10 },
+      sprite: targetSprite
     } : null;
   }, [sprite, localAnimState, obj?.animations, obj?.appearance?.animationState, override, sprites]);
 
@@ -266,10 +266,10 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
     const fw = Math.max(1, currentSprite.grid?.frameWidth || width || 32);
     const fh = Math.max(1, currentSprite.grid?.frameHeight || height || 32);
     const fc = activeState?.anim?.frameCount || 1;
-    
+
     const baseW = imgDimensions.w || currentSprite.width || (fw * fc);
     const baseH = imgDimensions.h || currentSprite.height || fh;
-    
+
     return {
       w: baseW * (width / fw),
       h: baseH * (height / fh)
@@ -311,7 +311,7 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
     if (!content) return '';
 
     const contentTrimmed = content.trim().toLowerCase();
-    
+
     // Optimization: Cache lowercase keys for faster lookup
     const currentVarKeys = Object.keys(variables);
     if (varKeysCache.current.keys.length !== currentVarKeys.length) {
@@ -900,7 +900,12 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       if (!o) return false;
       const name = o.name?.toLowerCase() || '';
       const behavior = o.behavior?.toLowerCase() || '';
-      return name.includes('player') || behavior.includes('player');
+      // A player is either explicitly named/behaved as one, OR is the current camera target
+      return (
+        name.includes('player') || 
+        behavior.includes('player') || 
+        o.id === currentRoom?.settings?.camera?.targetId
+      );
     };
 
     const executeAction = (actionData: string | { cmd: string, parts: string[] }, body: Matter.Body, obj?: GameObject, source: string = 'unknown', otherBody?: Matter.Body) => {
@@ -970,7 +975,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       }
 
       if (cmd === 'jump') {
-        Matter.Body.setVelocity(body, { x: body.velocity.x, y: -(obj?.physics?.jumpStrength || 10) * 0.6 });
+        Matter.Body.setVelocity(body, { x: body.velocity.x, y: -Math.max(obj?.physics?.jumpStrength || 10, 13) });
       } else if (cmd === 'move_left') {
         Matter.Body.setVelocity(body, { x: -(obj?.physics?.moveSpeed || 5) * 0.8, y: body.velocity.y });
       } else if (cmd === 'move_right') {
@@ -1019,6 +1024,20 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         const name = parts[1];
         const val = resolveValue(parts[2], body, obj);
         updateLocalVar(body.label, name, val, obj?.variables?.local, true);
+      } else if (cmd === 'set_health') {
+        const val = resolveValue(parts[1], body, obj);
+        const info = (body as any).gameInfo;
+        if (info?.obj?.health) {
+          info.obj.health.current = Math.max(0, Math.min(info.obj.health.max, val));
+          setRestartKey(k => k + 1); // Trigger re-render to show health change
+        }
+      } else if (cmd === 'add_health') {
+        const val = resolveValue(parts[1], body, obj);
+        const info = (body as any).gameInfo;
+        if (info?.obj?.health) {
+          info.obj.health.current = Math.max(0, Math.min(info.obj.health.max, info.obj.health.current + val));
+          setRestartKey(k => k + 1);
+        }
       } else if (cmd === 'restart_room') {
         const now = Date.now();
         if (now - lastRestartRef.current > 1000) {
@@ -1456,7 +1475,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           for (const s of scripts) {
             if (
               s.startsWith(`collision:${otherObj.name}:`) ||
-              (otherObj.behavior && s.startsWith(`collision:${otherObj.behavior}:`))
+              (otherObj.behavior && s.startsWith(`collision:${otherObj.behavior}:`)) ||
+              s === `collision:${otherObj.name}` ||
+              (otherObj.behavior && s === `collision:${otherObj.behavior}`)
             ) {
               const action = s.split(' DO ')[1] || s.split(':').slice(2).join(':');
               if (action) {
@@ -1528,17 +1549,17 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       });
     });
 
-    Matter.Events.on(engine, 'collisionActive', (event) => {
-      event.pairs.forEach(pair => {
-        // Simple ground check: if collision normal is pointing up
-        if (pair.collision.normal.y < -0.5) {
-          const pbA = playerBodies.find(p => p.body.label === pair.bodyA.label);
-          if (pbA) pbA.onGround = true;
-          const pbB = playerBodies.find(p => p.body.label === pair.bodyB.label);
-          if (pbB) pbB.onGround = true;
-        }
-      });
-    });
+    // Direct ground check query (much more reliable than events)
+    const checkGroundDirect = (body: Matter.Body) => {
+      const pairs = engine.pairs.list;
+      for (let i = 0; i < pairs.length; i++) {
+        const pair = pairs[i];
+        if (!pair.isActive) continue;
+        if (pair.bodyA.id === body.id && pair.collision.normal.y > 0.1) return true;
+        if (pair.bodyB.id === body.id && pair.collision.normal.y < -0.1) return true;
+      }
+      return false;
+    };
 
     let frameId: number;
     let fpsFrames = 0;
@@ -1575,9 +1596,6 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         toRun.forEach(fn => fn());
       }
 
-      // Reset player ground state before each engine update or processing
-      playerBodies.forEach(pb => { (pb as any).onGround = false; });
-
       // 1. Run Physics Engine
       Matter.Engine.update(engine, 1000 / 60);
       physicsFrameCounter++;
@@ -1595,13 +1613,22 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         let nVx = b.velocity.x;
         let nVy = b.velocity.y;
 
-        // Jump Handling
+        // Jump Handling (Direct detection + Coyote Time + Jump Buffer)
+        const onGround = checkGroundDirect(b);
+        if (onGround) (pb as any).lastOnGroundTime = now;
+
+        const canJump = onGround || (now - ((pb as any).lastOnGroundTime || 0) < 300); // More generous 300ms
+        let didJump = false;
+
         if (inputJump.current === 1 || inputTap.current === 1) {
-          if (!pb.jumpedThisPress && (pb as any).onGround) {
-            nVy = -Math.max(c.jumpStrength || 10, 13);
-            DeviceEventEmitter.emit('builtin_jump', { targetId: b.label });
+          if (!pb.jumpedThisPress && canJump) {
+            // "Hard Jump": Physically lift the body 2 pixels to clear any floor friction/stuck state
+            Matter.Body.setPosition(b, { x: b.position.x, y: b.position.y - 2 });
+            // Set a powerful upward velocity
+            nVy = -Math.max(c.jumpStrength || 12, 18);
+            didJump = true;
+            pb.jumpedThisPress = true;
           }
-          pb.jumpedThisPress = true;
         } else {
           pb.jumpedThisPress = false;
         }
@@ -1609,20 +1636,28 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         // Horizontal Movement
         if (inputLeft.current === 1) {
           nVx = -(c.moveSpeed || 5) * 0.8;
-          DeviceEventEmitter.emit('builtin_left', { targetId: b.label });
         } else if (inputRight.current === 1) {
           nVx = (c.moveSpeed || 5) * 0.8;
-          DeviceEventEmitter.emit('builtin_right', { targetId: b.label });
         } else {
           nVx *= 0.85;
         }
 
         Matter.Body.setVelocity(b, { x: nVx, y: nVy });
 
-        // Update animation state based on velocity
+        // Emit events AFTER velocity is set so scripts can override it if they wish
+        if (didJump) {
+          DeviceEventEmitter.emit('builtin_jump', { targetId: b.label });
+        }
+        if (inputLeft.current === 1) {
+          DeviceEventEmitter.emit('builtin_left', { targetId: b.label });
+        } else if (inputRight.current === 1) {
+          DeviceEventEmitter.emit('builtin_right', { targetId: b.label });
+        }
+
+        // Update animation state based on velocity (fresh from body)
         let anim = 0; // idle
-        if (Math.abs(nVx) > 0.5) anim = 1; // move
-        if (Math.abs(nVy) > 1) anim = 2; // jump/fall
+        if (Math.abs(b.velocity.x) > 0.5) anim = 1; // move
+        if (Math.abs(b.velocity.y) > 1) anim = 2; // jump/fall
         if (pb.sv) pb.sv.animState.value = anim;
 
         // Combat
@@ -2072,8 +2107,16 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
               )}
               {currentRoom?.settings?.showControls?.jump !== false && (
                 <Pressable
-                  style={({ pressed }) => [styles.floatingBtn, styles.jumpBtn, pressed && { opacity: 0.7 }]}
-                  onPressIn={() => { inputJump.current = 1; }}
+                  style={({ pressed }) => [
+                    styles.floatingBtn,
+                    styles.jumpBtn,
+                    pressed && { opacity: 0.7, transform: [{ scale: 0.95 }] },
+                    inputJump.current === 1 && { backgroundColor: 'rgba(79, 172, 254, 0.8)' }
+                  ]}
+                  onPressIn={() => { 
+                    inputJump.current = 1; 
+                    DeviceEventEmitter.emit('on_jump_press');
+                  }}
                   onPressOut={() => { inputJump.current = 0; }}
                 >
                   <ChevronUp color="#fff" size={30} />

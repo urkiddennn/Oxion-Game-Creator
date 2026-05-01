@@ -216,7 +216,8 @@ export default function ObjectModals({
               <View style={styles.divider} />
               <Text style={styles.subSectionTitleCompact}>Built-in Movements</Text>
               {[
-                { id: 'builtin_jump', label: 'When Player Jumps' },
+                { id: 'builtin_jump', label: 'When Player Jumps (Built-in)' },
+                { id: 'on_jump_press', label: 'On Jump Button (Global)' },
                 { id: 'builtin_left', label: 'When Player Moves Left' },
                 { id: 'builtin_right', label: 'When Player Moves Right' },
                 { id: 'builtin_tap', label: 'When Screen Tapped' },
