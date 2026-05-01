@@ -490,7 +490,7 @@ export default function RoomsScreen() {
 
       {/* Main Content Area */}
       <View
-        style={styles.mainEditorArea}
+        style={[styles.mainEditorArea, { backgroundColor: currentRoom?.settings?.backgroundColor || '#1E2228' }]}
         onLayout={(e) => setViewport(e.nativeEvent.layout)}
       >
         <GestureDetector gesture={composedGesture}>
@@ -539,7 +539,7 @@ export default function RoomsScreen() {
                 height: roomHeight,
                 borderWidth: 2,
                 borderColor: theme.colors.primary,
-                backgroundColor: 'rgba(46, 51, 61, 0.4)',
+                backgroundColor: currentRoom?.settings?.backgroundColor || 'rgba(46, 51, 61, 0.4)',
                 pointerEvents: 'none',
                 zIndex: -1
               }} />
@@ -846,6 +846,33 @@ export default function RoomsScreen() {
                     settings: { ...(currentRoom.settings || {}), gravity: v }
                   })}
                 />
+                
+                <View style={{ marginTop: 12 }}>
+                  <Text style={[styles.settingLabel, { marginBottom: 8 }]}>Background Color</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                    {['#000000', '#2E333D', '#1a1c2c', '#5d275d', '#b13e53', '#ef7d57', '#ffcd75', '#a7f070', '#38b764', '#257179', '#29366f', '#3b5dc9', '#41a6f6', '#73eff7', '#f4f4f4', '#94b0c2'].map(c => (
+                      <TouchableOpacity
+                        key={c}
+                        style={[
+                          { width: 22, height: 22, borderRadius: 4, backgroundColor: c, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+                          currentRoom?.settings?.backgroundColor === c && { borderColor: theme.colors.primary, borderWidth: 2 }
+                        ]}
+                        onPress={() => currentRoom && updateRoom(currentRoom.id, {
+                          settings: { ...(currentRoom.settings || {}), backgroundColor: c }
+                        })}
+                      />
+                    ))}
+                  </View>
+                  <TextInput
+                    style={[styles.settingInput, { textAlign: 'left', width: '100%', paddingVertical: 6 }]}
+                    value={currentRoom?.settings?.backgroundColor || '#000000'}
+                    onChangeText={(c) => currentRoom && updateRoom(currentRoom.id, {
+                      settings: { ...(currentRoom.settings || {}), backgroundColor: c }
+                    })}
+                    placeholder="#HEX"
+                    placeholderTextColor={theme.colors.textMuted}
+                  />
+                </View>
               </View>
 
               <View style={{ marginTop: 24 }}>

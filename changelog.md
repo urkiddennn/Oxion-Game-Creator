@@ -1,5 +1,33 @@
 # Changelog
 
+## [2026-05-01] - Camera Follow & Coordinate Fixes
+### Fixed
+- **Camera Tracking Failure**: Fixed the issue where the camera viewport wouldn't follow the player by aligning world-to-screen coordinate mapping (incorporating screen scale).
+- **Viewport Misalignment**: Removed default centering from the game viewport which caused the canvas to be offset incorrectly when moving the camera.
+- **Robust Target Search**: Improved the target body resolution logic to reliably find the player by ID, Behavior, or Name (case-insensitive) in every frame.
+- **Initial Camera Snapping**: Added logic to snap the camera to the player on the first frame of room entry, eliminating jarring jumps.
+- **Duplicate Variable Error**: Fixed the "Cannot redeclare block-scoped variable" error for `isPlayingRef`.
+
+### Added
+- **Dynamic Camera Following**: Re-implemented the camera tracking system with smooth LERP (Linear Interpolation) for a professional feel.
+- **Clamped Viewport**: The camera now automatically stays within room boundaries, preventing the "black void" from showing.
+- **Adaptive Resolution**: Added a reference resolution system (800x600) that scales perfectly regardless of room size, ensuring scrolling works in both tiny and massive rooms.
+
+### Fixed
+- **Performance Leak (Re-render Storm)**: Fixed a critical performance issue where every object re-rendered on every frame.
+  - Implemented `React.memo` with a custom comparison that skips re-renders for static objects (walls, tiles) during variable updates.
+  - Throttled UI state updates to 30 FPS while maintaining 60 FPS physics.
+- **Camera Transform Order**: Fixed a bug where zooming would "offset" the camera incorrectly by re-ordering translation and scale operations.
+- **Logic Culling**: Finalized the logic culling system. Objects outside the visible viewport now stop processing scripts and rendering, drastically boosting FPS.
+
+## [2026-05-01] - Camera Follow & Viewport Culling
+### Added
+- **Camera Follow**: The game engine now reads Room camera settings (`targetObjectId`, `smoothing`, `zoom`, `enabled`) and smoothly follows the target object using per-frame lerp. Enable it from the Room Settings panel in the editor.
+- **Viewport Culling**: Objects (both static room instances and dynamically spawned objects) are now skipped during render if they fall outside the current camera viewport + a 64px margin. This significantly reduces draw calls in large rooms.
+
+### Changed
+- **Canvas rendering**: The game canvas is now an `Animated.View` driven by `cameraX`/`cameraY` shared values, enabling zero-lag camera movement entirely on the UI thread.
+
 ## [2026-05-01] - Visual Logic Engine Full Synchronization
 ### Fixed
 - **`on_start` Execution**: Fixed `on_start` listener actions (e.g., `var_set:var_0:0`) not firing when created via the Visual Logic Editor. Actions are now deferred 100ms after engine initialization to ensure React state is fully settled before scripts run.

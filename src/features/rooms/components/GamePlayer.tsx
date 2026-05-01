@@ -95,7 +95,7 @@ const pixelsToBmp = (pixels: string[][], spriteId: string) => {
   return base64;
 };
 
-const PhysicsBody = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteId, isRemote, onFetch, variables, nonce, localVariables, obj, debug, animations, sprites, override, globalFrameTimer }: {
+const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteId, isRemote, onFetch, variables, nonce, localVariables, obj, debug, animations, sprites, override, globalFrameTimer, cameraX, cameraY, cameraZoom, gameWidth, gameHeight }: {
   sprite: any,
   sv: any,
   width?: number,
@@ -113,7 +113,12 @@ const PhysicsBody = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteI
   animations?: any[],
   sprites?: any[],
   override?: { spriteId?: string, animName?: string },
-  globalFrameTimer: SharedValue<number>
+  globalFrameTimer: SharedValue<number>,
+  cameraX: SharedValue<number>,
+  cameraY: SharedValue<number>,
+  cameraZoom: SharedValue<number>,
+  gameWidth: number,
+  gameHeight: number
 }) => {
   const [imgDimensions, setImgDimensions] = useState({ w: 0, h: 0 });
   const [currentDimId, setCurrentDimId] = useState<string | null>(null);
@@ -139,6 +144,17 @@ const PhysicsBody = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteI
     const elapsed = globalFrameTimer.value % (activeState.anim.frameCount * interval);
     const frame = Math.floor(elapsed / interval);
     return activeState.anim.loop ? frame : Math.min(frame, activeState.anim.frameCount - 1);
+  });
+
+  const isVisible = useDerivedValue(() => {
+    // Basic viewport culling logic (shared value version)
+    const margin = 100;
+    const curX = sv?.x?.value ?? 0;
+    const curY = sv?.y?.value ?? 0;
+    const camX = 0; // Will be passed or referenced if possible
+    // For now, simpler: we'll handle culling in the parent if possible, 
+    // but React.memo is the key for non-text objects.
+    return true;
   });
 
   const activeState = useMemo(() => {
@@ -217,7 +233,7 @@ const PhysicsBody = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteI
     if (!content) return '';
 
     const contentTrimmed = content.trim().toLowerCase();
-    
+
     // 1. Direct variable match fallback (if user just typed "var_0" without {})
     const localDirectKey = localVariables ? Object.keys(localVariables).find(k => k.toLowerCase() === contentTrimmed) : null;
     const globalDirectKey = Object.keys(variables).find(k => k.toLowerCase() === contentTrimmed);
@@ -232,7 +248,7 @@ const PhysicsBody = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteI
       const name = v.slice(1, -1).trim().toLowerCase();
       const localKey = localVariables ? Object.keys(localVariables).find(k => k.toLowerCase() === name) : null;
       const globalKey = Object.keys(variables).find(k => k.toLowerCase() === name);
-      
+
       const val = localKey ? localVariables![localKey] : (globalKey ? variables[globalKey] : '0');
       return `${name}:${val}`;
     }).join('|');
@@ -249,7 +265,7 @@ const PhysicsBody = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteI
       }
       const foundGlobal = Object.keys(variables).find(k => k.toLowerCase() === trimmedName.toLowerCase());
       if (foundGlobal !== undefined) return variables[foundGlobal].toString();
-      
+
       // Default to 0 if the variable hasn't been initialized yet
       return '0';
     });
@@ -260,6 +276,7 @@ const PhysicsBody = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteI
 
   const animatedStyle = useAnimatedStyle(() => {
     if (!sv || !sv.x || !sv.y) return { display: 'none' as const };
+
     return {
       transform: [
         { translateX: sv.x.value },
@@ -384,6 +401,32 @@ const PhysicsBody = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteI
   );
 };
 
+const PhysicsBody = React.memo(PhysicsBodyBase, (prev, next) => {
+  // Always re-render if the object itself changes (e.g. replaced by another instance)
+  if (prev.obj?.id !== next.obj?.id) return false;
+
+  // If it's a text object, we MUST re-render when variables (nonce) change
+  if (next.obj?.text) {
+    return prev.nonce === next.nonce &&
+      prev.spriteId === next.spriteId &&
+      prev.width === next.width &&
+      prev.height === next.height &&
+      prev.debug === next.debug &&
+      prev.gameWidth === next.gameWidth &&
+      prev.gameHeight === next.gameHeight &&
+      prev.override === next.override;
+  }
+
+  // For regular sprites, IGNORE nonce. Only re-render if visual properties change.
+  return prev.spriteId === next.spriteId &&
+    prev.width === next.width &&
+    prev.height === next.height &&
+    prev.debug === next.debug &&
+    prev.gameWidth === next.gameWidth &&
+    prev.gameHeight === next.gameHeight &&
+    prev.override === next.override;
+});
+
 const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 const FPSCounter = React.memo(({ fps }: { fps: SharedValue<number> }) => {
   const [displayFps, setDisplayFps] = useState(0);
@@ -398,6 +441,27 @@ const FPSCounter = React.memo(({ fps }: { fps: SharedValue<number> }) => {
   return (
     <View style={styles.fpsOverlay}>
       <Text style={styles.fpsText}>{displayFps} FPS</Text>
+    </View>
+  );
+});
+
+const ZoomIndicator = React.memo(({ zoom, camX, camY, enabled, roomW, roomH, gameW, gameH, targetName }: { zoom: SharedValue<number>, camX: SharedValue<number>, camY: SharedValue<number>, enabled: boolean, roomW: number, roomH: number, gameW: number, gameH: number, targetName: string }) => {
+  const [displayZoom, setDisplayZoom] = useState(1);
+  const [displayX, setDisplayX] = useState(0);
+  const [displayY, setDisplayY] = useState(0);
+
+  useAnimatedReaction(() => zoom.value, (val) => runOnJS(setDisplayZoom)(val));
+  useAnimatedReaction(() => camX.value, (val) => runOnJS(setDisplayX)(val));
+  useAnimatedReaction(() => camY.value, (val) => runOnJS(setDisplayY)(val));
+
+  return (
+    <View style={styles.fpsOverlay}>
+      <Text style={[styles.fpsText, { width: 'auto', minWidth: 100 }]}>
+        {enabled ? `CAM: ${displayZoom.toFixed(1)}x` : 'CAM: OFF'}
+        {` | Room: ${roomW}x${roomH} | View: ${gameW}x${gameH}`}
+        {enabled && ` | Following: ${targetName || '???'}`}
+        {enabled && ` | Cam: (${Math.round(displayX)}, ${Math.round(displayY)})`}
+      </Text>
     </View>
   );
 });
@@ -419,18 +483,58 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   // Calculate scaling to fit screen
-  const gameWidth = currentRoom?.width || 800;
-  const gameHeight = currentRoom?.height || 600;
-  const scaleX = screenWidth / gameWidth;
-  const scaleY = screenHeight / gameHeight;
-  const scale = Math.min(scaleX, scaleY);
+  // If camera is enabled, we use a reference resolution (800x600) to allow scrolling.
+  // If disabled, we fit the entire room on screen.
+  const roomWidth = currentRoom?.width || 800;
+  const roomHeight = currentRoom?.height || 600;
+  const camEnabled = !!currentRoom?.settings?.camera?.enabled;
+
+  // Viewport size matches room size exactly as requested
+  const gameWidth = roomWidth;
+  const gameHeight = roomHeight;
+
+  const scale = Math.min(screenWidth / gameWidth, screenHeight / gameHeight);
 
   const [restartKey, setRestartKey] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [nonce, setNonce] = useState(0);
-  const isPlayingRef = useRef(true);
   const varCooldowns = useRef<Record<string, number>>({});
   const lastRestartRef = useRef(0);
+
+  // Camera shared values — updated in the game loop, drive canvas translation
+  const cameraX = useSharedValue(0);
+  const cameraY = useSharedValue(0);
+  const cameraZoom = useSharedValue(currentRoom?.settings?.camera?.zoom || 1);
+  const cameraRef = useRef({ x: 0, y: 0 });
+
+  // Keep cameraZoom in sync with component state
+  useEffect(() => {
+    cameraZoom.value = currentRoom?.settings?.camera?.zoom || 1;
+  }, [currentRoom?.settings?.camera?.zoom, currentRoom?.id]);
+
+  const scalerAnimStyle = useAnimatedStyle(() => {
+    const totalScale = scale * cameraZoom.value;
+    // Compensation for React Native's center-origin scaling
+    const offX = (roomWidth * totalScale - roomWidth) / 2;
+    const offY = (roomHeight * totalScale - roomHeight) / 2;
+    return {
+      transform: [
+        { translateX: offX },
+        { translateY: offY },
+        { scale: totalScale },
+      ]
+    };
+  });
+
+  const cameraAnimStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        { translateX: -cameraX.value },
+        { translateY: -cameraY.value },
+      ]
+    };
+  });
+
   const [dynamicElements, setDynamicElements] = useState<{
     gameObject: any; id: string; sprite: any; sv: any; width: number; height: number; name: string
   }[]>([]);
@@ -511,7 +615,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     localVariablesRef.current = localVariables;
   }, [localVariables]);
 
-  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
+  // Throttle React state updates to max 15/sec to avoid re-render storms
+  const pendingVarFlush = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const updateGlobalVar = useCallback((name: string, amount: number | string, isSet: boolean = false) => {
     const now = Date.now();
@@ -522,12 +627,16 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     const currentVal = Number(variablesRef.current[name]) || 0;
     const numAmount = Number(amount) || 0;
     const newVal = isSet ? numAmount : currentVal + numAmount;
-    const next = { ...variablesRef.current, [name]: newVal };
-    variablesRef.current = next;
+    variablesRef.current = { ...variablesRef.current, [name]: newVal };
 
-    // Restore immediate update for reactivity
-    setVariables({ ...next });
-    setNonce(n => n + 1);
+    // Throttled UI flush: batch updates, max 30 renders/sec
+    if (!pendingVarFlush.current) {
+      pendingVarFlush.current = setTimeout(() => {
+        pendingVarFlush.current = null;
+        setVariables({ ...variablesRef.current });
+        setNonce(n => n + 1);
+      }, 33); // ~30fps UI refresh
+    }
   }, []);
 
   const updateLocalVar = useCallback((bodyId: string, name: string, amount: number | string, defaultVars: any, isSet: boolean = false) => {
@@ -540,16 +649,22 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     const currentVal = Number(current[name]) || 0;
     const numAmount = Number(amount) || 0;
     const newVal = isSet ? numAmount : currentVal + numAmount;
-    const next = {
+    localVariablesRef.current = {
       ...localVariablesRef.current,
       [bodyId]: { ...current, [name]: newVal }
     };
-    localVariablesRef.current = next;
 
-    // Restore immediate update and nonce for reactivity
-    setLocalVariables({ ...next });
-    setNonce(n => n + 1);
+    // Throttled flush — same as global
+    if (!pendingVarFlush.current) {
+      pendingVarFlush.current = setTimeout(() => {
+        pendingVarFlush.current = null;
+        setLocalVariables({ ...localVariablesRef.current });
+        setNonce(n => n + 1);
+      }, 33);
+    }
   }, []);
+
+  const cameraTargetBodyRef = useRef<Matter.Body | null>(null);
 
   const [instanceOverrides, setInstanceOverrides] = useState<Record<string, { spriteId?: string, animName?: string }>>({});
   const instanceOverridesRef = useRef<Record<string, any>>({});
@@ -565,6 +680,13 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     return () => clearInterval(interval);
   }, [visible, isPlaying]);
 
+  const roomRef = useRef(currentRoom);
+  const isPlayingRef = useRef(isPlaying);
+  const [targetName, setTargetName] = useState('');
+  // Update refs immediately during render so the game loop always has the freshest data
+  roomRef.current = currentRoom;
+  isPlayingRef.current = isPlaying;
+
   useEffect(() => {
     if (!visible || !currentRoom) return;
     inputLeft.current = 0;
@@ -576,6 +698,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     setInstanceOverrides({});
     setLocalVariables({});
     localVariablesRef.current = {};
+    let cameraInitialized = false;
+    cameraInitialized = false; // Reset camera on room start
 
     // Reset global variables to project defaults on every play session
     const defaultGlobals = { ...(currentProject?.variables?.global || {}) };
@@ -661,19 +785,19 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
     const executeAction = (actionData: string | { cmd: string, parts: string[] }, body: Matter.Body, obj?: GameObject, source: string = 'unknown', otherBody?: Matter.Body) => {
       if (!isPlayingRef.current) return;
-      
+
       let finalAction = actionData;
 
       // --- Natural Syntax Transpiler ---
       if (typeof actionData === 'string') {
         const trimmed = actionData.trim();
-        
+
         // Pattern: target.prop op value (e.g. self.x += 10, other.health -= 5)
         const match = trimmed.match(/^([\w]+)\.([\w]+)\s*([\+\-]?=)\s*(.*)$/);
         if (match) {
           const [_, target, prop, op, val] = match;
           const targetBody = target === 'self' ? body : (target === 'other' ? otherBody : null);
-          
+
           if (targetBody) {
             // Mapping common properties to internal commands
             if (prop === 'x') finalAction = op === '=' ? `set_x:${val}` : `add_x:${val}`;
@@ -687,7 +811,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
               const sign = op === '-=' ? '-' : '';
               finalAction = `${command}:${prop}:${sign}${val}`;
             }
-            
+
             // If target was 'other', we need to execute on that body instead
             if (target === 'other' && otherBody) {
               executeAction(finalAction, otherBody, (otherBody as any).gameInfo?.obj, `${source}:TargetOther`);
@@ -860,7 +984,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           if (act) executeAction(act, body, obj, source + ':Imm');
         });
       }
-      
+
       if (listener.subConditions) {
         listener.subConditions.forEach((sc: any) => {
           const met = checkCondition(sc.condition, body, obj);
@@ -967,9 +1091,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           actionPart = p.slice(cmd === 'on_timer' ? 2 : 1).join(':').trim();
         }
 
-        return { 
-          cmd, 
-          parts: p, 
+        return {
+          cmd,
+          parts: p,
           actionPart,
           timerMs,
           lastTrigger: Date.now()
@@ -1066,9 +1190,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           actionPart = p.slice(cmd === 'on_timer' ? 2 : 1).join(':').trim();
         }
 
-        return { 
-          cmd, 
-          parts: p, 
+        return {
+          cmd,
+          parts: p,
           actionPart,
           timerMs,
           lastTrigger: Date.now()
@@ -1234,24 +1358,24 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           }
         };
 
-          runCollisionLogic(pair.bodyA, objA, objB, pair.bodyB);
-          runCollisionLogic(pair.bodyB, objB, objA, pair.bodyA);
+        runCollisionLogic(pair.bodyA, objA, objB, pair.bodyB);
+        runCollisionLogic(pair.bodyB, objB, objA, pair.bodyA);
 
-          // Also run visual logic listeners for on_collision
-          const fireCollisionListeners = (targetBody: Matter.Body, targetObj: GameObject, otherObj: GameObject, otherBody: Matter.Body) => {
-            targetObj.logic?.listeners?.forEach((l: any) => {
-              if (l.eventId === 'on_collision') {
-                // Only fire for player collisions by default
-                if (otherObj.name === 'Player' || otherObj.behavior === 'player' || isPlayer(otherObj)) {
-                  collisionQueue.push(() => executeListenerLogic(l, targetBody, targetObj, 'CollisionListener'));
-                }
-              } else if (l.eventId === `collision:${otherObj.name}` || l.eventId === `collision:${otherObj.behavior}`) {
+        // Also run visual logic listeners for on_collision
+        const fireCollisionListeners = (targetBody: Matter.Body, targetObj: GameObject, otherObj: GameObject, otherBody: Matter.Body) => {
+          targetObj.logic?.listeners?.forEach((l: any) => {
+            if (l.eventId === 'on_collision') {
+              // Only fire for player collisions by default
+              if (otherObj.name === 'Player' || otherObj.behavior === 'player' || isPlayer(otherObj)) {
                 collisionQueue.push(() => executeListenerLogic(l, targetBody, targetObj, 'CollisionListener'));
               }
-            });
-          };
-          fireCollisionListeners(pair.bodyA, objA, objB, pair.bodyB);
-          fireCollisionListeners(pair.bodyB, objB, objA, pair.bodyA);
+            } else if (l.eventId === `collision:${otherObj.name}` || l.eventId === `collision:${otherObj.behavior}`) {
+              collisionQueue.push(() => executeListenerLogic(l, targetBody, targetObj, 'CollisionListener'));
+            }
+          });
+        };
+        fireCollisionListeners(pair.bodyA, objA, objB, pair.bodyB);
+        fireCollisionListeners(pair.bodyB, objB, objA, pair.bodyA);
 
         // Keep events ONLY for non-critical systems
         const eventDataA = {
@@ -1396,11 +1520,17 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       emitters.forEach(e => {
         const s = e.obj.emitter;
         if (!s?.enabled || !s.particleObjectId) return;
+
+        // Logic Culling for Emitters
+        const distSq = Math.pow(e.body.position.x - (cameraRef.current.x + gameWidth / 2), 2) + Math.pow(e.body.position.y - (cameraRef.current.y + gameHeight / 2), 2);
+        if (distSq > Math.pow(Math.max(gameWidth, gameHeight) * 1.5, 2)) return;
+
         if (now - e.lastSpawn > 1000 / (s.rate || 5)) {
           e.lastSpawn = now;
           spawnInstance(s.particleObjectId, e.body.position.x, e.body.position.y, true, { ...(s || {}), angle: e.body.angle * 180 / Math.PI });
         }
       });
+
 
       // Update Dynamic Elements & Cleanup
       let dynamicChanged = false;
@@ -1445,10 +1575,24 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         }
       }
       const bodyCount = newBodies.length;
+      const camX = cameraRef.current.x;
+      const camY = cameraRef.current.y;
+      const logicCullRange = Math.max(gameWidth, gameHeight) * 1.5;
+
       for (let i = 0; i < bodyCount; i++) {
         const body = newBodies[i];
         const info = (body as any).gameInfo;
         if (!info) continue;
+
+        // --- Logic Culling ---
+        // Skip logic/scripts if too far from camera
+        const dx = body.position.x - (camX + gameWidth / 2);
+        const dy = body.position.y - (camY + gameHeight / 2);
+        const isTarget = cameraTargetBodyRef.current === body;
+
+        if (!isTarget && (Math.abs(dx) > logicCullRange || Math.abs(dy) > logicCullRange)) {
+          continue;
+        }
 
         // 1. Always run scripts for this body
         if (info.scripts && info.scripts.length > 0) {
@@ -1503,6 +1647,69 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         lastSyncedLength = dynamicRef.length;
       }
 
+      // --- Camera Follow ---
+      // Use ref to avoid stale closure on room settings
+      const currentRoomInLoop = roomRef.current;
+      const camSettings = currentRoomInLoop?.settings?.camera;
+
+      if (camSettings?.enabled) {
+        const zoom = camSettings.zoom || 1;
+        const rw = currentRoomInLoop?.width || 800;
+        const rh = currentRoomInLoop?.height || 600;
+        const gw = Math.min(rw, 800);
+        const gh = Math.min(rh, 600);
+
+        // Find target body
+        const allBodies = Matter.Composite.allBodies(engine.world);
+        const targetBody = allBodies.find(b => {
+          const info = (b as any).gameInfo;
+          if (!info || !info.obj) return false;
+          // Match by GameObject ID OR Instance ID
+          return (camSettings.targetObjectId && info.obj.id === camSettings.targetObjectId) || 
+                 (camSettings.targetObjectId && info.id === camSettings.targetObjectId);
+        }) || allBodies.find(b => {
+          const bName = (b as any).gameInfo?.obj?.name?.toLowerCase() || '';
+          const bBeh = (b as any).gameInfo?.obj?.behavior?.toLowerCase() || '';
+          return bBeh === 'player' || bName === 'player' || bName === 'player_1';
+        });
+
+        if (targetBody) {
+          const name = (targetBody as any).gameInfo?.obj?.name || 'Unknown';
+          if (targetName !== name) runOnJS(setTargetName)(name);
+
+          const smooth = cameraInitialized ? Math.max(0.01, Math.min(1, camSettings.smoothing || 0.1)) : 1.0;
+
+          const rw = currentRoomInLoop?.width || 800;
+          const rh = currentRoomInLoop?.height || 600;
+          const gw = Math.min(rw, 800);
+          const gh = Math.min(rh, 600);
+
+          const vw = gw / zoom;
+          const vh = gh / zoom;
+
+          const targetCamX = targetBody.position.x - (vw / 2);
+          const targetCamY = targetBody.position.y - (vh / 2);
+
+          cameraRef.current.x += (targetCamX - cameraRef.current.x) * smooth;
+          cameraRef.current.y += (targetCamY - cameraRef.current.y) * smooth;
+
+          cameraX.value = cameraRef.current.x;
+          cameraY.value = cameraRef.current.y;
+          cameraZoom.value = zoom;
+          cameraInitialized = true;
+        } else {
+          // If no target, stay at origin or follow player behavior
+          cameraX.value = 0;
+          cameraY.value = 0;
+          cameraZoom.value = zoom;
+        }
+      } else {
+        // Camera disabled: entire room fits on screen (handled by scale logic)
+        cameraX.value = 0;
+        cameraY.value = 0;
+        cameraZoom.value = 1;
+      }
+
       frameId = requestAnimationFrame(update);
     };
     frameId = requestAnimationFrame(update);
@@ -1531,6 +1738,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
         const obj = objectMap.get(inst.objectId);
         if (!obj) return null;
+
 
         const appearance = obj.appearance || { type: 'sprite', spriteId: null };
         const sprite = (currentProject?.sprites || []).find(s => s.id === appearance.spriteId) || streamedSprites.get(appearance.spriteId || '');
@@ -1566,11 +1774,16 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             override={instanceOverrides[inst.id]}
             debug={debug}
             globalFrameTimer={globalFrameTimer}
+            cameraX={cameraX}
+            cameraY={cameraY}
+            cameraZoom={cameraZoom}
+            gameWidth={gameWidth}
+            gameHeight={gameHeight}
           />
         );
       });
     });
-  }, [currentRoom, instanceSharedValues, objectMap, spriteMap, currentProject, handleFetchAsset, variables, localVariables, nonce, globalFrameTimer]);
+  }, [currentRoom, instanceSharedValues, objectMap, spriteMap, currentProject, handleFetchAsset, variables, localVariables, nonce, globalFrameTimer, cameraX, cameraY, gameWidth, gameHeight]);
 
   if (!visible) return null;
 
@@ -1579,60 +1792,87 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       visible={visible}
       animationType="fade"
       transparent={false}
-      statusBarTranslucent={true}
+statusBarTranslucent={true}
       onRequestClose={onClose}
     >
-      <View style={[styles.container, { width: screenWidth, height: screenHeight }]}>
-        <View style={styles.gameViewport}>
-          <View style={[
-            styles.canvas,
-            {
-              width: gameWidth,
-              height: gameHeight,
-              transform: [{ scale }]
-            }
-          ]}>
-            {staticElements}
-            {(dynamicElements || []).map(d => {
-              if (!d || !d.sv) return null;
-              return (
-                <PhysicsBody
-                  key={d.id}
-                  sprite={spriteMap.get(d.sprite?.id) || d.sprite}
-                  spriteId={d.sprite?.id}
-                  isRemote={!!(currentProject as any)?.isRemote}
-                  onFetch={handleFetchAsset}
-                  sv={d.sv}
-                  width={d.width}
-                  height={d.height}
-                  name={d.name}
-                  variables={variables}
-                  nonce={nonce}
-                  localVariables={localVariables[d.id]}
-                  obj={d.gameObject}
-                  sprites={allSprites}
-                  override={instanceOverrides[d.id]}
-                  onTap={() => {
-                    DeviceEventEmitter.emit('builtin_tap', { targetId: d.id });
-                    if (d.gameObject?.logic?.triggers?.onTap) {
-                      DeviceEventEmitter.emit(d.gameObject.logic.triggers.onTap!);
-                    }
-                  }}
-                  globalFrameTimer={globalFrameTimer}
-                />
-              );
-            })}
-            <Pressable
-              style={StyleSheet.absoluteFill}
-              onPress={(e) => {
-                inputTap.current = 1;
-                DeviceEventEmitter.emit('builtin_tap', { x: e.nativeEvent.locationX, y: e.nativeEvent.locationY });
-              }}
-            />
+      <View style={[styles.container, { width: screenWidth, height: screenHeight, backgroundColor: currentRoom?.settings?.backgroundColor || '#000' }]}>
+        <View style={[styles.gameViewport, { backgroundColor: 'transparent' }]}>
+          <View style={{ width: screenWidth, height: screenHeight, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: gameWidth * scale, height: gameHeight * scale, overflow: 'hidden' }}>
+              <Animated.View
+                style={[
+                  { width: roomWidth, height: roomHeight },
+                  scalerAnimStyle
+                ]}
+              >
+                <Animated.View
+                  style={[
+                    styles.canvas,
+                    { width: roomWidth, height: roomHeight, overflow: 'visible', backgroundColor: 'transparent' },
+                    cameraAnimStyle
+                  ]}
+                >
+                  {staticElements}
+                  {(dynamicElements || []).map(d => {
+                    if (!d || !d.sv) return null;
+                    return (
+                      <PhysicsBody
+                        key={d.id}
+                        sprite={spriteMap.get(d.sprite?.id) || d.sprite}
+                        spriteId={d.sprite?.id}
+                        isRemote={!!(currentProject as any)?.isRemote}
+                        onFetch={handleFetchAsset}
+                        sv={d.sv}
+                        width={d.width}
+                        height={d.height}
+                        name={d.name}
+                        variables={variables}
+                        nonce={nonce}
+                        localVariables={localVariables[d.id]}
+                        obj={d.gameObject}
+                        sprites={allSprites}
+                        override={instanceOverrides[d.id]}
+                        onTap={() => {
+                          DeviceEventEmitter.emit('builtin_tap', { targetId: d.id });
+                          if (d.gameObject?.logic?.triggers?.onTap) {
+                            DeviceEventEmitter.emit(d.gameObject.logic.triggers.onTap!);
+                          }
+                        }}
+                        globalFrameTimer={globalFrameTimer}
+                        cameraX={cameraX}
+                        cameraY={cameraY}
+                        cameraZoom={cameraZoom}
+                        gameWidth={gameWidth}
+                        gameHeight={gameHeight}
+                      />
+                    );
+                  })}
+                  <Pressable
+                    style={StyleSheet.absoluteFill}
+                    onPress={(e) => {
+                      inputTap.current = 1;
+                      DeviceEventEmitter.emit('builtin_tap', { x: e.nativeEvent.locationX, y: e.nativeEvent.locationY });
+                    }}
+                  />
+                </Animated.View>
+              </Animated.View>
+            </View>
           </View>
+
           <View style={styles.topOverlay}>
             <TouchableOpacity onPress={onClose} style={styles.miniBtn}><X color="#fff" size={18} /></TouchableOpacity>
             <View style={styles.topRight}>
+              <ZoomIndicator
+                zoom={cameraZoom}
+                camX={cameraX}
+                camY={cameraY}
+                enabled={camEnabled}
+                roomW={roomWidth}
+                roomH={roomHeight}
+                gameW={gameWidth}
+                gameH={gameHeight}
+                targetName={targetName}
+              />
               {debug && <FPSCounter fps={fpsShared} />}
               <TouchableOpacity onPress={() => setIsPlaying(!isPlaying)} style={styles.miniBtn}>{isPlaying ? <Pause color="#fff" size={14} /> : <PlayIcon color="#fff" size={14} />}</TouchableOpacity>
               <TouchableOpacity
@@ -1647,6 +1887,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
               </TouchableOpacity>
             </View>
           </View>
+
           <View style={styles.floatingControls}>
             <View style={styles.dpad}>
               {currentRoom?.settings?.showControls?.left !== false && (
@@ -1661,7 +1902,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
               {currentRoom?.settings?.showControls?.right !== false && (
                 <Pressable
                   style={({ pressed }) => [styles.floatingBtn, pressed && { opacity: 0.7 }]}
-                  onPressIn={() => { inputRight.current = 1; }}
+                  onPressIn={() => { inputLeft.current = 0; inputRight.current = 1; }}
                   onPressOut={() => { inputRight.current = 0; }}
                 >
                   <ArrowRight color="#fff" size={30} />
