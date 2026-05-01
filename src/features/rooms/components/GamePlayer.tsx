@@ -807,6 +807,11 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
   useEffect(() => {
     if (!visible || !currentRoom) return;
+    
+    const isActiveRef = { current: true };
+    let roomStartTime = Date.now();
+    globalFrameTimer.value = 0; // Reset timer immediately on room start/restart
+
     inputLeft.current = 0;
     inputRight.current = 0;
     inputJump.current = 0;
@@ -818,15 +823,12 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     setLocalVariables({});
     localVariablesRef.current = {};
     let cameraInitialized = false;
-    cameraInitialized = false; // Reset camera on room start
 
     // Reset global variables to project defaults on every play session
     const defaultGlobals = { ...(currentProject?.variables?.global || {}) };
     variablesRef.current = defaultGlobals;
     setVariables(defaultGlobals);
     varCooldowns.current = {};
-
-    const isActiveRef = { current: true };
 
     const engine = Matter.Engine.create({
       enableSleeping: false,
@@ -1297,7 +1299,6 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     };
 
     // Declare roomStartTime BEFORE the instances loop so spawnTime is set correctly
-    const roomStartTime = Date.now();
     const collisionCooldowns = new Map<string, number>();
 
     (currentRoom?.instances || []).forEach((inst: any, index: number) => {
@@ -1892,6 +1893,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       Matter.Events.off(engine);
       Matter.Engine.clear(engine);
       Matter.World.clear(engine.world, false);
+      cameraTargetBodyRef.current = null;
     };
   }, [visible, currentRoom?.id, restartKey, instanceSharedValues, allSprites, allAnimations]);
 
@@ -1926,7 +1928,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
         return (
           <PhysicsBody
-            key={inst.id}
+            key={`${inst.id}-${restartKey}`}
             sprite={sprite}
             spriteId={appearance.spriteId || undefined}
             sprites={allSprites}
@@ -1993,7 +1995,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                     if (!d || !d.sv) return null;
                     return (
                       <PhysicsBody
-                        key={d.id}
+                        key={`${d.id}-${restartKey}`}
                         sprite={spriteMap.get(d.sprite?.id) || d.sprite}
                         spriteId={d.sprite?.id}
                         isRemote={!!(currentProject as any)?.isRemote}
