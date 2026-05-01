@@ -709,12 +709,14 @@ export default function ObjectInspectorModal({
                                 </ScrollView>
                               </PropertyRow>
 
-                              <PropertyRow label="Stats">
-                                <View style={{ flex: 1, flexDirection: 'row', gap: 4 }}>
-                                  <InputGroup label="QTY" value={safeObject.combat.maxBullets.toString()} onChange={(v: string) => updateField('combat.maxBullets', parseInt(v) || 0)} keyboardType="numeric" />
-                                  <InputGroup label="DMG" value={safeObject.combat.damage.toString()} onChange={(v: string) => updateField('combat.damage', parseInt(v) || 0)} keyboardType="numeric" />
-                                  <InputGroup label="SPD" value={safeObject.combat.shootSpeed.toString()} onChange={(v: string) => updateField('combat.shootSpeed', parseFloat(v) || 0)} keyboardType="numeric" />
-                                </View>
+                              <PropertyRow label="Max Bullets">
+                                <InputGroup label="QTY" value={safeObject.combat.maxBullets.toString()} onChange={(v: string) => updateField('combat.maxBullets', parseInt(v) || 0)} keyboardType="numeric" />
+                              </PropertyRow>
+                              <PropertyRow label="Damage">
+                                <InputGroup label="DMG" value={safeObject.combat.damage.toString()} onChange={(v: string) => updateField('combat.damage', parseInt(v) || 0)} keyboardType="numeric" />
+                              </PropertyRow>
+                              <PropertyRow label="Shoot Speed">
+                                <InputGroup label="SPD" value={safeObject.combat.shootSpeed.toString()} onChange={(v: string) => updateField('combat.shootSpeed', parseFloat(v) || 0)} keyboardType="numeric" />
                               </PropertyRow>
                               <SwitchRow label="Shoot in Air" value={safeObject.combat.canShootInAir} onToggle={(v: boolean) => updateField('combat.canShootInAir', v)} />
                             </View>
@@ -1418,10 +1420,10 @@ export default function ObjectInspectorModal({
                                   key={obj.id}
                                   style={[
                                     styles.miniObjectSelect,
-                                    safeObject.combat.bulletObjectId === obj.id && styles.miniObjectSelectActive,
+                                    safeObject.emitter.particleObjectId === obj.id && styles.miniObjectSelectActive,
                                     { padding: 4, minWidth: 60, height: 40 }
                                   ]}
-                                  onPress={() => updateField('combat.bulletObjectId', obj.id)}
+                                  onPress={() => updateField('emitter.particleObjectId', obj.id)}
                                 >
                                   {renderSpritePreview(obj.appearance.spriteId, 16)}
                                   <Text style={[styles.miniObjectText, { fontSize: 8 }]}>{obj.name}</Text>

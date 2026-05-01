@@ -1203,7 +1203,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         : Matter.Bodies.rectangle(x, y, width, height, { isStatic, friction: physics.friction || 0.1, restitution: physics.restitution || 0.1, label: spawnId });
 
       if (isParticle && settings) {
-        const angle = (settings.angle || 0) + (Math.random() * (settings.spread || 45) - (settings.spread || 45) / 2);
+        const spread = settings.spread !== undefined ? settings.spread : 45;
+        const angle = (settings.angle || 0) + (Math.random() * spread - spread / 2);
         const rad = angle * Math.PI / 180;
         Matter.Body.setVelocity(body, { x: Math.cos(rad) * (settings.speed || 2), y: Math.sin(rad) * (settings.speed || 2) });
         (body as any).gravityScale = settings.gravityScale ?? 1;
@@ -1668,7 +1669,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             spawnInstance(combat.bulletObjectId, b.position.x + (dir === 0 ? 20 : -20), b.position.y, true, {
               speed: combat.shootSpeed || 7,
               angle: dir,
-              lifetime: 1500
+              lifetime: 1500,
+              spread: 0 // Bullets shoot straight
             });
           }
         }
