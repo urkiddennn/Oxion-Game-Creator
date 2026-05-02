@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.2] - 2026-05-02 - Sprite Repeater & Health UI System
+### Added
+- **Sprite Repeater Behavior**: Added a new object type for "Lives" and "Hearts" systems.
+  - **Dynamic Sprites**: Support for separate Active (full) and Inactive (empty) icons.
+  - **Layout Controls**: Horizontal or Vertical orientation with adjustable spacing and icon sizing.
+  - **Logic Actions**: Added `damage(amt)`, `heal(amt)`, and `set_count(val)` for easy integration with combat systems.
+  - **Logic Events**: Added `on_life_lost` (for hit effects/shakes) and `on_zero_lives` (for game over triggers).
+- **Progress Bar Enhancements**: Added support for custom Border Color and Border Width in the inspector.
+
 ## [1.3.1] - 2026-05-02 - Progress Bar Fixes & Improvements
 ### Fixed
 - **Restart Loop**: Fixed a critical bug where updating a Progress Bar or Health value via a timer would cause the entire game engine to restart. Switched internal state synchronization from `restartKey` to `nonce`.

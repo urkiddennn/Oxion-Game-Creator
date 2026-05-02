@@ -177,7 +177,19 @@ export interface GameObject {
     linkedVariable?: string;
     fillColor: string;
     backgroundColor?: string;
+    borderColor?: string;
+    borderWidth?: number;
     direction: 'horizontal' | 'vertical' | 'radial';
+  };
+  sprite_repeater?: {
+    maxCount: number;
+    currentCount: number;
+    activeSpriteId: string | null;
+    inactiveSpriteId: string | null;
+    layout: 'horizontal' | 'vertical';
+    spacing: number;
+    iconSize: number;
+    linkedVariable?: string;
   };
 }
 export interface RoomLayer {

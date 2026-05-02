@@ -437,6 +437,39 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
         )}
       </View>
     );
+  } else if (obj?.behavior === 'sprite_repeater' && obj?.sprite_repeater) {
+    const sr = obj.sprite_repeater;
+    let count = sr.currentCount;
+    if (sr.linkedVariable) {
+      const globalKey = varKeysCache.current.lowerMap?.[sr.linkedVariable.trim().toLowerCase()];
+      if (globalKey) {
+        count = Number(variables[globalKey]) || 0;
+      }
+    }
+    const icons = [];
+    for (let i = 0; i < sr.maxCount; i++) {
+      const isActive = i < count;
+      const spriteId = isActive ? sr.activeSpriteId : sr.inactiveSpriteId;
+      const sprite = (sprites || []).find(s => s.id === spriteId);
+      const uri = sprite ? (sprite.type === 'imported' ? sprite.uri : pixelsToBmp(sprite.pixels || [], sprite.id)) : null;
+
+      icons.push(
+        <View key={i} style={{ width: sr.iconSize, height: sr.iconSize, backgroundColor: !uri ? 'rgba(255,255,255,0.1)' : 'transparent', borderRadius: 2 }}>
+          {uri && <Image source={{ uri }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />}
+        </View>
+      );
+    }
+    content = (
+      <View style={{ 
+        flexDirection: sr.layout === 'horizontal' ? 'row' : 'column', 
+        gap: sr.spacing, 
+        flexWrap: sr.layout === 'horizontal' ? 'wrap' : 'nowrap',
+        width: sr.layout === 'horizontal' ? width : sr.iconSize,
+        height: sr.layout === 'vertical' ? height : sr.iconSize
+      }}>
+        {icons}
+      </View>
+    );
   } else if (bmpUri && !obj?.text) {
     content = (currentSprite?.grid?.enabled) ? (
       (currentDimId !== currentSprite.id) ? null : (
@@ -533,8 +566,8 @@ const PhysicsBody = React.memo(PhysicsBodyBase, (prev, next) => {
   // Always re-render if the object itself changes (e.g. replaced by another instance)
   if (prev.obj?.id !== next.obj?.id) return false;
 
-  // If it's a text object or progress bar, we MUST re-render when variables (nonce) change
-  if (next.obj?.text || next.obj?.progress_bar) {
+  // If it's a text object, progress bar, or sprite repeater, we MUST re-render when variables (nonce) change
+  if (next.obj?.text || next.obj?.progress_bar || next.obj?.sprite_repeater) {
     return prev.nonce === next.nonce &&
       prev.spriteId === next.spriteId &&
       prev.width === next.width &&
@@ -934,6 +967,19 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           if (prop === 'vy') return targetBody.velocity.y;
           if (prop === 'width') return (targetBody as any).gameInfo?.width || 0;
           if (prop === 'height') return (targetBody as any).gameInfo?.height || 0;
+
+          // Sprite Repeater Properties
+          const sr = (targetBody as any).gameInfo?.obj?.sprite_repeater;
+          if (sr) {
+            if (prop === 'current_count') return sr.currentCount;
+            if (prop === 'max_count') return sr.maxCount;
+          }
+
+          // Progress Bar Properties
+          const pb = (targetBody as any).gameInfo?.obj?.progress_bar;
+          if (pb) {
+            if (prop === 'value') return pb.currentValue;
+          }
         }
       }
 
@@ -982,7 +1028,15 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             else if (prop === 'vx') finalAction = `set_vx:${val}`;
             else if (prop === 'vy') finalAction = `set_vy:${val}`;
             else if (prop === 'angle') finalAction = op === '=' ? `set_angle:${val}` : `add_angle:${val}`;
-            else {
+            else if (prop === 'current_count') {
+              if (op === '=') finalAction = `set_count:${val}`;
+              else if (op === '-=') finalAction = `damage:${val}`;
+              else if (op === '+=') finalAction = `heal:${val}`;
+            } else if (prop === 'value') {
+              if (op === '=') finalAction = `set_value:${val}`;
+              else if (op === '+=') finalAction = `add_value:${val}`;
+              else if (op === '-=') finalAction = `add_value:-${val}`;
+            } else {
               // Assume it's a local variable
               const command = op === '=' ? 'lvar_set' : 'lvar_add';
               const sign = op === '-=' ? '-' : '';
@@ -1116,6 +1170,16 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         const info = (body as any).gameInfo;
         if (info?.obj?.health) {
           info.obj.health.current = Math.max(0, Math.min(info.obj.health.max, info.obj.health.current + val));
+          setNonce(n => n + 1);
+        }
+      } else if (cmd === 'damage' || cmd === 'heal' || cmd === 'set_count') {
+        const amount = resolveValue(parts[1], body, obj);
+        const info = (body as any).gameInfo;
+        if (info?.obj?.sprite_repeater) {
+          const sr = info.obj.sprite_repeater;
+          if (cmd === 'damage') sr.currentCount = Math.max(0, sr.currentCount - amount);
+          else if (cmd === 'heal') sr.currentCount = Math.min(sr.maxCount, sr.currentCount + amount);
+          else if (cmd === 'set_count') sr.currentCount = Math.max(0, Math.min(sr.maxCount, amount));
           setNonce(n => n + 1);
         }
       } else if (cmd === 'restart_room') {
@@ -1426,7 +1490,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
       // Process Visual Logic Editor listeners
       obj.logic?.listeners?.forEach(l => {
-        if (l.eventId?.startsWith('on_timer') || l.eventId === 'on_tick' || l.eventId === 'on_empty' || l.eventId === 'on_full') {
+        if (l.eventId?.startsWith('on_timer') || l.eventId === 'on_tick' || l.eventId === 'on_empty' || l.eventId === 'on_full' || l.eventId === 'on_life_lost' || l.eventId === 'on_zero_lives') {
           let cmd = l.eventId;
           if (l.eventId.startsWith('on_timer')) cmd = 'on_timer';
           const p = l.eventId.split(':');
@@ -1472,10 +1536,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         label: inst.id // Room objects use instance ID
       });
 
-      const instObj = obj.progress_bar ? {
-        ...obj,
-        progress_bar: { ...obj.progress_bar }
-      } : obj;
+      let instObj = { ...obj };
+      if (obj.progress_bar) instObj.progress_bar = { ...obj.progress_bar };
+      if (obj.sprite_repeater) instObj.sprite_repeater = { ...obj.sprite_repeater };
       liveObjectsRef.current.set(inst.id, instObj);
       
       (body as any).gameInfo = {
@@ -1936,6 +1999,32 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                 }
               }
             } else if (!isFull) info.wasFull = false;
+          }
+
+          if (info.obj?.sprite_repeater) {
+            const sr = info.obj.sprite_repeater;
+            let count = sr.currentCount;
+            if (sr.linkedVariable) count = Number(resolveValue(sr.linkedVariable, body, info.obj)) || 0;
+
+            if (info.lastCount === undefined) info.lastCount = count;
+
+            if (count < info.lastCount) {
+              // Life lost
+              for (let s = 0; s < info.scripts.length; s++) {
+                if (info.scripts[s].cmd === 'on_life_lost') {
+                  if (info.scripts[s].listenerData) executeListenerLogic(info.scripts[s].listenerData, body, info.obj, 'LifeLost');
+                }
+              }
+            }
+            if (count <= 0 && info.lastCount > 0) {
+              // Zero lives
+              for (let s = 0; s < info.scripts.length; s++) {
+                if (info.scripts[s].cmd === 'on_zero_lives') {
+                  if (info.scripts[s].listenerData) executeListenerLogic(info.scripts[s].listenerData, body, info.obj, 'ZeroLives');
+                }
+              }
+            }
+            info.lastCount = count;
           }
 
           for (let s = 0; s < info.scripts.length; s++) {

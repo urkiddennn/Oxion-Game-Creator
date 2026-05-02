@@ -106,8 +106,8 @@ export default function ObjectsScreen() {
         color: '#FFFFFF',
         textAlign: 'center',
       } : undefined,
-      width: behaviorId === 'progress_bar' ? 150 : 32,
-      height: behaviorId === 'progress_bar' ? 20 : 32,
+      width: (behaviorId === 'progress_bar' || behaviorId === 'sprite_repeater') ? 150 : 32,
+      height: (behaviorId === 'progress_bar' || behaviorId === 'sprite_repeater') ? 20 : 32,
       progress_bar: behaviorId === 'progress_bar' ? {
         minValue: 0,
         maxValue: 100,
@@ -117,6 +117,16 @@ export default function ObjectsScreen() {
         borderColor: '#555555',
         borderWidth: 1,
         direction: 'horizontal',
+        linkedVariable: ''
+      } : undefined,
+      sprite_repeater: behaviorId === 'sprite_repeater' ? {
+        maxCount: 5,
+        currentCount: 5,
+        activeSpriteId: null,
+        inactiveSpriteId: null,
+        layout: 'horizontal',
+        spacing: 4,
+        iconSize: 24,
         linkedVariable: ''
       } : undefined,
     };

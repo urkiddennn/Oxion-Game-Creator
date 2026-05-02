@@ -1,6 +1,6 @@
 import React from 'react';
 import { Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
-import { X, Image as ImageIcon, Film, ArrowLeft, ArrowRight, Pause, ArrowUp, Layout, Zap, Settings, Activity, ChevronUp, MousePointer2, Bolt, Clock, GitBranch } from 'lucide-react-native';
+import { X, Image as ImageIcon, Film, ArrowLeft, ArrowRight, Pause, ArrowUp, Layout, Zap, Settings, Activity, ChevronUp, MousePointer2, Bolt, Clock, GitBranch, Heart } from 'lucide-react-native';
 import ObjectCreatorModal from './modals/ObjectCreatorModal';
 import ObjectInspectorModal from './modals/ObjectInspectorModal';
 import { theme } from '../../../theme';
@@ -81,6 +81,18 @@ export default function ObjectModals({
                     style={styles.pickerItem}
                     onPress={() => {
                       if (!selectedObject) return;
+
+                      const pickingForRepeater = (global as any).pickingForRepeater;
+                      if (pickingForRepeater) {
+                        const sr = selectedObject.sprite_repeater || {};
+                        const field = pickingForRepeater === 'active' ? 'activeSpriteId' : 'inactiveSpriteId';
+                        updateObject(selectedObject.id, { sprite_repeater: { ...sr, [field]: sprite.id } });
+                        setSelectedObject({ ...selectedObject, sprite_repeater: { ...sr, [field]: sprite.id } });
+                        (global as any).pickingForRepeater = null;
+                        setSpritePickerVisible(false);
+                        return;
+                      }
+
                       if ((global as any).lastSpritePickerCallback) {
                         (global as any).lastSpritePickerCallback(sprite.id);
                         return;
@@ -248,6 +260,8 @@ export default function ObjectModals({
               {[
                 { id: 'on_empty', label: 'On Empty (0%)', icon: Activity, color: theme.colors.error },
                 { id: 'on_full', label: 'On Full (100%)', icon: Activity, color: theme.colors.primary },
+                { id: 'on_life_lost', label: 'On Life Lost', icon: Heart, color: theme.colors.error },
+                { id: 'on_zero_lives', label: 'On Zero Lives', icon: Heart, color: theme.colors.error },
               ].map(ev => (
                 <TouchableOpacity
                   key={ev.id}
@@ -423,7 +437,7 @@ export default function ObjectModals({
               <View style={styles.divider} />
               <Text style={styles.subSectionTitleCompact}>Current Object (this/self)</Text>
               <View style={styles.pickerRowSmall}>
-                {['x', 'y', 'vx', 'vy', 'width', 'height', 'health', 'angle', 'scale'].map(p => (
+                {['x', 'y', 'vx', 'vy', 'width', 'height', 'health', 'angle', 'scale', 'value', 'current_count', 'max_count'].map(p => (
                   <TouchableOpacity key={p} style={styles.pickerChip} onPress={() => {
                     const val = `self.${p}`;
                     if (handlePropertySelect) handlePropertySelect(val);
@@ -583,6 +597,41 @@ export default function ObjectModals({
               <TouchableOpacity
                 style={styles.actionPresetItem}
                 onPress={() => {
+                  if (handleActionSelect) handleActionSelect('restart_room');
+                  else if ((global as any).handleActionSelect) (global as any).handleActionSelect('restart_room');
+                  setActionPickerVisible(false);
+                }}
+              >
+                <GitBranch size={14} color={theme.colors.info} />
+                <Text style={styles.actionPresetText}>Restart Room</Text>
+              </TouchableOpacity>
+
+              <View style={styles.divider} />
+              <Text style={styles.subSectionTitleCompact}>Sprite Repeater / Lives</Text>
+              {[
+                { id: 'damage:1', label: 'Damage (-1 Life)', icon: Heart, color: theme.colors.error },
+                { id: 'heal:1', label: 'Heal (+1 Life)', icon: Heart, color: theme.colors.success },
+                { id: 'set_count:3', label: 'Set Lives Count', icon: Heart, color: theme.colors.primary },
+              ].map(act => (
+                <TouchableOpacity
+                  key={act.id}
+                  style={styles.actionPresetItem}
+                  onPress={() => {
+                    if (handleActionSelect) handleActionSelect(act.id);
+                    else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
+                    setActionPickerVisible(false);
+                  }}
+                >
+                  <act.icon size={14} color={act.color} />
+                  <Text style={[styles.actionPresetText, { color: act.color }]}>{act.label}</Text>
+                </TouchableOpacity>
+              ))}
+
+              <View style={styles.divider} />
+              <Text style={styles.subSectionTitleCompact}>Movement & Rotation</Text>
+              <TouchableOpacity
+                style={styles.actionPresetItem}
+                onPress={() => {
                   if (handleActionSelect) handleActionSelect('jump');
                   else if ((global as any).handleActionSelect) (global as any).handleActionSelect('jump');
                   setActionPickerVisible(false);
@@ -667,6 +716,9 @@ export default function ObjectModals({
                   { id: 'add_value:-10', label: 'CHANGE BAR' },
                   { id: 'tween_to:100:1000', label: 'TWEEN TO' },
                   { id: 'bind_to_variable:', label: 'BIND TO VAR' },
+                  { id: 'damage:1', label: 'DAMAGE' },
+                  { id: 'heal:1', label: 'HEAL' },
+                  { id: 'set_count:3', label: 'SET COUNT' },
                 ].map(act => (
                   <TouchableOpacity key={act.id} style={[styles.pickerChipSecondary, { borderColor: theme.colors.primary }]} onPress={() => {
                     if (handleActionSelect) handleActionSelect(act.id);

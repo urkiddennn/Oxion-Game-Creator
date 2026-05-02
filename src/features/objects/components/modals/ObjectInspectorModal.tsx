@@ -195,6 +195,8 @@ export default function ObjectInspectorModal({
       'clamp(', 'min(', 'max(', 'abs(', 'floor(', 'random(',
       'jump', 'move_left', 'move_right', 'stop_x', 'restart_room', 'go_to_room:',
       'set_value', 'add_value', 'tween_to', 'bind_to_variable', 'on_empty', 'on_full',
+      'damage', 'heal', 'set_count', 'on_life_lost', 'on_zero_lives',
+      'current_count', 'max_count', 'value', 'health',
       ...(currentProject?.objects?.map((o: any) => o.name) || []),
       ...(Object.keys(currentProject?.variables?.global || {}).map((v: any) => v))
     ];
@@ -831,6 +833,75 @@ export default function ObjectInspectorModal({
                           />
                         </View>
                       </PropertyRow>
+                    </Section>
+                  )}
+                  {safeObject.behavior === 'sprite_repeater' && safeObject.sprite_repeater && (
+                    <Section
+                      title="Sprite Repeater"
+                      icon={<Heart size={14} color="#F43F5E" />}
+                      expanded={expandedSections.sprite_repeater || true}
+                      onToggle={() => toggleSection('sprite_repeater')}
+                    >
+                      <View style={{ gap: 8 }}>
+                        <PropertyRow label="Counts">
+                          <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
+                            <InputGroup label="MAX" value={safeObject.sprite_repeater!.maxCount.toString()} onChange={(v: string) => updateField('sprite_repeater.maxCount', parseInt(v) || 0)} keyboardType="numeric" />
+                            <InputGroup label="START" value={safeObject.sprite_repeater!.currentCount.toString()} onChange={(v: string) => updateField('sprite_repeater.currentCount', parseInt(v) || 0)} keyboardType="numeric" />
+                          </View>
+                        </PropertyRow>
+
+                        <PropertyRow label="Link Var">
+                          <InputGroup label="VAR" value={safeObject.sprite_repeater!.linkedVariable || ''} onChange={(v: string) => updateField('sprite_repeater.linkedVariable', v)} />
+                        </PropertyRow>
+
+                        <PropertyRow label="Sprites">
+                          <View style={{ flex: 1, gap: 6 }}>
+                            <TouchableOpacity 
+                              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#16191E', padding: 8, borderRadius: 4, borderWidth: 1, borderColor: '#333' }}
+                              onPress={() => {
+                                (global as any).pickingForRepeater = 'active';
+                                setSpritePickerVisible(true);
+                              }}
+                            >
+                              {renderSpritePreview(safeObject.sprite_repeater!.activeSpriteId, 20)}
+                              <Text style={{ color: '#888', fontSize: 10 }}>ACTIVE ICON</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#16191E', padding: 8, borderRadius: 4, borderWidth: 1, borderColor: '#333' }}
+                              onPress={() => {
+                                (global as any).pickingForRepeater = 'inactive';
+                                setSpritePickerVisible(true);
+                              }}
+                            >
+                              {renderSpritePreview(safeObject.sprite_repeater!.inactiveSpriteId, 20)}
+                              <Text style={{ color: '#888', fontSize: 10 }}>INACTIVE ICON</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </PropertyRow>
+
+                        <PropertyRow label="Layout">
+                           <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
+                            {['horizontal', 'vertical'].map(l => (
+                              <TouchableOpacity
+                                key={l}
+                                onPress={() => updateField('sprite_repeater.layout', l)}
+                                style={{ flex: 1, padding: 6, borderRadius: 4, backgroundColor: safeObject.sprite_repeater!.layout === l ? theme.colors.primary : '#16191E', borderWidth: 1, borderColor: '#333' }}
+                              >
+                                <Text style={{ color: safeObject.sprite_repeater!.layout === l ? '#000' : '#888', fontSize: 9, textAlign: 'center', fontWeight: 'bold' }}>
+                                  {l.toUpperCase()}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        </PropertyRow>
+
+                        <PropertyRow label="Style">
+                           <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
+                            <InputGroup label="SIZE" value={safeObject.sprite_repeater!.iconSize.toString()} onChange={(v: string) => updateField('sprite_repeater.iconSize', parseInt(v) || 0)} keyboardType="numeric" />
+                            <InputGroup label="GAP" value={safeObject.sprite_repeater!.spacing.toString()} onChange={(v: string) => updateField('sprite_repeater.spacing', parseInt(v) || 0)} keyboardType="numeric" />
+                          </View>
+                        </PropertyRow>
+                      </View>
                     </Section>
                   )}
                 </ScrollView>
