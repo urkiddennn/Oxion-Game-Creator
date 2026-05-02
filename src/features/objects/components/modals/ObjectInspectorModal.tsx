@@ -169,7 +169,8 @@ export default function ObjectInspectorModal({
     logic: false,
     variables: true,
     emitter: false,
-    text: true
+    text: true,
+    progress_bar: true
   });
 
   const toggleSection = (section: string) => {
@@ -193,6 +194,7 @@ export default function ObjectInspectorModal({
       'self', 'other', 'Global', 'room_width', 'room_height', 'time',
       'clamp(', 'min(', 'max(', 'abs(', 'floor(', 'random(',
       'jump', 'move_left', 'move_right', 'stop_x', 'restart_room', 'go_to_room:',
+      'set_value', 'add_value', 'tween_to', 'bind_to_variable', 'on_empty', 'on_full',
       ...(currentProject?.objects?.map((o: any) => o.name) || []),
       ...(Object.keys(currentProject?.variables?.global || {}).map((v: any) => v))
     ];
@@ -315,6 +317,14 @@ export default function ObjectInspectorModal({
       gravityScale: 0,
       burst: false,
       ...selectedObject.emitter,
+    },
+    progress_bar: {
+      minValue: 0,
+      maxValue: 100,
+      currentValue: 100,
+      fillColor: theme.colors.primary,
+      direction: 'horizontal',
+      ...selectedObject.progress_bar,
     },
   };
 
@@ -737,6 +747,90 @@ export default function ObjectInspectorModal({
                       {(safeObject.behavior === 'bullet' || safeObject.behavior === 'enemy') && (
                         <SwitchRow label="Explode" value={safeObject.combat.explodes} onToggle={(v: boolean) => updateField('combat.explodes', v)} />
                       )}
+                    </Section>
+                  )}
+                  {safeObject.behavior === 'progress_bar' && (
+                    <Section
+                      title="Progress Bar"
+                      icon={<Layers size={14} color="#10B981" />}
+                      expanded={expandedSections.progress_bar}
+                      onToggle={() => toggleSection('progress_bar')}
+                    >
+                      <PropertyRow label="Dimensions">
+                        <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
+                          <InputGroup
+                            label="W"
+                            value={(safeObject.width || 150).toString()}
+                            onChange={(v: string) => updateField('width', parseInt(v) || 0)}
+                            keyboardType="numeric"
+                          />
+                          <InputGroup
+                            label="H"
+                            value={(safeObject.height || 20).toString()}
+                            onChange={(v: string) => updateField('height', parseInt(v) || 0)}
+                            keyboardType="numeric"
+                          />
+                        </View>
+                      </PropertyRow>
+                      <PropertyRow label="Range">
+                        <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
+                          <InputGroup label="MIN" value={safeObject.progress_bar.minValue.toString()} onChange={(v: string) => updateField('progress_bar.minValue', parseFloat(v) || 0)} keyboardType="numeric" />
+                          <InputGroup label="MAX" value={safeObject.progress_bar.maxValue.toString()} onChange={(v: string) => updateField('progress_bar.maxValue', parseFloat(v) || 0)} keyboardType="numeric" />
+                        </View>
+                      </PropertyRow>
+                      <PropertyRow label="Current">
+                        <InputGroup label="VAL" value={safeObject.progress_bar.currentValue.toString()} onChange={(v: string) => updateField('progress_bar.currentValue', parseFloat(v) || 0)} keyboardType="numeric" />
+                      </PropertyRow>
+                      <PropertyRow label="Link Var">
+                        <InputGroup label="VAR" value={safeObject.progress_bar.linkedVariable || ''} onChange={(v: string) => updateField('progress_bar.linkedVariable', v)} />
+                      </PropertyRow>
+                      <PropertyRow label="Direction">
+                         <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
+                          {(['horizontal', 'vertical', 'radial'] as const).map(dir => (
+                            <TouchableOpacity
+                              key={dir}
+                              onPress={() => updateField('progress_bar.direction', dir)}
+                              style={{ flex: 1, padding: 6, borderRadius: 4, backgroundColor: safeObject.progress_bar.direction === dir ? theme.colors.primary : '#16191E', borderWidth: 1, borderColor: '#333' }}
+                            >
+                              <Text style={{ color: safeObject.progress_bar.direction === dir ? '#000' : '#888', fontSize: 9, textAlign: 'center', fontWeight: 'bold' }}>
+                                {dir.slice(0, 3).toUpperCase()}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </PropertyRow>
+                      <PropertyRow label="Fill Color">
+                        <ColorGrid
+                          selectedColor={safeObject.progress_bar.fillColor}
+                          onSelect={(c) => updateField('progress_bar.fillColor', c)}
+                        />
+                      </PropertyRow>
+                      <PropertyRow label="BG Color">
+                        <ColorGrid
+                          selectedColor={safeObject.progress_bar.backgroundColor || '#333'}
+                          onSelect={(c) => updateField('progress_bar.backgroundColor', c)}
+                        />
+                      </PropertyRow>
+                      <PropertyRow label="Border">
+                        <View style={{ gap: 6 }}>
+                          <View style={{ flexDirection: 'row', gap: 6 }}>
+                             <InputGroup 
+                              label="WIDTH" 
+                              value={(safeObject.progress_bar.borderWidth ?? 1).toString()} 
+                              onChange={(v) => updateField('progress_bar.borderWidth', parseInt(v) || 0)} 
+                              keyboardType="numeric" 
+                              width="40%"
+                            />
+                            <TouchableOpacity
+                              style={{ flex: 1, height: 28, backgroundColor: safeObject.progress_bar.borderColor || '#555', borderRadius: 4, borderWidth: 1, borderColor: '#FFF2' }}
+                            />
+                          </View>
+                          <ColorGrid
+                            selectedColor={safeObject.progress_bar.borderColor || '#555'}
+                            onSelect={(c) => updateField('progress_bar.borderColor', c)}
+                          />
+                        </View>
+                      </PropertyRow>
                     </Section>
                   )}
                 </ScrollView>
@@ -1594,3 +1688,36 @@ const SwitchRow = ({ label, value, onToggle }: SwitchRowProps) => (
     />
   </View>
 );
+
+const ColorGrid = ({ selectedColor, onSelect }: { selectedColor: string, onSelect: (color: string) => void }) => {
+  const colors = [
+    'transparent', '#EF4444', '#F59E0B', '#FBBF24', '#10B981', '#06B6D4', '#3B82F6', '#6366F1', '#8B5CF6',
+    '#EC4899', '#F43F5E', '#FFFFFF', '#999999', '#555555', '#333333', '#111111', '#000000'
+  ];
+
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+      {colors.map(c => (
+        <TouchableOpacity
+          key={c}
+          onPress={() => onSelect(c)}
+          style={{
+            width: 20,
+            height: 20,
+            backgroundColor: c === 'transparent' ? '#16191E' : c,
+            borderRadius: 2,
+            borderWidth: 1,
+            borderColor: selectedColor === c ? '#FFF' : 'rgba(255,255,255,0.1)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'hidden'
+          }}
+        >
+          {c === 'transparent' && (
+            <View style={{ width: '140%', height: 1, backgroundColor: '#EF4444', transform: [{ rotate: '45deg' }] }} />
+          )}
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+};

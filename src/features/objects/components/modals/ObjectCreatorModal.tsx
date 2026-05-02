@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet } from 'react-native';
-import { Box, User, MousePointer2, Timer, Heart, Move, Zap, Layout } from 'lucide-react-native';
+import { Box, User, MousePointer2, Timer, Heart, Move, Zap, Layout, Activity } from 'lucide-react-native';
 import { theme } from '../../../../theme';
 
 export const BEHAVIORS = [
@@ -15,6 +15,7 @@ export const BEHAVIORS = [
   { id: 'bullet', label: 'Bullet', icon: Box, color: '#FFA500' }, // Added Bullet
   { id: 'popup', label: 'Pop-up Text', icon: Layout, color: '#94A3B8' },
   { id: 'text', label: 'Text Object', icon: Layout, color: '#FFFFFF' },
+  { id: 'progress_bar', label: 'Progress Bar', icon: Activity, color: '#10B981' },
 ];
 
 interface ObjectCreatorModalProps {

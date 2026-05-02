@@ -170,6 +170,15 @@ export interface GameObject {
     clickSpriteId?: string;
     releaseSpriteId?: string;
   };
+  progress_bar?: {
+    minValue: number;
+    maxValue: number;
+    currentValue: number;
+    linkedVariable?: string;
+    fillColor: string;
+    backgroundColor?: string;
+    direction: 'horizontal' | 'vertical' | 'radial';
+  };
 }
 export interface RoomLayer {
   id: string;

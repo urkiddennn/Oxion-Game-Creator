@@ -31,8 +31,8 @@ const DraggableInstance = ({ inst, obj, scale, gridSize, onDragEnd, onRotateEnd,
   const isGrid = !!sprite?.grid?.enabled;
   const fw = isGrid ? (sprite?.grid?.frameWidth || gridSize) : (sprite?.width || gridSize);
   const fh = isGrid ? (sprite?.grid?.frameHeight || gridSize) : (sprite?.height || gridSize);
-  const width = useSharedValue(isGrid ? fw : (inst.width || fw));
-  const height = useSharedValue(isGrid ? fh : (inst.height || fh));
+  const width = useSharedValue(isGrid ? fw : (inst.width || obj?.width || fw));
+  const height = useSharedValue(isGrid ? fh : (inst.height || obj?.height || fh));
   const rotation = useSharedValue(inst.angle || 0);
 
   // Sync shared values if inst prop changes
@@ -42,9 +42,9 @@ const DraggableInstance = ({ inst, obj, scale, gridSize, onDragEnd, onRotateEnd,
     const isGrid = !!sprite?.grid?.enabled;
     const fw = isGrid ? (sprite?.grid?.frameWidth || gridSize) : (sprite?.width || gridSize);
     const fh = isGrid ? (sprite?.grid?.frameHeight || gridSize) : (sprite?.height || gridSize);
-    width.value = isGrid ? fw : (inst.width || fw);
-    height.value = isGrid ? fh : (inst.height || fh);
-  }, [inst.x, inst.y, inst.width, inst.height, sprite?.width, sprite?.height, sprite?.grid?.enabled, sprite?.grid?.frameWidth, sprite?.grid?.frameHeight]);
+    width.value = isGrid ? fw : (inst.width || obj?.width || fw);
+    height.value = isGrid ? fh : (inst.height || obj?.height || fh);
+  }, [inst.x, inst.y, inst.width, inst.height, obj?.width, obj?.height, sprite?.width, sprite?.height, sprite?.grid?.enabled, sprite?.grid?.frameWidth, sprite?.grid?.frameHeight]);
 
   const dragGesture = Gesture.Pan()
     .enabled(activeTool === 'move')
@@ -113,6 +113,17 @@ const DraggableInstance = ({ inst, obj, scale, gridSize, onDragEnd, onRotateEnd,
             >
               {obj.text?.content || '(Text)'}
             </Text>
+          </View>
+        ) : obj?.behavior === 'progress_bar' ? (
+          <View style={{ width: '100%', height: '100%', backgroundColor: obj.progress_bar?.backgroundColor || '#333', borderRadius: 2, borderWidth: 1, borderColor: '#555', overflow: 'hidden' }}>
+            <View style={{
+              width: obj.progress_bar?.direction === 'vertical' ? '100%' : '70%',
+              height: obj.progress_bar?.direction === 'vertical' ? '70%' : '100%',
+              backgroundColor: obj.progress_bar?.fillColor || '#10B981',
+              position: 'absolute',
+              bottom: 0,
+              left: 0
+            }} />
           </View>
         ) : (
           <PixelSprite
@@ -412,8 +423,8 @@ export default function RoomsScreen() {
     // Get object dimensions
     const obj = (currentProject?.objects || []).find(o => o.id === selectedObjectId);
     const sprite = (currentProject?.sprites || []).find(s => s.id === obj?.appearance.spriteId);
-    const frameW = (sprite?.grid?.enabled && sprite.grid.frameWidth) ? sprite.grid.frameWidth : (sprite?.width || 32);
-    const frameH = (sprite?.grid?.enabled && sprite.grid.frameHeight) ? sprite.grid.frameHeight : (sprite?.height || 32);
+    const frameW = obj?.width || ((sprite?.grid?.enabled && sprite.grid.frameWidth) ? sprite.grid.frameWidth : (sprite?.width || 32));
+    const frameH = obj?.height || ((sprite?.grid?.enabled && sprite.grid.frameHeight) ? sprite.grid.frameHeight : (sprite?.height || 32));
 
     addInstanceToRoom(currentRoom.id, {
       id: Math.random().toString(36).substr(2, 9),
@@ -667,6 +678,8 @@ export default function RoomsScreen() {
                       <View style={styles.objectPreview}>
                         {obj.behavior === 'text' ? (
                           <Layout size={20} color={theme.colors.primary} />
+                        ) : obj.behavior === 'progress_bar' ? (
+                          <View style={{ width: 24, height: 8, backgroundColor: obj.progress_bar?.fillColor || '#10B981', borderRadius: 1 }} />
                         ) : (
                           <PixelSprite
                             sprite={(currentProject?.sprites || []).find(s => s.id === obj.appearance.spriteId)}

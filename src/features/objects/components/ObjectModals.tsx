@@ -244,6 +244,26 @@ export default function ObjectModals({
                 </TouchableOpacity>
               ))}
               <View style={styles.divider} />
+              <Text style={styles.subSectionTitleCompact}>Progress Bar & Stats</Text>
+              {[
+                { id: 'on_empty', label: 'On Empty (0%)', icon: Activity, color: theme.colors.error },
+                { id: 'on_full', label: 'On Full (100%)', icon: Activity, color: theme.colors.primary },
+              ].map(ev => (
+                <TouchableOpacity
+                  key={ev.id}
+                  style={styles.actionPresetItem}
+                  onPress={() => {
+                    if (handleEventSelect) handleEventSelect(ev.id);
+                    else if ((global as any).handleEventSelect) (global as any).handleEventSelect(ev.id);
+                    setEventPickerVisible(false);
+                  }}
+                >
+                  <ev.icon size={14} color={ev.color} />
+                  <Text style={[styles.actionPresetText, { color: ev.color }]}>{ev.label}</Text>
+                </TouchableOpacity>
+              ))}
+
+              <View style={styles.divider} />
               <Text style={styles.subSectionTitleCompact}>Collisions & Interactions</Text>
               <TouchableOpacity
                 style={styles.actionPresetItem}
@@ -638,6 +658,25 @@ export default function ObjectModals({
                   </View>
                 </View>
               ))}
+
+              <View style={styles.divider} />
+              <Text style={styles.subSectionTitleCompact}>Progress Bar Actions</Text>
+              <View style={styles.pickerRowSmall}>
+                {[
+                  { id: 'set_value:50', label: 'SET VALUE' },
+                  { id: 'add_value:-10', label: 'CHANGE BAR' },
+                  { id: 'tween_to:100:1000', label: 'TWEEN TO' },
+                  { id: 'bind_to_variable:', label: 'BIND TO VAR' },
+                ].map(act => (
+                  <TouchableOpacity key={act.id} style={[styles.pickerChipSecondary, { borderColor: theme.colors.primary }]} onPress={() => {
+                    if (handleActionSelect) handleActionSelect(act.id);
+                    else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
+                    setActionPickerVisible(false);
+                  }}>
+                    <Text style={[styles.pickerChipTextSmall, { color: theme.colors.primary }]}>{act.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
               <View style={styles.divider} />
               <Text style={styles.subSectionTitleCompact}>Movement & Rotation</Text>

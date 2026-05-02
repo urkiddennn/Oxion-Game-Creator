@@ -395,8 +395,50 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
     return pixelsToBmp(currentSprite.pixels, currentSprite.id);
   }, [currentSprite?.id, currentSprite?.uri, width, height]);
 
-  const content = bmpUri && !obj?.text ? (
-    (currentSprite?.grid?.enabled) ? (
+  let content: React.ReactNode = null;
+  if (obj?.behavior === 'progress_bar' && obj?.progress_bar) {
+    const pb = obj.progress_bar;
+    let val = pb.currentValue;
+    if (pb.linkedVariable) {
+      const globalKey = varKeysCache.current.lowerMap?.[pb.linkedVariable.trim().toLowerCase()];
+      if (globalKey) {
+        val = Number(variables[globalKey]) || 0;
+      }
+    }
+    val = Math.max(pb.minValue, Math.min(pb.maxValue, val));
+    const ratio = pb.maxValue > pb.minValue ? (val - pb.minValue) / (pb.maxValue - pb.minValue) : 0;
+    const isHorizontal = pb.direction === 'horizontal';
+    const isVertical = pb.direction === 'vertical';
+
+    content = (
+      <View style={{ 
+        width, 
+        height, 
+        backgroundColor: pb.backgroundColor || 'rgba(0,0,0,0.5)', 
+        borderRadius: pb.direction === 'radial' ? Math.min(width, height) / 2 : 2, 
+        overflow: 'hidden', 
+        borderWidth: pb.borderWidth !== undefined ? pb.borderWidth : 1, 
+        borderColor: pb.borderColor || '#555' 
+      }}>
+        {bmpUri && (
+          <Image source={{ uri: bmpUri }} style={{ width: '100%', height: '100%', position: 'absolute' }} resizeMode="stretch" />
+        )}
+        {pb.direction === 'radial' ? (
+          <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: `${ratio * 100}%`, backgroundColor: pb.fillColor }} />
+        ) : (
+          <View style={{
+            height: isHorizontal ? '100%' : `${ratio * 100}%`,
+            width: isHorizontal ? `${ratio * 100}%` : '100%',
+            backgroundColor: pb.fillColor,
+            position: 'absolute',
+            bottom: isVertical ? 0 : undefined,
+            left: isHorizontal ? 0 : undefined
+          }} />
+        )}
+      </View>
+    );
+  } else if (bmpUri && !obj?.text) {
+    content = (currentSprite?.grid?.enabled) ? (
       (currentDimId !== currentSprite.id) ? null : (
         <View style={{ width, height, overflow: 'hidden' }}>
           <Animated.Image
@@ -435,25 +477,29 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
         style={{ width, height }}
         resizeMode="stretch"
       />
-    )
-  ) : obj?.text ? (
-    <View style={{ width, height, justifyContent: 'center', alignItems: obj.text.textAlign === 'center' ? 'center' : obj.text.textAlign === 'right' ? 'flex-end' : 'flex-start' }}>
-      <Text
-        key={`text-${nonce}`}
-        style={{
-          color: obj.text.color || '#FFF',
-          fontSize: obj.text.fontSize || 16,
-          fontFamily: obj.text.fontFamily === 'pixel' ? 'Pixel' : undefined,
-          textAlign: obj.text.textAlign
-        }}>
-        {resolveText(obj.text.content)}
-      </Text>
-    </View>
-  ) : (
-    <View style={{ width, height, backgroundColor: '#333', borderRadius: 4, borderWidth: 1, borderColor: '#555', justifyContent: 'center', alignItems: 'center' }}>
-      <Text style={{ color: '#666', fontSize: 8 }}>?</Text>
-    </View>
-  );
+    );
+  } else if (obj?.text) {
+    content = (
+      <View style={{ width, height, justifyContent: 'center', alignItems: obj.text.textAlign === 'center' ? 'center' : obj.text.textAlign === 'right' ? 'flex-end' : 'flex-start' }}>
+        <Text
+          key={`text-${nonce}`}
+          style={{
+            color: obj.text.color || '#FFF',
+            fontSize: obj.text.fontSize || 16,
+            fontFamily: obj.text.fontFamily === 'pixel' ? 'Pixel' : undefined,
+            textAlign: obj.text.textAlign
+          }}>
+          {resolveText(obj.text.content)}
+        </Text>
+      </View>
+    );
+  } else {
+    content = (
+      <View style={{ width, height, backgroundColor: '#333', borderRadius: 4, borderWidth: 1, borderColor: '#555', justifyContent: 'center', alignItems: 'center' }}>
+        <Text style={{ color: '#666', fontSize: 8 }}>?</Text>
+      </View>
+    );
+  }
 
   return (
     <Animated.View style={[styles.instance, animatedStyle, { width, height }]} pointerEvents={onTap ? 'auto' : 'none'}>
@@ -487,8 +533,8 @@ const PhysicsBody = React.memo(PhysicsBodyBase, (prev, next) => {
   // Always re-render if the object itself changes (e.g. replaced by another instance)
   if (prev.obj?.id !== next.obj?.id) return false;
 
-  // If it's a text object, we MUST re-render when variables (nonce) change
-  if (next.obj?.text) {
+  // If it's a text object or progress bar, we MUST re-render when variables (nonce) change
+  if (next.obj?.text || next.obj?.progress_bar) {
     return prev.nonce === next.nonce &&
       prev.spriteId === next.spriteId &&
       prev.width === next.width &&
@@ -788,6 +834,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
   const [instanceOverrides, setInstanceOverrides] = useState<Record<string, { spriteId?: string, animName?: string }>>({});
   const instanceOverridesRef = useRef<Record<string, any>>({});
+  const liveObjectsRef = useRef<Map<string, GameObject>>(new Map());
   useEffect(() => { instanceOverridesRef.current = instanceOverrides; }, [instanceOverrides]);
 
   // Sync refs to state at a throttled rate for UI rendering (backup sync)
@@ -845,8 +892,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     const dynamicRef: {
       name: any; id: string; gameObject: any; body: Matter.Body; sv: any; expires?: number; sprite: any; width: number; height: number
     }[] = [];
-    const subscriptions: any[] = [];
     const svMap = new Map<string, any>();
+    const subscriptions: any[] = [];
+    liveObjectsRef.current.clear();
     // Cached once per frame — avoids repeated O(n) Matter.Composite.allBodies() allocations
     let cachedBodies: Matter.Body[] = [];
 
@@ -1029,19 +1077,46 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         const name = parts[1];
         const val = resolveValue(parts[2], body, obj);
         updateLocalVar(body.label, name, val, obj?.variables?.local, true);
+      } else if (cmd === 'set_value' || cmd === 'tween_to' || cmd === 'add_value') {
+        const val = resolveValue(parts[1], body, obj);
+        const info = (body as any).gameInfo;
+        if (info?.obj?.progress_bar) {
+          if (cmd === 'set_value') {
+            info.obj.progress_bar.currentValue = val;
+            info.targetValue = undefined; // Cancel any active tween
+          } else if (cmd === 'add_value') {
+            info.obj.progress_bar.currentValue += val;
+            info.targetValue = undefined;
+          } else {
+            // tween_to:target:duration
+            const duration = parts[2] ? resolveValue(parts[2], body, obj) : 500;
+            info.targetValue = val;
+            const diff = val - info.obj.progress_bar.currentValue;
+            // Calculate increment per frame (assuming 60fps)
+            info.tweenRate = diff / (duration / 16.6);
+          }
+          setNonce(n => n + 1);
+        }
+      } else if (cmd === 'bind_to_variable') {
+        const varName = parts[1];
+        const info = (body as any).gameInfo;
+        if (info?.obj?.progress_bar) {
+          info.obj.progress_bar.linkedVariable = varName;
+          setNonce(n => n + 1);
+        }
       } else if (cmd === 'set_health') {
         const val = resolveValue(parts[1], body, obj);
         const info = (body as any).gameInfo;
         if (info?.obj?.health) {
           info.obj.health.current = Math.max(0, Math.min(info.obj.health.max, val));
-          setRestartKey(k => k + 1); // Trigger re-render to show health change
+          setNonce(n => n + 1); // Trigger re-render to show health change
         }
       } else if (cmd === 'add_health') {
         const val = resolveValue(parts[1], body, obj);
         const info = (body as any).gameInfo;
         if (info?.obj?.health) {
           info.obj.health.current = Math.max(0, Math.min(info.obj.health.max, info.obj.health.current + val));
-          setRestartKey(k => k + 1);
+          setNonce(n => n + 1);
         }
       } else if (cmd === 'restart_room') {
         const now = Date.now();
@@ -1264,10 +1339,16 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         }
       });
 
+      const instObj = pObj.progress_bar ? {
+        ...pObj,
+        progress_bar: { ...pObj.progress_bar }
+      } : pObj;
+      liveObjectsRef.current.set(spawnId, instObj);
+      
       (body as any).gameInfo = {
         width,
         height,
-        obj: pObj,
+        obj: instObj,
         scripts: parsedScripts,
         spawnTime: Date.now()
       };
@@ -1345,8 +1426,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
       // Process Visual Logic Editor listeners
       obj.logic?.listeners?.forEach(l => {
-        if (l.eventId?.startsWith('on_timer') || l.eventId === 'on_tick') {
-          const cmd = l.eventId.startsWith('on_timer') ? 'on_timer' : 'on_tick';
+        if (l.eventId?.startsWith('on_timer') || l.eventId === 'on_tick' || l.eventId === 'on_empty' || l.eventId === 'on_full') {
+          let cmd = l.eventId;
+          if (l.eventId.startsWith('on_timer')) cmd = 'on_timer';
           const p = l.eventId.split(':');
           let timerMs = 1000;
           if (cmd === 'on_timer' && p.length > 1) {
@@ -1390,12 +1472,18 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         label: inst.id // Room objects use instance ID
       });
 
+      const instObj = obj.progress_bar ? {
+        ...obj,
+        progress_bar: { ...obj.progress_bar }
+      } : obj;
+      liveObjectsRef.current.set(inst.id, instObj);
+      
       (body as any).gameInfo = {
         width,
         height,
         scripts: parsedScripts,
         constantVx: obj.logic?.constantVelocityX,
-        obj,
+        obj: instObj,
         spawnTime: roomStartTime
       };
 
@@ -1737,6 +1825,45 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           // Run scripts for dynamic elements (only if not too far)
           const info = (d.body as any).gameInfo;
           if (info?.scripts && !isFar) {
+            if (info.obj?.progress_bar) {
+              const pb = info.obj.progress_bar;
+              
+              // Handle active tween
+              if (info.targetValue !== undefined && info.tweenRate !== undefined) {
+                pb.currentValue += info.tweenRate;
+                // Check if we reached/passed target
+                if ((info.tweenRate > 0 && pb.currentValue >= info.targetValue) || 
+                    (info.tweenRate < 0 && pb.currentValue <= info.targetValue)) {
+                  pb.currentValue = info.targetValue;
+                  info.targetValue = undefined;
+                }
+              }
+
+              let val = pb.currentValue;
+              if (pb.linkedVariable) {
+                val = resolveValue(pb.linkedVariable, d.body, info.obj);
+                pb.currentValue = val; // Sync back for event checks
+              }
+              const isEmpty = val <= pb.minValue;
+              const isFull = val >= pb.maxValue;
+              if (isEmpty && !info.wasEmpty) {
+                info.wasEmpty = true;
+                for (let s = 0; s < info.scripts.length; s++) {
+                  if (info.scripts[s].cmd === 'on_empty') {
+                    if (info.scripts[s].listenerData) executeListenerLogic(info.scripts[s].listenerData, d.body, info.obj, 'EmptyLoop');
+                  }
+                }
+              } else if (!isEmpty) info.wasEmpty = false;
+              if (isFull && !info.wasFull) {
+                info.wasFull = true;
+                for (let s = 0; s < info.scripts.length; s++) {
+                  if (info.scripts[s].cmd === 'on_full') {
+                    if (info.scripts[s].listenerData) executeListenerLogic(info.scripts[s].listenerData, d.body, info.obj, 'FullLoop');
+                  }
+                }
+              } else if (!isFull) info.wasFull = false;
+            }
+
             for (let s = 0; s < info.scripts.length; s++) {
               const script = info.scripts[s];
               if (script.cmd === 'on_tick') {
@@ -1775,6 +1902,42 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
         // 1. Always run scripts for this body
         if (info.scripts && info.scripts.length > 0) {
+          if (info.obj?.progress_bar) {
+            const pb = info.obj.progress_bar;
+            
+            // Handle active tween
+            if (info.targetValue !== undefined && info.tweenRate !== undefined) {
+              pb.currentValue += info.tweenRate;
+              if ((info.tweenRate > 0 && pb.currentValue >= info.targetValue) || 
+                  (info.tweenRate < 0 && pb.currentValue <= info.targetValue)) {
+                pb.currentValue = info.targetValue;
+                info.targetValue = undefined;
+              }
+              setNonce(n => n + 1); // Trigger re-render during tween
+            }
+
+            let val = pb.currentValue;
+            if (pb.linkedVariable) val = resolveValue(pb.linkedVariable, body, info.obj);
+            const isEmpty = val <= pb.minValue;
+            const isFull = val >= pb.maxValue;
+            if (isEmpty && !info.wasEmpty) {
+              info.wasEmpty = true;
+              for (let s = 0; s < info.scripts.length; s++) {
+                if (info.scripts[s].cmd === 'on_empty') {
+                  if (info.scripts[s].listenerData) executeListenerLogic(info.scripts[s].listenerData, body, info.obj, 'EmptyLoop');
+                }
+              }
+            } else if (!isEmpty) info.wasEmpty = false;
+            if (isFull && !info.wasFull) {
+              info.wasFull = true;
+              for (let s = 0; s < info.scripts.length; s++) {
+                if (info.scripts[s].cmd === 'on_full') {
+                  if (info.scripts[s].listenerData) executeListenerLogic(info.scripts[s].listenerData, body, info.obj, 'FullLoop');
+                }
+              }
+            } else if (!isFull) info.wasFull = false;
+          }
+
           for (let s = 0; s < info.scripts.length; s++) {
             const script = info.scripts[s];
             if (script.cmd === 'on_tick') {
@@ -1920,18 +2083,18 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         if (!inst || targetLayerId !== layer.id) return null;
         if (!instanceSharedValues[index]) return null;
 
-        const obj = objectMap.get(inst.objectId);
-        if (!obj) return null;
+        const liveObj = liveObjectsRef.current.get(inst.id) || objectMap.get(inst.objectId);
+        if (!liveObj) return null;
 
         // --- O(1) Sprite Lookup via Map ---
-        const appearance = obj.appearance || { type: 'sprite', spriteId: null };
+        const appearance = liveObj.appearance || { type: 'sprite', spriteId: null };
         const sprite = spriteMap.get(appearance.spriteId || '');
 
         const isGrid = !!sprite?.grid?.enabled;
         const fw = isGrid ? sprite.grid.frameWidth : sprite?.width;
         const fh = isGrid ? sprite.grid.frameHeight : sprite?.height;
-        const width = isGrid ? fw : (obj.width || inst.width || fw || 32);
-        const height = isGrid ? fh : (obj.height || inst.height || fh || 32);
+        const width = isGrid ? fw : (liveObj.width || inst.width || fw || 32);
+        const height = isGrid ? fh : (liveObj.height || inst.height || fh || 32);
 
         // NOTE: Per-instance viewport culling is done inside animatedStyle (UI thread worklet)
         // so we never mount/unmount components — just set display:none on the UI thread.
@@ -1947,17 +2110,17 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             sv={instanceSharedValues[index]}
             width={width}
             height={height}
-            name={obj?.name}
+            name={liveObj?.name}
             nonce={nonce}
             onTap={() => {
               DeviceEventEmitter.emit('builtin_tap', { targetId: inst.id });
-              if (obj?.logic?.triggers?.onTap) {
-                DeviceEventEmitter.emit(obj.logic.triggers.onTap!);
+              if (liveObj?.logic?.triggers?.onTap) {
+                DeviceEventEmitter.emit(liveObj.logic.triggers.onTap!);
               }
             }}
             variables={variables}
             localVariables={localVariables[inst.id]}
-            obj={obj}
+            obj={liveObj}
             override={instanceOverrides[inst.id]}
             debug={debug}
             globalFrameTimer={globalFrameTimer}

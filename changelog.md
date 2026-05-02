@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.3.1] - 2026-05-02 - Progress Bar Fixes & Improvements
+### Fixed
+- **Restart Loop**: Fixed a critical bug where updating a Progress Bar or Health value via a timer would cause the entire game engine to restart. Switched internal state synchronization from `restartKey` to `nonce`.
+### Added
+- **CHANGE BAR Action**: Added `add_value:amount` action for Progress Bars, allowing you to increment or decrement values relative to the current state (e.g., `-10` to reduce a bar).
+
+## [1.3.0] - 2026-05-02 - Progress Bar & Dynamic UI System
+### Added
+- **Progress Bar Behavior**: Added a new "Value Tracker" object type for health bars, loading screens, and cooldowns.
+  - Custom range (Min/Max), Fill Color, Background Color, and Directions (Horizontal, Vertical).
+  - **Dynamic Sizing**: Progress bars now respect custom Width/Height dimensions in both the editor and gameplay.
+- **New Logic Actions**:
+  - `set_value:val`: Instantly update a progress bar's state.
+  - `tween_to:val:ms`: Smoothly transition a bar to a new value over time.
+  - `bind_to_variable:name`: Automatically link a progress bar to any global or local variable (e.g., `health` or `score`).
+- **New Logic Events**:
+  - `on_empty`: Triggered when a bar reaches its minimum value.
+  - `on_full`: Triggered when a bar reaches its maximum value.
+- **Logic Editor Integration**: Added dedicated sections for Progress Bar actions and events in the Visual Logic pickers and autocomplete system.
+
 ## [1.2.4] - 2026-05-02 - Animation & Gameplay Stability
 ### Fixed
 - **Worklet Animations**: Fixed 'Animations not working' bug by implementing robust animation state fallback (auto-selecting first animation if "idle" is missing) and case-insensitive state matching.

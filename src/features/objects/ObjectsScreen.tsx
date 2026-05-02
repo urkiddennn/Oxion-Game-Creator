@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, ScrollView, 
 import { useProjectStore, GameObject, Sprite } from '../../store/useProjectStore';
 import { styles } from './ObjectsScreen.styles';
 import { theme } from '../../theme';
-import { Plus, ChevronRight, User, MousePointer2, Timer, Heart, Move, Bolt, Layout, HelpCircle, Square, Info, Palette, Settings, Image as ImageIcon, X, Share2, Trash2 } from 'lucide-react-native';
+import { Plus, ChevronRight, User, MousePointer2, Timer, Heart, Move, Bolt, Layout, HelpCircle, Square, Info, Palette, Settings, Image as ImageIcon, X, Share2, Trash2, Activity } from 'lucide-react-native';
 import { PixelSprite } from '../../components/PixelSprite';
 import ObjectModals from './components/ObjectModals';
 
@@ -17,6 +17,7 @@ const BEHAVIORS = [
   { id: 'emitter', label: 'Particle Emitter', icon: Bolt, color: '#7000FF' },
   { id: 'popup', label: 'Pop-up Text', icon: Layout, color: '#94A3B8' },
   { id: 'text', label: 'Text Object', icon: Layout, color: '#FFFFFF' },
+  { id: 'progress_bar', label: 'Progress Bar', icon: Activity, color: '#10B981' },
 ];
 
 
@@ -69,8 +70,8 @@ export default function ObjectsScreen() {
       },
       physics: {
         enabled: true,
-        isStatic: behaviorId === 'solid',
-        applyGravity: behaviorId !== 'solid' && behaviorId !== 'bullet',
+        isStatic: behaviorId === 'solid' || behaviorId === 'progress_bar',
+        applyGravity: behaviorId !== 'solid' && behaviorId !== 'bullet' && behaviorId !== 'progress_bar',
         friction: 0.1,
         restitution: 0.2,
         density: 0.001,
@@ -104,6 +105,19 @@ export default function ObjectsScreen() {
         fontSize: 24,
         color: '#FFFFFF',
         textAlign: 'center',
+      } : undefined,
+      width: behaviorId === 'progress_bar' ? 150 : 32,
+      height: behaviorId === 'progress_bar' ? 20 : 32,
+      progress_bar: behaviorId === 'progress_bar' ? {
+        minValue: 0,
+        maxValue: 100,
+        currentValue: 100,
+        fillColor: '#10B981',
+        backgroundColor: '#333333',
+        borderColor: '#555555',
+        borderWidth: 1,
+        direction: 'horizontal',
+        linkedVariable: ''
       } : undefined,
     };
     addObject(newObj);
