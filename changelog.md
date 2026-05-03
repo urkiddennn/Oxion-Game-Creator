@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.4.0] - 2026-05-03 - Virtual Joystick Support
+### Added
+- **Virtual Joystick**: New high-performance input control for mobile.
+  - **Customizable**: Configurable Dead Zone, Stick Range, and Persistence.
+  - **Output Modes**: Choose between Vector (X/Y), Angle (0-360), or Magnitude (0-1).
+  - **Auto-Mapping**: Automatically drives player horizontal movement when enabled.
+  - **New Logic Events**: `on_move` (fires continuously during touch) and `on_release` (fires when stick is released).
+  - **New Logic Properties**: `joystick.x`, `joystick.y`, `joystick.angle`, and `joystick.magnitude` now available for use in all expressions.
+- **Sidebar Integration**: Integrated Joystick configuration into the "Built-in Controls" section of the Room Sidebar.
+
 ## [1.3.3] - 2026-05-03 - Sticky HUD Support
 ### Added
 - **Sticky HUD Behavior**: Added "Sticky HUD" property to the Physics tab for all objects. When enabled:

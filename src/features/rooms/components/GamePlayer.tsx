@@ -3,6 +3,7 @@ import { View, StyleSheet, TouchableOpacity, Text, DeviceEventEmitter, TextInput
 import { styles } from './GamePlayer.styles';
 import Matter from 'matter-js';
 import { X, RotateCcw, Play as PlayIcon, Pause, ArrowLeft, ArrowRight, ChevronUp, Bolt, Database } from 'lucide-react-native';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { theme } from '../../../theme';
 import { useProjectStore, GameObject, RoomLayer } from '../../../store/useProjectStore';
 import Animated, {
@@ -13,13 +14,126 @@ import Animated, {
   SharedValue,
   useAnimatedReaction,
   runOnJS,
-  useDerivedValue
+  useDerivedValue,
+  withSpring,
+  withTiming
 } from 'react-native-reanimated';
 import { useWindowDimensions } from 'react-native';
 
 import base64js from 'base64-js';
 
 const SPRITE_CACHE = new Map<string, string>();
+
+const VirtualJoystick = ({ settings, onMove, onRelease }: {
+  settings: any,
+  onMove: (data: { x: number, y: number, angle: number, magnitude: number }) => void,
+  onRelease: () => void
+}) => {
+  const stickX = useSharedValue(0);
+  const stickY = useSharedValue(0);
+  const baseRange = settings.stick_range || 50;
+
+  const isPersistent = !!settings?.persistence;
+
+  const gesture = useMemo(() => Gesture.Pan()
+    .minDistance(0)
+    .onStart((e) => {
+      const dx = e.x - baseRange;
+      const dy = e.y - baseRange;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      let finalX = dx;
+      let finalY = dy;
+
+      if (dist > baseRange) {
+        finalX = (dx / dist) * baseRange;
+        finalY = (dy / dist) * baseRange;
+      }
+
+      stickX.value = finalX;
+      stickY.value = finalY;
+    })
+    .onUpdate((e) => {
+      const dx = e.x - baseRange;
+      const dy = e.y - baseRange;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      let finalX = dx;
+      let finalY = dy;
+
+      if (dist > baseRange) {
+        finalX = (dx / dist) * baseRange;
+        finalY = (dy / dist) * baseRange;
+      }
+
+      stickX.value = finalX;
+      stickY.value = finalY;
+
+      const magnitude = Math.min(1, dist / baseRange);
+      if (dist >= (settings.dead_zone || 0)) {
+        runOnJS(onMove)({
+          x: finalX / baseRange,
+          y: finalY / baseRange,
+          angle: Math.atan2(finalY, finalX) * (180 / Math.PI),
+          magnitude
+        });
+      }
+    })
+    .onFinalize(() => {
+      'worklet';
+      if (!isPersistent) {
+        stickX.value = withTiming(0, { duration: 150 });
+        stickY.value = withTiming(0, { duration: 150 });
+      }
+      runOnJS(onRelease)();
+    }), [baseRange, isPersistent, settings.dead_zone, onMove, onRelease]);
+
+  const stickStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: stickX.value }, { translateY: stickY.value }]
+  }));
+
+  return (
+    <GestureDetector gesture={gesture}>
+      <Animated.View
+        pointerEvents="auto"
+        style={{
+          width: baseRange * 2,
+          height: baseRange * 2,
+          borderRadius: baseRange,
+          backgroundColor: 'rgba(255,255,255,0.05)',
+          borderWidth: 2,
+          borderColor: 'rgba(255,255,255,0.15)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          overflow: 'visible'
+        }}
+      >
+        <Animated.View style={[{
+          width: 44,
+          height: 44,
+          borderRadius: 22,
+          backgroundColor: 'rgba(255,255,255,0.9)',
+          elevation: 8,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.3,
+          shadowRadius: 4.65,
+          borderWidth: 2,
+          borderColor: '#fff'
+        }, stickStyle]} />
+
+        {/* Visual indicator for the center */}
+        <View style={{
+          position: 'absolute',
+          width: 4,
+          height: 4,
+          borderRadius: 2,
+          backgroundColor: 'rgba(255,255,255,0.3)'
+        }} />
+      </Animated.View>
+    </GestureDetector>
+  );
+};
 
 const pixelsToBmp = (pixels: string[][], spriteId: string) => {
   if (!pixels || pixels.length === 0) return null;
@@ -423,14 +537,14 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
     const isVertical = pb.direction === 'vertical';
 
     content = (
-      <View style={{ 
-        width, 
-        height, 
-        backgroundColor: pb.backgroundColor || 'rgba(0,0,0,0.5)', 
-        borderRadius: pb.direction === 'radial' ? Math.min(width, height) / 2 : 2, 
-        overflow: 'hidden', 
-        borderWidth: pb.borderWidth !== undefined ? pb.borderWidth : 1, 
-        borderColor: pb.borderColor || '#555' 
+      <View style={{
+        width,
+        height,
+        backgroundColor: pb.backgroundColor || 'rgba(0,0,0,0.5)',
+        borderRadius: pb.direction === 'radial' ? Math.min(width, height) / 2 : 2,
+        overflow: 'hidden',
+        borderWidth: pb.borderWidth !== undefined ? pb.borderWidth : 1,
+        borderColor: pb.borderColor || '#555'
       }}>
         {bmpUri && (
           <Image source={{ uri: bmpUri }} style={{ width: '100%', height: '100%', position: 'absolute' }} resizeMode="stretch" />
@@ -472,9 +586,9 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
       );
     }
     content = (
-      <View style={{ 
-        flexDirection: sr.layout === 'horizontal' ? 'row' : 'column', 
-        gap: sr.spacing, 
+      <View style={{
+        flexDirection: sr.layout === 'horizontal' ? 'row' : 'column',
+        gap: sr.spacing,
         flexWrap: sr.layout === 'horizontal' ? 'wrap' : 'nowrap',
         width: sr.layout === 'horizontal' ? width : sr.iconSize,
         height: sr.layout === 'vertical' ? height : sr.iconSize
@@ -812,6 +926,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
   const inputJump = useRef(0);
   const inputShoot = useRef(0);
   const inputTap = useRef(0);
+  const joystickData = useRef({ x: 0, y: 0, angle: 0, magnitude: 0 });
   const fpsShared = useSharedValue(60);
   const globalFrameTimer = useSharedValue(0);
 
@@ -875,6 +990,47 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     }
   }, []);
 
+  const handleJoystickMove = useCallback((data: any) => {
+    joystickData.current = data;
+
+    // Sync to global variables for debug visibility
+    variablesRef.current = {
+      ...variablesRef.current,
+      joystick_x: Number(data.x.toFixed(2)),
+      joystick_y: Number(data.y.toFixed(2)),
+      joystick_angle: Number(data.angle.toFixed(1)),
+      joystick_magnitude: Number(data.magnitude.toFixed(2))
+    };
+
+    // Auto-map horizontal movement to default inputs for convenience
+    if (data.x < -0.3) {
+      inputLeft.current = 1;
+      inputRight.current = 0;
+    } else if (data.x > 0.3) {
+      inputLeft.current = 0;
+      inputRight.current = 1;
+    } else {
+      inputLeft.current = 0;
+      inputRight.current = 0;
+    }
+
+    DeviceEventEmitter.emit('on_move', data);
+  }, []);
+
+  const handleJoystickRelease = useCallback(() => {
+    joystickData.current = { x: 0, y: 0, angle: 0, magnitude: 0 };
+    variablesRef.current = {
+      ...variablesRef.current,
+      joystick_x: 0,
+      joystick_y: 0,
+      joystick_angle: 0,
+      joystick_magnitude: 0
+    };
+    inputLeft.current = 0;
+    inputRight.current = 0;
+    DeviceEventEmitter.emit('on_release');
+  }, []);
+
   const cameraTargetBodyRef = useRef<Matter.Body | null>(null);
 
   const [instanceOverrides, setInstanceOverrides] = useState<Record<string, { spriteId?: string, animName?: string }>>({});
@@ -901,7 +1057,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
   useEffect(() => {
     if (!visible || !currentRoom) return;
-    
+
     const isActiveRef = { current: true };
     let roomStartTime = Date.now();
     globalFrameTimer.value = 0; // Reset timer immediately on room start/restart
@@ -964,6 +1120,12 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
         if (target === 'this') {
           targetBody = currentBody;
+        } else if (target === 'joystick') {
+          if (prop === 'x') return joystickData.current.x;
+          if (prop === 'y') return joystickData.current.y;
+          if (prop === 'angle') return joystickData.current.angle;
+          if (prop === 'magnitude') return joystickData.current.magnitude;
+          return 0;
         } else {
           // Find first body matching behavior or name — use per-frame cache
           targetBody = cachedBodies.find(b => {
@@ -1012,8 +1174,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       const behavior = o.behavior?.toLowerCase() || '';
       // A player is either explicitly named/behaved as one, OR is the current camera target
       return (
-        name.includes('player') || 
-        behavior.includes('player') || 
+        name.includes('player') ||
+        behavior.includes('player') ||
         o.id === currentRoom?.settings?.camera?.targetId
       );
     };
@@ -1420,7 +1582,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         progress_bar: { ...pObj.progress_bar }
       } : pObj;
       liveObjectsRef.current.set(spawnId, instObj);
-      
+
       (body as any).gameInfo = {
         width,
         height,
@@ -1552,7 +1714,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       if (obj.progress_bar) instObj.progress_bar = { ...obj.progress_bar };
       if (obj.sprite_repeater) instObj.sprite_repeater = { ...obj.sprite_repeater };
       liveObjectsRef.current.set(inst.id, instObj);
-      
+
       (body as any).gameInfo = {
         width,
         height,
@@ -1905,13 +2067,13 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           if (info?.scripts && (!isFar || isHUD)) {
             if (info.obj?.progress_bar) {
               const pb = info.obj.progress_bar;
-              
+
               // Handle active tween
               if (info.targetValue !== undefined && info.tweenRate !== undefined) {
                 pb.currentValue += info.tweenRate;
                 // Check if we reached/passed target
-                if ((info.tweenRate > 0 && pb.currentValue >= info.targetValue) || 
-                    (info.tweenRate < 0 && pb.currentValue <= info.targetValue)) {
+                if ((info.tweenRate > 0 && pb.currentValue >= info.targetValue) ||
+                  (info.tweenRate < 0 && pb.currentValue <= info.targetValue)) {
                   pb.currentValue = info.targetValue;
                   info.targetValue = undefined;
                 }
@@ -1983,12 +2145,12 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         if (info.scripts && info.scripts.length > 0) {
           if (info.obj?.progress_bar) {
             const pb = info.obj.progress_bar;
-            
+
             // Handle active tween
             if (info.targetValue !== undefined && info.tweenRate !== undefined) {
               pb.currentValue += info.tweenRate;
-              if ((info.tweenRate > 0 && pb.currentValue >= info.targetValue) || 
-                  (info.tweenRate < 0 && pb.currentValue <= info.targetValue)) {
+              if ((info.tweenRate > 0 && pb.currentValue >= info.targetValue) ||
+                (info.tweenRate < 0 && pb.currentValue <= info.targetValue)) {
                 pb.currentValue = info.targetValue;
                 info.targetValue = undefined;
               }
@@ -2251,74 +2413,183 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       statusBarTranslucent={true}
       onRequestClose={onClose}
     >
-      <View style={[styles.container, { width: screenWidth, height: screenHeight, backgroundColor: currentRoom?.settings?.backgroundColor || '#000' }]}>
-        <View style={[styles.gameViewport, { backgroundColor: 'transparent' }]}>
-          <View style={{ width: screenWidth, height: screenHeight, alignItems: 'center', justifyContent: 'center' }}>
-            <View style={{ width: gameWidth * scale, height: gameHeight * scale, overflow: 'hidden' }}>
-              <Animated.View
-                style={[
-                  { width: roomWidth, height: roomHeight },
-                  scalerAnimStyle
-                ]}
-              >
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <View style={[styles.container, { width: screenWidth, height: screenHeight, backgroundColor: currentRoom?.settings?.backgroundColor || '#000' }]}>
+          <View style={[styles.gameViewport, { backgroundColor: 'transparent' }]}>
+            <View style={{ width: screenWidth, height: screenHeight, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: gameWidth * scale, height: gameHeight * scale, overflow: 'hidden' }}>
                 <Animated.View
                   style={[
-                    styles.canvas,
-                    { width: roomWidth, height: roomHeight, overflow: 'visible', backgroundColor: 'transparent' },
-                    cameraAnimStyle
+                    { width: roomWidth, height: roomHeight },
+                    scalerAnimStyle
                   ]}
                 >
-                  {staticElements}
-                  {(dynamicElements || []).map(d => {
-                    if (!d || !d.sv) return null;
-                    return (
-                      <PhysicsBody
-                        key={`${d.id}-${restartKey}`}
-                        sprite={spriteMap.get(d.sprite?.id) || d.sprite}
-                        spriteId={d.sprite?.id}
-                        isRemote={!!(currentProject as any)?.isRemote}
-                        onFetch={handleFetchAsset}
-                        sv={d.sv}
-                        width={d.width}
-                        height={d.height}
-                        name={d.name}
-                        variables={variables}
-                        nonce={nonce}
-                        localVariables={localVariables[d.id]}
-                        obj={d.gameObject}
-                        sprites={allSprites}
-                        override={instanceOverrides[d.id]}
-                        onTap={() => {
-                          DeviceEventEmitter.emit('builtin_tap', { targetId: d.id });
-                          if (d.gameObject?.logic?.triggers?.onTap) {
-                            DeviceEventEmitter.emit(d.gameObject.logic.triggers.onTap!);
-                          }
-                        }}
-                        globalFrameTimer={globalFrameTimer}
-                        cameraX={cameraX}
-                        cameraY={cameraY}
-                        cameraZoom={cameraZoom}
-                        gameWidth={gameWidth}
-                        gameHeight={gameHeight}
-                      />
-                    );
-                  })}
-                  <Pressable
-                    style={StyleSheet.absoluteFill}
-                    onPress={(e) => {
-                      inputTap.current = 1;
-                      DeviceEventEmitter.emit('builtin_tap', { x: e.nativeEvent.locationX, y: e.nativeEvent.locationY });
-                    }}
-                  />
+                  <Animated.View
+                    style={[
+                      styles.canvas,
+                      { width: roomWidth, height: roomHeight, overflow: 'visible', backgroundColor: 'transparent' },
+                      cameraAnimStyle
+                    ]}
+                  >
+                    {staticElements}
+                    {(dynamicElements || []).map(d => {
+                      if (!d || !d.sv) return null;
+                      return (
+                        <PhysicsBody
+                          key={`${d.id}-${restartKey}`}
+                          sprite={spriteMap.get(d.sprite?.id) || d.sprite}
+                          spriteId={d.sprite?.id}
+                          isRemote={!!(currentProject as any)?.isRemote}
+                          onFetch={handleFetchAsset}
+                          sv={d.sv}
+                          width={d.width}
+                          height={d.height}
+                          name={d.name}
+                          variables={variables}
+                          nonce={nonce}
+                          localVariables={localVariables[d.id]}
+                          obj={d.gameObject}
+                          sprites={allSprites}
+                          override={instanceOverrides[d.id]}
+                          onTap={() => {
+                            DeviceEventEmitter.emit('builtin_tap', { targetId: d.id });
+                            if (d.gameObject?.logic?.triggers?.onTap) {
+                              DeviceEventEmitter.emit(d.gameObject.logic.triggers.onTap!);
+                            }
+                          }}
+                          globalFrameTimer={globalFrameTimer}
+                          cameraX={cameraX}
+                          cameraY={cameraY}
+                          cameraZoom={cameraZoom}
+                          gameWidth={gameWidth}
+                          gameHeight={gameHeight}
+                        />
+                      );
+                    })}
+                    <Pressable
+                      style={StyleSheet.absoluteFill}
+                      onPress={(e) => {
+                        inputTap.current = 1;
+                        DeviceEventEmitter.emit('builtin_tap', { x: e.nativeEvent.locationX, y: e.nativeEvent.locationY });
+                      }}
+                    />
+                  </Animated.View>
                 </Animated.View>
-              </Animated.View>
+              </View>
+            </View>
+
+            <View style={styles.topOverlay}>
+              <TouchableOpacity onPress={onClose} style={styles.miniBtn}><X color="#fff" size={18} /></TouchableOpacity>
+              <View style={styles.topRight}>
+                {debug && !showDebugSidebar && (
+                  <ZoomIndicator
+                    zoom={cameraZoom}
+                    camX={cameraX}
+                    camY={cameraY}
+                    enabled={camEnabled}
+                    roomW={roomWidth}
+                    roomH={roomHeight}
+                    gameW={gameWidth}
+                    gameH={gameHeight}
+                    targetName={targetName}
+                  />
+                )}
+                {debug && <FPSCounter fps={fpsShared} />}
+                <TouchableOpacity onPress={() => setIsPlaying(!isPlaying)} style={styles.miniBtn}>{isPlaying ? <Pause color="#fff" size={14} /> : <PlayIcon color="#fff" size={14} />}</TouchableOpacity>
+                {debug && (
+                  <TouchableOpacity
+                    onPress={() => setShowDebugSidebar(!showDebugSidebar)}
+                    style={[styles.miniBtn, showDebugSidebar && { backgroundColor: '#4facfe' }]}
+                  >
+                    <Database color="#fff" size={14} />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={styles.miniBtn}
+                  onPress={() => {
+                    setRoomOverride(currentProject?.mainRoomId || null);
+                    setRestartKey(k => k + 1);
+                    setIsPlaying(true);
+                  }}
+                >
+                  <RotateCcw color="#fff" size={14} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.floatingControls}>
+              <View style={styles.dpad} pointerEvents="box-none">
+                {currentRoom?.settings?.showControls?.joystick?.enabled ? (
+                  <VirtualJoystick
+                    settings={currentRoom.settings.showControls.joystick}
+                    onMove={handleJoystickMove}
+                    onRelease={handleJoystickRelease}
+                  />
+                ) : (
+                  <>
+                    {currentRoom?.settings?.showControls?.left !== false && (
+                      <Pressable
+                        style={({ pressed }) => [styles.floatingBtn, pressed && { opacity: 0.7 }]}
+                        onPressIn={() => { inputLeft.current = 1; }}
+                        onPressOut={() => { inputLeft.current = 0; }}
+                      >
+                        <ArrowLeft color="#fff" size={30} />
+                      </Pressable>
+                    )}
+                    {currentRoom?.settings?.showControls?.right !== false && (
+                      <Pressable
+                        style={({ pressed }) => [styles.floatingBtn, pressed && { opacity: 0.7 }]}
+                        onPressIn={() => { inputLeft.current = 0; inputRight.current = 1; }}
+                        onPressOut={() => { inputRight.current = 0; }}
+                      >
+                        <ArrowRight color="#fff" size={30} />
+                      </Pressable>
+                    )}
+                  </>
+                )}
+              </View>
+              <View style={styles.actions}>
+                {currentRoom?.settings?.showControls?.shoot !== false && (
+                  <Pressable
+                    style={({ pressed }) => [styles.floatingBtn, styles.shootBtn, { marginBottom: 10 }, pressed && { opacity: 0.7 }]}
+                    onPressIn={() => { inputShoot.current = 1; }}
+                    onPressOut={() => { inputShoot.current = 0; }}
+                  >
+                    <Bolt color="#fff" size={24} />
+                  </Pressable>
+                )}
+                {currentRoom?.settings?.showControls?.jump !== false && (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.floatingBtn,
+                      styles.jumpBtn,
+                      pressed && { opacity: 0.7, transform: [{ scale: 0.95 }] },
+                      inputJump.current === 1 && { backgroundColor: 'rgba(79, 172, 254, 0.8)' }
+                    ]}
+                    onPressIn={() => {
+                      inputJump.current = 1;
+                      DeviceEventEmitter.emit('on_jump_press');
+                    }}
+                    onPressOut={() => { inputJump.current = 0; }}
+                  >
+                    <ChevronUp color="#fff" size={30} />
+                  </Pressable>
+                )}
+              </View>
             </View>
           </View>
 
-          <View style={styles.topOverlay}>
-            <TouchableOpacity onPress={onClose} style={styles.miniBtn}><X color="#fff" size={18} /></TouchableOpacity>
-            <View style={styles.topRight}>
-              {debug && !showDebugSidebar && (
+          {debug && showDebugSidebar && (
+            <View style={styles.debugSidebar}>
+              <View style={styles.debugSidebarHeader}>
+                <Text style={styles.debugTitle}>ENGINE DEBUG</Text>
+                <TouchableOpacity onPress={() => setShowDebugSidebar(false)} style={styles.debugCloseBtn}>
+                  <X color="#fff" size={14} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={styles.debugScroll} showsVerticalScrollIndicator={false}>
+                <Text style={styles.debugLabel}>CAMERA & VIEWPORT</Text>
                 <ZoomIndicator
                   zoom={cameraZoom}
                   camX={cameraX}
@@ -2329,146 +2600,48 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                   gameW={gameWidth}
                   gameH={gameHeight}
                   targetName={targetName}
+                  inSidebar
                 />
-              )}
-              {debug && <FPSCounter fps={fpsShared} />}
-              <TouchableOpacity onPress={() => setIsPlaying(!isPlaying)} style={styles.miniBtn}>{isPlaying ? <Pause color="#fff" size={14} /> : <PlayIcon color="#fff" size={14} />}</TouchableOpacity>
-              {debug && (
-                <TouchableOpacity
-                  onPress={() => setShowDebugSidebar(!showDebugSidebar)}
-                  style={[styles.miniBtn, showDebugSidebar && { backgroundColor: '#4facfe' }]}
-                >
-                  <Database color="#fff" size={14} />
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={styles.miniBtn}
-                onPress={() => {
-                  setRoomOverride(currentProject?.mainRoomId || null);
-                  setRestartKey(k => k + 1);
-                  setIsPlaying(true);
-                }}
-              >
-                <RotateCcw color="#fff" size={14} />
-              </TouchableOpacity>
-            </View>
-          </View>
 
-          <View style={styles.floatingControls}>
-            <View style={styles.dpad}>
-              {currentRoom?.settings?.showControls?.left !== false && (
-                <Pressable
-                  style={({ pressed }) => [styles.floatingBtn, pressed && { opacity: 0.7 }]}
-                  onPressIn={() => { inputLeft.current = 1; }}
-                  onPressOut={() => { inputLeft.current = 0; }}
-                >
-                  <ArrowLeft color="#fff" size={30} />
-                </Pressable>
-              )}
-              {currentRoom?.settings?.showControls?.right !== false && (
-                <Pressable
-                  style={({ pressed }) => [styles.floatingBtn, pressed && { opacity: 0.7 }]}
-                  onPressIn={() => { inputLeft.current = 0; inputRight.current = 1; }}
-                  onPressOut={() => { inputRight.current = 0; }}
-                >
-                  <ArrowRight color="#fff" size={30} />
-                </Pressable>
-              )}
-            </View>
-            <View style={styles.actions}>
-              {currentRoom?.settings?.showControls?.shoot !== false && (
-                <Pressable
-                  style={({ pressed }) => [styles.floatingBtn, styles.shootBtn, { marginBottom: 10 }, pressed && { opacity: 0.7 }]}
-                  onPressIn={() => { inputShoot.current = 1; }}
-                  onPressOut={() => { inputShoot.current = 0; }}
-                >
-                  <Bolt color="#fff" size={24} />
-                </Pressable>
-              )}
-              {currentRoom?.settings?.showControls?.jump !== false && (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.floatingBtn,
-                    styles.jumpBtn,
-                    pressed && { opacity: 0.7, transform: [{ scale: 0.95 }] },
-                    inputJump.current === 1 && { backgroundColor: 'rgba(79, 172, 254, 0.8)' }
-                  ]}
-                  onPressIn={() => { 
-                    inputJump.current = 1; 
-                    DeviceEventEmitter.emit('on_jump_press');
-                  }}
-                  onPressOut={() => { inputJump.current = 0; }}
-                >
-                  <ChevronUp color="#fff" size={30} />
-                </Pressable>
-              )}
-            </View>
-          </View>
-        </View>
+                <Text style={[styles.debugLabel, { marginTop: 15 }]}>ROOM INFO</Text>
+                <Text style={styles.debugValue}>{currentRoom?.name || 'Untitled'}</Text>
+                <Text style={styles.debugValue}>{roomWidth}x{roomHeight} px</Text>
 
-        {debug && showDebugSidebar && (
-          <View style={styles.debugSidebar}>
-            <View style={styles.debugSidebarHeader}>
-              <Text style={styles.debugTitle}>ENGINE DEBUG</Text>
-              <TouchableOpacity onPress={() => setShowDebugSidebar(false)} style={styles.debugCloseBtn}>
-                <X color="#fff" size={14} />
-              </TouchableOpacity>
-            </View>
+                <Text style={styles.debugLabel}>INSTANCES</Text>
+                <Text style={styles.debugValue}>Static: {(currentRoom?.instances || []).length}</Text>
+                <Text style={styles.debugValue}>Dynamic: {dynamicElements.length}</Text>
 
-            <ScrollView style={styles.debugScroll} showsVerticalScrollIndicator={false}>
-              <Text style={styles.debugLabel}>CAMERA & VIEWPORT</Text>
-              <ZoomIndicator
-                zoom={cameraZoom}
-                camX={cameraX}
-                camY={cameraY}
-                enabled={camEnabled}
-                roomW={roomWidth}
-                roomH={roomHeight}
-                gameW={gameWidth}
-                gameH={gameHeight}
-                targetName={targetName}
-                inSidebar
-              />
-
-              <Text style={[styles.debugLabel, { marginTop: 15 }]}>ROOM INFO</Text>
-              <Text style={styles.debugValue}>{currentRoom?.name || 'Untitled'}</Text>
-              <Text style={styles.debugValue}>{roomWidth}x{roomHeight} px</Text>
-
-              <Text style={styles.debugLabel}>INSTANCES</Text>
-              <Text style={styles.debugValue}>Static: {(currentRoom?.instances || []).length}</Text>
-              <Text style={styles.debugValue}>Dynamic: {dynamicElements.length}</Text>
-
-              <Text style={[styles.debugLabel, { marginTop: 20 }]}>GLOBAL VARIABLES</Text>
-              {Object.entries(variables).map(([key, val]) => (
-                <View key={key} style={styles.debugVarRow}>
-                  <Text style={styles.debugVarName}>{key}</Text>
-                  <Text style={styles.debugVarVal}>{val}</Text>
-                </View>
-              ))}
-              {Object.keys(variables).length === 0 && <Text style={[styles.debugValue, { opacity: 0.5 }]}>None</Text>}
-
-              <Text style={[styles.debugLabel, { marginTop: 20 }]}>LOCAL VARIABLES</Text>
-              {Object.entries(localVariables).map(([instId, vars]) => {
-                const inst = currentRoom?.instances?.find(i => i.id === instId);
-                const obj = objectMap.get(inst?.objectId || '');
-                return (
-                  <View key={instId} style={{ marginBottom: 10 }}>
-                    <Text style={[styles.debugVarName, { color: '#aaa' }]}>{obj?.name || 'Unknown'} ({instId.slice(0, 4)})</Text>
-                    {Object.entries(vars).map(([vk, vv]) => (
-                      <View key={vk} style={styles.debugVarRow}>
-                        <Text style={[styles.debugVarName, { fontSize: 9, paddingLeft: 10 }]}>{vk}</Text>
-                        <Text style={[styles.debugVarVal, { fontSize: 9 }]}>{vv}</Text>
-                      </View>
-                    ))}
+                <Text style={[styles.debugLabel, { marginTop: 20 }]}>GLOBAL VARIABLES</Text>
+                {Object.entries(variables).map(([key, val]) => (
+                  <View key={key} style={styles.debugVarRow}>
+                    <Text style={styles.debugVarName}>{key}</Text>
+                    <Text style={styles.debugVarVal}>{val}</Text>
                   </View>
-                );
-              })}
-              {Object.keys(localVariables).length === 0 && <Text style={[styles.debugValue, { opacity: 0.5 }]}>None active</Text>}
-            </ScrollView>
-          </View>
-        )}
-      </View>
+                ))}
+                {Object.keys(variables).length === 0 && <Text style={[styles.debugValue, { opacity: 0.5 }]}>None</Text>}
+
+                <Text style={[styles.debugLabel, { marginTop: 20 }]}>LOCAL VARIABLES</Text>
+                {Object.entries(localVariables).map(([instId, vars]) => {
+                  const inst = currentRoom?.instances?.find(i => i.id === instId);
+                  const obj = objectMap.get(inst?.objectId || '');
+                  return (
+                    <View key={instId} style={{ marginBottom: 10 }}>
+                      <Text style={[styles.debugVarName, { color: '#aaa' }]}>{obj?.name || 'Unknown'} ({instId.slice(0, 4)})</Text>
+                      {Object.entries(vars).map(([vk, vv]) => (
+                        <View key={vk} style={styles.debugVarRow}>
+                          <Text style={[styles.debugVarName, { fontSize: 9, paddingLeft: 10 }]}>{vk}</Text>
+                          <Text style={[styles.debugVarVal, { fontSize: 9 }]}>{vv}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  );
+                })}
+                {Object.keys(localVariables).length === 0 && <Text style={[styles.debugValue, { opacity: 0.5 }]}>None active</Text>}
+              </ScrollView>
+            </View>
+          )}
+        </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
-

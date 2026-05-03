@@ -982,28 +982,110 @@ export default function RoomsScreen() {
               <View style={{ marginTop: 12 }}>
                 <Text style={[styles.sectionTitle, { fontSize: 10, marginBottom: 12 }]}>Built-in Controls</Text>
                 <View style={{ gap: 8 }}>
-                  {['left', 'right', 'jump', 'shoot'].map((btn) => {
-                    const isShowing = (currentRoom?.settings?.showControls as any)?.[btn];
+                  {['left', 'right', 'jump', 'shoot', 'joystick'].map((btn) => {
+                    const controls = currentRoom?.settings?.showControls as any;
+                    const isShowing = btn === 'joystick' ? controls?.joystick?.enabled : controls?.[btn];
                     return (
-                      <TouchableOpacity
-                        key={btn}
-                        style={[styles.toggleRow, isShowing && styles.toggleRowActive]}
-                        onPress={() => {
-                          if (!currentRoom) return;
-                          const newControls = {
-                            ...(currentRoom.settings?.showControls || { left: true, right: true, jump: true, shoot: true }),
-                            [btn]: !isShowing
-                          };
-                          updateRoom(currentRoom.id, {
-                            settings: { ...(currentRoom.settings || {}), showControls: newControls }
-                          });
-                        }}
-                      >
-                        <Text style={[styles.toggleText, isShowing && styles.toggleTextActive]}>
-                          {btn.charAt(0).toUpperCase() + btn.slice(1)}
-                        </Text>
-                        <View style={[styles.toggleIndicator, isShowing && styles.toggleIndicatorActive]} />
-                      </TouchableOpacity>
+                      <View key={btn}>
+                        <TouchableOpacity
+                          style={[styles.toggleRow, isShowing && styles.toggleRowActive]}
+                          onPress={() => {
+                            if (!currentRoom) return;
+                            const newControls = { ...(currentRoom.settings?.showControls || { left: true, right: true, jump: true, shoot: true, joystick: { enabled: false, dead_zone: 10, stick_range: 50, output_mode: 'vector', persistence: false } }) };
+                            
+                            if (btn === 'joystick') {
+                              newControls.joystick = { ...(newControls.joystick || { enabled: false, dead_zone: 10, stick_range: 50, output_mode: 'vector', persistence: false }), enabled: !isShowing };
+                            } else {
+                              (newControls as any)[btn] = !isShowing;
+                            }
+                            
+                            updateRoom(currentRoom.id, {
+                              settings: { ...(currentRoom.settings || {}), showControls: newControls }
+                            });
+                          }}
+                        >
+                          <Text style={[styles.toggleText, isShowing && styles.toggleTextActive]}>
+                            {btn.charAt(0).toUpperCase() + btn.slice(1)}
+                          </Text>
+                          <View style={[styles.toggleIndicator, isShowing && styles.toggleIndicatorActive]} />
+                        </TouchableOpacity>
+
+                        {btn === 'joystick' && isShowing && (
+                          <View style={{ marginTop: 8, padding: 8, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 4, gap: 8 }}>
+                            <RoomSettingInput
+                              label="Dead Zone"
+                              value={controls?.joystick?.dead_zone ?? 10}
+                              onChange={(v) => {
+                                if (!currentRoom) return;
+                                const controls = currentRoom.settings?.showControls;
+                                const newControls = { ...controls };
+                                const defaultJoystick = { enabled: true, dead_zone: 10, stick_range: 50, output_mode: 'vector' as const, persistence: false };
+                                newControls.joystick = { ...(controls?.joystick || defaultJoystick), dead_zone: Math.max(0, v) };
+                                updateRoom(currentRoom.id, { settings: { ...currentRoom.settings, showControls: newControls } });
+                              }}
+                            />
+                            <RoomSettingInput
+                              label="Stick Range"
+                              value={controls?.joystick?.stick_range ?? 50}
+                              onChange={(v) => {
+                                if (!currentRoom) return;
+                                const controls = currentRoom.settings?.showControls;
+                                const newControls = { ...controls };
+                                const defaultJoystick = { enabled: true, dead_zone: 10, stick_range: 50, output_mode: 'vector' as const, persistence: false };
+                                newControls.joystick = { ...(controls?.joystick || defaultJoystick), stick_range: Math.max(10, v) };
+                                updateRoom(currentRoom.id, { settings: { ...currentRoom.settings, showControls: newControls } });
+                              }}
+                            />
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <Text style={{ color: theme.colors.textMuted, fontSize: 10 }}>Output Mode</Text>
+                              <View style={{ flexDirection: 'row', gap: 4 }}>
+                                {['vector', 'angle', 'magnitude'].map(mode => (
+                                  <TouchableOpacity
+                                    key={mode}
+                                    style={{ padding: 4, paddingHorizontal: 8, backgroundColor: controls?.joystick?.output_mode === mode ? theme.colors.primary : '#222', borderRadius: 4 }}
+                                    onPress={() => {
+                                      if (!currentRoom) return;
+                                      const controls = currentRoom.settings?.showControls;
+                                      const newControls = { ...controls };
+                                      const defaultJoystick = { enabled: true, dead_zone: 10, stick_range: 50, output_mode: 'vector' as const, persistence: false };
+                                      newControls.joystick = { ...(controls?.joystick || defaultJoystick), output_mode: mode as any };
+                                      updateRoom(currentRoom.id, { settings: { ...currentRoom.settings, showControls: newControls } });
+                                    }}
+                                  >
+                                    <Text style={{ fontSize: 9, color: controls?.joystick?.output_mode === mode ? '#000' : '#888' }}>{mode.toUpperCase()}</Text>
+                                  </TouchableOpacity>
+                                ))}
+                              </View>
+                            </View>
+                            <TouchableOpacity
+                              style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 }}
+                              onPress={() => {
+                                if (!currentRoom) return;
+                                const controls = currentRoom.settings?.showControls;
+                                const newControls = { ...controls };
+                                const defaultJoystick = { enabled: true, dead_zone: 10, stick_range: 50, output_mode: 'vector' as const, persistence: false };
+                                newControls.joystick = { ...(controls?.joystick || defaultJoystick), persistence: !controls?.joystick?.persistence };
+                                updateRoom(currentRoom.id, { settings: { ...currentRoom.settings, showControls: newControls } });
+                              }}
+                            >
+                              <Text style={{ color: theme.colors.textMuted, fontSize: 10 }}>Persistence</Text>
+                              <Switch
+                                value={controls?.joystick?.persistence || false}
+                                onValueChange={(val) => {
+                                  if (!currentRoom) return;
+                                  const controls = currentRoom.settings?.showControls;
+                                  const newControls = { ...controls };
+                                  const defaultJoystick = { enabled: true, dead_zone: 10, stick_range: 50, output_mode: 'vector' as const, persistence: false };
+                                  newControls.joystick = { ...(controls?.joystick || defaultJoystick), persistence: val };
+                                  updateRoom(currentRoom.id, { settings: { ...currentRoom.settings, showControls: newControls } });
+                                }}
+                                trackColor={{ false: '#333', true: theme.colors.primary + '80' }}
+                                thumbColor={(controls?.joystick?.persistence) ? theme.colors.primary : '#666'}
+                              />
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
                     );
                   })}
                 </View>

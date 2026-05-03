@@ -224,6 +224,13 @@ export interface Room {
       right: boolean;
       jump: boolean;
       shoot: boolean;
+      joystick?: {
+        enabled: boolean;
+        dead_zone: number;
+        stick_range: number;
+        output_mode: 'vector' | 'angle' | 'magnitude';
+        persistence: boolean;
+      };
     };
     gravity: number;
     backgroundColor: string;
@@ -337,7 +344,13 @@ export const useProjectStore = create<ProjectState>()(
             instances: [],
             layers: [{ id: 'l1', name: 'Layer 1', visible: true, locked: false }],
             settings: {
-              showControls: { left: true, right: true, jump: true, shoot: false },
+              showControls: { 
+                left: true, 
+                right: true, 
+                jump: true, 
+                shoot: false,
+                joystick: { enabled: false, dead_zone: 10, stick_range: 50, output_mode: 'vector', persistence: false }
+              },
               gravity: 9.8,
               backgroundColor: '#111111',
               showGrid: true,
