@@ -378,6 +378,15 @@ export default function ObjectInspectorModal({
       (global as any).pickingForRepeater = null;
     } else if (pickingSecondaryIndex === -1) {
       updateField('appearance.spriteId', spriteId);
+      
+      // Auto-update dimensions if they are at default 32x32
+      const sprite = allSprites.find((s: any) => s.id === spriteId);
+      if (sprite && safeObject.width === 32 && safeObject.height === 32) {
+        updateObject(safeObject.id, {
+          width: sprite.width || 32,
+          height: sprite.height || 32
+        });
+      }
     } else {
       const currentIds = [...(safeObject.appearance.additionalSpriteIds || [])];
       if (pickingSecondaryIndex < currentIds.length) {
@@ -1754,19 +1763,34 @@ interface InputGroupProps {
   width?: any;
 }
 
-const InputGroup = ({ label, value, onChange, keyboardType = 'default', width = '100%' }: InputGroupProps) => (
-  <View style={[styles.inputGroupCompact, { width }]}>
-    <TextInput
-      style={styles.inspectorInputCompact}
-      value={value}
-      onChangeText={onChange}
-      keyboardType={keyboardType}
-      placeholder={label}
-      placeholderTextColor="rgba(255,255,255,0.2)"
-      disableFullscreenUI={true}
-    />
-  </View>
-);
+const InputGroup = ({ label, value, onChange, keyboardType = 'default', width = '100%' }: InputGroupProps) => {
+  const [localValue, setLocalValue] = useState(value);
+
+  useEffect(() => {
+    // Only sync from store if we're not in the middle of editing (not empty)
+    // and the value actually changed.
+    if (localValue !== '' && localValue !== value) {
+      setLocalValue(value);
+    }
+  }, [value]);
+
+  return (
+    <View style={[styles.inputGroupCompact, { width }]}>
+      <TextInput
+        style={styles.inspectorInputCompact}
+        value={localValue}
+        onChangeText={(text) => {
+          setLocalValue(text);
+          onChange(text);
+        }}
+        keyboardType={keyboardType}
+        placeholder={label}
+        placeholderTextColor="rgba(255,255,255,0.2)"
+        disableFullscreenUI={true}
+      />
+    </View>
+  );
+};
 
 interface SwitchRowProps {
   label: string;

@@ -2,8 +2,33 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, FlatList, TextInput, Switch, Modal } from 'react-native';
 import { theme } from '../../theme';
 import { useProjectStore, AnimationAsset, Sprite } from '../../store/useProjectStore';
-import { Plus, Trash2, Play, Pause, ChevronRight, ChevronLeft, Film, Image as ImageIcon, Scissors, Grid, ChevronDown } from 'lucide-react-native';
+import { Plus, Trash2, Play, Pause, ChevronRight, ChevronLeft, Film, Image as ImageIcon, Scissors, Grid, ChevronDown, X as LucideX } from 'lucide-react-native';
 import { PixelSprite } from '../../components/PixelSprite';
+
+const NumericInput = ({ value, onChange, style }: { value: number, onChange: (v: number) => void, style?: any }) => {
+  const [localValue, setLocalValue] = useState(value.toString());
+
+  useEffect(() => {
+    if (localValue !== '' && Number(localValue) !== value) {
+      setLocalValue(value.toString());
+    }
+  }, [value]);
+
+  return (
+    <TextInput
+      style={style}
+      keyboardType="numeric"
+      value={localValue}
+      onChangeText={(v) => {
+        setLocalValue(v);
+        const num = parseInt(v);
+        if (!isNaN(num)) {
+          onChange(num);
+        }
+      }}
+    />
+  );
+};
 
 export default function AnimationsScreen() {
   const { activeProject, addAnimation, updateAnimation, removeAnimation } = useProjectStore();
@@ -193,11 +218,10 @@ export default function AnimationsScreen() {
                   </Text>
                   <View style={styles.speedRow}>
                     <Text style={styles.label}>FPS:</Text>
-                    <TextInput
+                    <NumericInput
                       style={styles.fpsInput}
-                      value={selectedAnim.frameRate.toString()}
-                      keyboardType="numeric"
-                      onChangeText={(val) => updateAnimation(selectedAnim.id, { frameRate: parseInt(val) || 1 })}
+                      value={selectedAnim.frameRate}
+                      onChange={(v) => updateAnimation(selectedAnim.id, { frameRate: v })}
                     />
                   </View>
                   <View style={styles.loopRow}>
@@ -331,20 +355,18 @@ export default function AnimationsScreen() {
                 <View style={styles.inputRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.inputLabel}>Columns</Text>
-                    <TextInput
+                    <NumericInput
                       style={styles.slicerInput}
-                      keyboardType="numeric"
-                      value={String(slicerConfig.cols)}
-                      onChangeText={(v) => setSlicerConfig({ ...slicerConfig, cols: parseInt(v) || 1 })}
+                      value={slicerConfig.cols}
+                      onChange={(v) => setSlicerConfig({ ...slicerConfig, cols: v })}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.inputLabel}>Rows</Text>
-                    <TextInput
+                    <NumericInput
                       style={styles.slicerInput}
-                      keyboardType="numeric"
-                      value={String(slicerConfig.rows)}
-                      onChangeText={(v) => setSlicerConfig({ ...slicerConfig, rows: parseInt(v) || 1 })}
+                      value={slicerConfig.rows}
+                      onChange={(v) => setSlicerConfig({ ...slicerConfig, rows: v })}
                     />
                   </View>
                 </View>

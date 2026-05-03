@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.5.4] - 2026-05-03
+### Fixed
+- **Input Stabilization**: Resolved a critical "can't erase" bug across all numeric input fields. Users can now fully clear and re-enter values without the fields automatically snapping back to previous or default values.
+- **Enhanced Inspector Logic**: Refactored the `InputGroup` (Object Inspector), `RoomSettingInput`, and `HexColorInput` (Rooms) to utilize local state with smart synchronization, preventing re-render interruptions during active typing.
+- **Slicer & Animation Fixes**: Applied the input stabilization pattern to the Sprite Slicer and Animation FPS settings, ensuring precise control over frame dimensions and playback speeds.
+
+
+## [1.5.3] - 2026-05-03
+### Added
+- **Premium Documentation**: Rebuilt `Oxion_Documentation.html` with a high-end landing page and documentation interface inspired by Bevy Engine.
+- **Enhanced UX**: Integrated smooth scrolling, a feature showcase, and a dedicated code logic section to the documentation portal.
+
 ## [1.5.2] - 2026-05-03
 ### Changed
 - **Rebranded App**: Renamed the application from "Oxion Game Creator" to **Oxion2d**.

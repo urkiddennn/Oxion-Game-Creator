@@ -107,8 +107,8 @@ export default function ObjectsScreen() {
         color: '#FFFFFF',
         textAlign: 'center',
       } : undefined,
-      width: (behaviorId === 'progress_bar' || behaviorId === 'sprite_repeater') ? 150 : 32,
-      height: (behaviorId === 'progress_bar' || behaviorId === 'sprite_repeater') ? 20 : 32,
+      width: (behaviorId === 'progress_bar' || behaviorId === 'sprite_repeater') ? 150 : undefined,
+      height: (behaviorId === 'progress_bar' || behaviorId === 'sprite_repeater') ? 20 : undefined,
       progress_bar: behaviorId === 'progress_bar' ? {
         minValue: 0,
         maxValue: 100,

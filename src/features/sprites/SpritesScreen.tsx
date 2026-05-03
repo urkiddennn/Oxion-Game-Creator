@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Modal, Switch, Alert } from 'react-native';
 import { theme } from '../../theme';
 import { styles } from './SpritesScreen.styles';
@@ -7,6 +7,31 @@ import { TextInput } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import SpriteEditor from './components/SpriteEditor';
 import { useProjectStore, Sprite } from '../../store/useProjectStore';
+
+const NumericInput = ({ value, onChange, style }: { value: number, onChange: (v: number) => void, style?: any }) => {
+  const [localValue, setLocalValue] = useState(value.toString());
+
+  useEffect(() => {
+    if (localValue !== '' && Number(localValue) !== value) {
+      setLocalValue(value.toString());
+    }
+  }, [value]);
+
+  return (
+    <TextInput
+      style={style}
+      keyboardType="numeric"
+      value={localValue}
+      onChangeText={(v) => {
+        setLocalValue(v);
+        const num = parseInt(v);
+        if (!isNaN(num)) {
+          onChange(num);
+        }
+      }}
+    />
+  );
+};
 
 export default function SpritesScreen() {
   const { activeProject: currentProject, addSprite, updateSprite, removeSprite } = useProjectStore();
@@ -81,6 +106,8 @@ export default function SpritesScreen() {
       name: `Pixel ${Date.now().toString().slice(-4)}`,
       pixels,
       type: 'created',
+      width: 32,
+      height: 32,
     };
     addSprite(newSprite);
     setShowEditor(false);
@@ -257,28 +284,26 @@ export default function SpritesScreen() {
                         <View style={styles.inputGrid}>
                           <View style={styles.inputItem}>
                             <Text style={styles.label}>WIDTH</Text>
-                            <TextInput
+                            <NumericInput
                               style={styles.input}
-                              keyboardType="numeric"
-                              value={String(selectedSprite.grid?.frameWidth || 32)}
-                              onChangeText={(v) => updateSprite(selectedSprite.id, {
+                              value={selectedSprite.grid?.frameWidth || 32}
+                              onChange={(v) => updateSprite(selectedSprite.id, {
                                 grid: {
                                   ...(selectedSprite.grid || { enabled: true, frameHeight: 32 }),
-                                  frameWidth: parseInt(v) || 0,
+                                  frameWidth: v,
                                 }
                               })}
                             />
                           </View>
                           <View style={styles.inputItem}>
                             <Text style={styles.label}>HEIGHT</Text>
-                            <TextInput
+                            <NumericInput
                               style={styles.input}
-                              keyboardType="numeric"
-                              value={String(selectedSprite.grid?.frameHeight || 32)}
-                              onChangeText={(v) => updateSprite(selectedSprite.id, {
+                              value={selectedSprite.grid?.frameHeight || 32}
+                              onChange={(v) => updateSprite(selectedSprite.id, {
                                 grid: {
                                   ...(selectedSprite.grid || { enabled: true, frameWidth: 32 }),
-                                  frameHeight: parseInt(v) || 0
+                                  frameHeight: v
                                 }
                               })}
                             />
@@ -318,26 +343,24 @@ export default function SpritesScreen() {
                               <View style={styles.stateInputs}>
                                 <View style={styles.stateInputWrap}>
                                   <Text style={styles.label}>COL</Text>
-                                  <TextInput
+                                  <NumericInput
                                     style={styles.input}
-                                    keyboardType="numeric"
-                                    value={String(anim.row)}
-                                    onChangeText={(v) => {
+                                    value={anim.row}
+                                    onChange={(v) => {
                                       const states = [...(selectedSprite.animations || [])];
-                                      states[idx].row = parseInt(v) || 0;
+                                      states[idx].row = v;
                                       updateSprite(selectedSprite.id, { animations: states });
                                     }}
                                   />
                                 </View>
                                 <View style={styles.stateInputWrap}>
                                   <Text style={styles.label}>COUNT</Text>
-                                  <TextInput
+                                  <NumericInput
                                     style={styles.input}
-                                    keyboardType="numeric"
-                                    value={String(anim.frameCount)}
-                                    onChangeText={(v) => {
+                                    value={anim.frameCount}
+                                    onChange={(v) => {
                                       const states = [...(selectedSprite.animations || [])];
-                                      states[idx].frameCount = parseInt(v) || 1;
+                                      states[idx].frameCount = v;
                                       updateSprite(selectedSprite.id, { animations: states });
                                     }}
                                   />

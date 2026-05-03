@@ -1832,8 +1832,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       const fw = isGrid ? sprite.grid.frameWidth : sprite?.width;
       const fh = isGrid ? sprite.grid.frameHeight : sprite?.height;
 
-      let width = isGrid ? fw : (pObj.width || fw || 32);
-      let height = isGrid ? fh : (pObj.height || fh || 32);
+      let width = isGrid ? fw : (pObj.width || inst.width || fw || 32);
+      let height = isGrid ? fh : (pObj.height || inst.height || fh || 32);
 
       const body = Matter.Bodies.rectangle(inst.x + width / 2, inst.y + height / 2, width, height, {
         isStatic,

@@ -4,9 +4,8 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import RootNavigator from './src/navigation/RootNavigator';
-
-import { StatusBar as RNStatusBar } from 'react-native';
-
+import { StatusBar as RNStatusBar, Platform } from 'react-native';
+import * as NavigationBar from 'expo-navigation-bar';
 import * as SplashScreen from 'expo-splash-screen';
 
 // Keep the splash screen visible while we fetch resources
@@ -14,6 +13,12 @@ SplashScreen.preventAutoHideAsync();
 
 export default function App() {
   React.useEffect(() => {
+    // Hide native navigation bar on Android
+    if (Platform.OS === 'android') {
+      NavigationBar.setVisibilityAsync('hidden');
+      NavigationBar.setBehaviorAsync('overlay-swipe');
+    }
+
     // Hide splash screen after 1.5 seconds or when app is ready
     setTimeout(async () => {
       await SplashScreen.hideAsync();

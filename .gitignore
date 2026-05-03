@@ -49,7 +49,12 @@ yarn-error.*
 
 Oxion Game Creator_design_doc.docx
 Oxion_Documentation.html
+changelog.md
+changelog.mg
 
 .env.production
 .env.development
 .env
+
+# Generated documentation images
+assets/docs_*.png

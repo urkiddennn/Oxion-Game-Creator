@@ -205,7 +205,9 @@ const RoomSettingInput = ({ label, value, onChange }: { label: string, value: nu
   const [localValue, setLocalValue] = useState(value.toString());
 
   useEffect(() => {
-    if (Number(localValue) !== value) {
+    // Only sync from store if we're not in the middle of editing (not empty)
+    // and the value actually changed.
+    if (localValue !== '' && Number(localValue) !== value) {
       setLocalValue(value.toString());
     }
   }, [value]);
@@ -227,6 +229,34 @@ const RoomSettingInput = ({ label, value, onChange }: { label: string, value: nu
         placeholderTextColor={theme.colors.textMuted}
       />
     </View>
+  );
+};
+
+const HexColorInput = ({ value, onChange }: { value: string, onChange: (v: string) => void }) => {
+  const [localValue, setLocalValue] = useState(value);
+
+  useEffect(() => {
+    if (localValue !== '' && localValue.toUpperCase() !== value.toUpperCase()) {
+      setLocalValue(value);
+    }
+  }, [value]);
+
+  return (
+    <TextInput
+      style={[styles.settingInput, { textAlign: 'left', width: '100%', paddingVertical: 8 }]}
+      value={localValue.toUpperCase()}
+      onChangeText={(v) => {
+        setLocalValue(v);
+        if (v.startsWith('#') && (v.length === 4 || v.length === 7)) {
+          onChange(v);
+        } else if (!v.startsWith('#') && (v.length === 3 || v.length === 6)) {
+          onChange('#' + v);
+        }
+      }}
+      placeholder="#HEX"
+      placeholderTextColor={theme.colors.textMuted}
+      maxLength={7}
+    />
   );
 };
 
@@ -923,16 +953,12 @@ export default function RoomsScreen() {
                         onPress={() => setColorPickerVisible(true)}
                       />
                       <View style={{ flex: 1 }}>
-                        <TextInput
-                          style={[styles.settingInput, { textAlign: 'left', width: '100%', paddingVertical: 8 }]}
-                          value={currentRoom?.settings?.backgroundColor?.toUpperCase() || '#2E333D'}
-                          onChangeText={(c) => currentRoom && updateRoom(currentRoom.id, {
-                            settings: { ...(currentRoom.settings || {}), backgroundColor: c }
-                          })}
-                          placeholder="#HEX"
-                          placeholderTextColor={theme.colors.textMuted}
-                          maxLength={7}
-                        />
+                      <HexColorInput
+                        value={currentRoom?.settings?.backgroundColor || '#2E333D'}
+                        onChange={(c) => currentRoom && updateRoom(currentRoom.id, {
+                          settings: { ...(currentRoom.settings || {}), backgroundColor: c }
+                        })}
+                      />
                       </View>
                     </View>
                   </View>

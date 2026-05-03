@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.5.3] - 2026-05-03
+### Fixed
+- **Programmatic Immersive Mode**: Integrated `expo-navigation-bar` and enforced `overlay-swipe` (sticky-immersive) behavior in `App.tsx` to reliably hide the system navigation bar on Android.
+- **Image Rendering Distortion**: Resolved a bug where large images appeared correctly in the editor but shrank to a square during gameplay by allowing objects to fall back to natural sprite dimensions.
+- **Physics Synchronization**: Ensured physics body dimensions match instance-specific sizing in the room settings.
+
 ## [1.5.2] - 2026-05-03
 ### Changed
 - **Rebranded App**: Renamed the application from "Oxion Game Creator" to **Oxion2d**.
