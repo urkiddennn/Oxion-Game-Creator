@@ -4,7 +4,7 @@
     "slug": "oxion2d",
     "version": "1.5.2",
     "orientation": "landscape",
-    "icon": "./assets/oxion_4.svg",
+    "icon": "./assets/oxion.png",
     "userInterfaceStyle": "dark",
     "jsEngine": "hermes",
     "androidStatusBar": {
@@ -15,7 +15,7 @@
       "backgroundColor": "#1D1D3E"
     },
     "splash": {
-      "image": "./assets/oxion_4.svg",
+      "image": "./assets/oxion.png",
       "resizeMode": "contain",
       "backgroundColor": "#1D1D3E"
     },
@@ -24,7 +24,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/oxion_4.svg",
+        "foregroundImage": "./assets/oxion.png",
         "backgroundColor": "#1D1D3E"
       },
       "edgeToEdgeEnabled": true,

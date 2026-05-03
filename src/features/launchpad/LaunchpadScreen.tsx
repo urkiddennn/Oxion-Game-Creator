@@ -118,7 +118,7 @@ export default function LaunchpadScreen() {
               <View style={styles.logoIcon}>
                 <OxionLogo size={120} />
               </View>
-              <Text style={styles.appTitle}>Oxion2d v0.4.2</Text>
+              <Text style={styles.appTitle}>Oxion2d v0.5.2</Text>
             </View>
 
             <View style={styles.sidebarLinks}>
@@ -132,7 +132,7 @@ export default function LaunchpadScreen() {
 
               <TouchableOpacity
                 style={styles.sidebarLinkButton}
-                onPress={() => Linking.openURL('https://youtube.com/@yourchannel')}
+                onPress={() => Linking.openURL('https://www.youtube.com/@urkidden4834')}
               >
                 <Play size={14} color="#FFF" />
                 <Text style={styles.sidebarLinkText}>YouTube</Text>

@@ -7,9 +7,9 @@ interface OxionLogoProps {
 
 export const OxionLogo: React.FC<OxionLogoProps> = ({ size = 120 }) => {
   return (
-    <Image 
-      source={require('../../assets/oxion2.png')} 
-      style={{ width: size, height: size, resizeMode: 'contain' }} 
+    <Image
+      source={require('../../assets/oxion.png')}
+      style={{ width: size, height: size, resizeMode: 'contain' }}
     />
   );
 };
