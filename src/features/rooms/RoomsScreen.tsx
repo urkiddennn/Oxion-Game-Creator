@@ -1032,6 +1032,24 @@ export default function RoomsScreen() {
                       });
                     }}
                   />
+
+                  <TouchableOpacity
+                    style={[styles.toggleRow, currentRoom?.settings?.ySort && styles.toggleRowActive, { marginTop: 8 }]}
+                    onPress={() => {
+                      if (!currentRoom) return;
+                      updateRoom(currentRoom.id, {
+                        settings: { ...(currentRoom.settings || {}), ySort: !currentRoom.settings?.ySort }
+                      });
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Move color={currentRoom?.settings?.ySort ? theme.colors.primary : theme.colors.textMuted} size={14} />
+                      <Text style={[styles.toggleText, currentRoom?.settings?.ySort && styles.toggleTextActive]}>
+                        Y-Sorting (RPG Style)
+                      </Text>
+                    </View>
+                    <View style={[styles.toggleIndicator, currentRoom?.settings?.ySort && styles.toggleIndicatorActive]} />
+                  </TouchableOpacity>
                 </View>
               )}
             </View>

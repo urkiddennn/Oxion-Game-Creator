@@ -100,6 +100,14 @@ export interface GameObject {
     ignoreCollision: boolean;
     angle?: number;
     scale?: number;
+    collision?: {
+      type: 'rectangle' | 'circle';
+      width?: number;
+      height?: number;
+      radius?: number;
+      offsetX?: number;
+      offsetY?: number;
+    };
   };
 
   combat: {
@@ -242,6 +250,7 @@ export interface Room {
       zoom: number;
       enabled: boolean;
     };
+    ySort?: boolean;
   };
 }
 
@@ -360,7 +369,8 @@ export const useProjectStore = create<ProjectState>()(
                 smoothing: 0.1,
                 zoom: 1,
                 enabled: false
-              }
+              },
+              ySort: false
             }
           }],
           sounds: [],

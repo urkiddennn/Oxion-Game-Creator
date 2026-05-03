@@ -230,7 +230,7 @@ const pixelsToBmp = (pixels: string[][], spriteId: string, displayWidth?: number
   return base64;
 };
 
-const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteId, isRemote, onFetch, variables, nonce, localVariables, obj, debug, animations, sprites, override, globalFrameTimer, cameraX, cameraY, cameraZoom, gameWidth, gameHeight }: {
+const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteId, isRemote, onFetch, variables, nonce, localVariables, obj, debug, animations, sprites, override, globalFrameTimer, cameraX, cameraY, cameraZoom, gameWidth, gameHeight, ySort }: {
   sprite: any,
   sv: any,
   width?: number,
@@ -253,7 +253,8 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
   cameraY: SharedValue<number>,
   cameraZoom: SharedValue<number>,
   gameWidth: number,
-  gameHeight: number
+  gameHeight: number,
+  ySort?: boolean
 }) => {
   const [imgDimensions, setImgDimensions] = useState({ w: 0, h: 0 });
   const [currentDimId, setCurrentDimId] = useState<string | null>(null);
@@ -520,6 +521,7 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
       ],
       display: isVisible.value ? 'flex' : 'none',
       borderColor: debug ? (sv.isColliding?.value ? '#ff0000' : '#00ff00') : 'transparent',
+      zIndex: ySort ? Math.floor(ty) : undefined,
     };
   });
 
@@ -737,7 +739,8 @@ const PhysicsBody = React.memo(PhysicsBodyBase, (prev, next) => {
       prev.debug === next.debug &&
       prev.gameWidth === next.gameWidth &&
       prev.gameHeight === next.gameHeight &&
-      prev.override === next.override;
+      prev.override === next.override &&
+      prev.ySort === next.ySort;
   }
 
   // For regular sprites, IGNORE nonce. Only re-render if visual properties change.
@@ -747,7 +750,8 @@ const PhysicsBody = React.memo(PhysicsBodyBase, (prev, next) => {
     prev.debug === next.debug &&
     prev.gameWidth === next.gameWidth &&
     prev.gameHeight === next.gameHeight &&
-    prev.override === next.override;
+    prev.override === next.override &&
+    prev.ySort === next.ySort;
 });
 
 const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
@@ -959,6 +963,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
   const inputLeft = useRef(0);
   const inputRight = useRef(0);
+  const inputUp = useRef(0);
+  const inputDown = useRef(0);
   const inputJump = useRef(0);
   const inputShoot = useRef(0);
   const inputTap = useRef(0);
@@ -1038,7 +1044,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       joystick_magnitude: Number(data.magnitude.toFixed(2))
     };
 
-    // Auto-map horizontal movement to default inputs for convenience
+    // Auto-map horizontal movement
     if (data.x < -0.3) {
       inputLeft.current = 1;
       inputRight.current = 0;
@@ -1048,6 +1054,18 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     } else {
       inputLeft.current = 0;
       inputRight.current = 0;
+    }
+
+    // Auto-map vertical movement
+    if (data.y < -0.3) {
+      inputUp.current = 1;
+      inputDown.current = 0;
+    } else if (data.y > 0.3) {
+      inputUp.current = 0;
+      inputDown.current = 1;
+    } else {
+      inputUp.current = 0;
+      inputDown.current = 0;
     }
 
     DeviceEventEmitter.emit('on_move', data);
@@ -1064,6 +1082,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     };
     inputLeft.current = 0;
     inputRight.current = 0;
+    inputUp.current = 0;
+    inputDown.current = 0;
     DeviceEventEmitter.emit('on_release');
   }, []);
 
@@ -1101,6 +1121,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
     inputLeft.current = 0;
     inputRight.current = 0;
+    inputUp.current = 0;
+    inputDown.current = 0;
     inputJump.current = 0;
     inputShoot.current = 0;
     inputTap.current = 0;
@@ -2142,6 +2164,15 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           nVx *= 0.85;
         }
 
+        // Vertical Movement
+        if (inputUp.current === 1) {
+          nVy = -(c.moveSpeed || 5) * 0.8;
+        } else if (inputDown.current === 1) {
+          nVy = (c.moveSpeed || 5) * 0.8;
+        } else if (engine.gravity.y === 0) {
+          nVy *= 0.85;
+        }
+
         Matter.Body.setVelocity(b, { x: nVx, y: nVy });
 
         // Emit events AFTER velocity is set so scripts can override it if they wish
@@ -2153,6 +2184,11 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           DeviceEventEmitter.emit('builtin_left', { targetId: b.label });
         } else if (inputRight.current === 1) {
           DeviceEventEmitter.emit('builtin_right', { targetId: b.label });
+        }
+        if (inputUp.current === 1) {
+          DeviceEventEmitter.emit('builtin_up', { targetId: b.label });
+        } else if (inputDown.current === 1) {
+          DeviceEventEmitter.emit('builtin_down', { targetId: b.label });
         }
 
         // Automatic Running Sound (approx once every 300ms)
@@ -2580,6 +2616,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             cameraZoom={cameraZoom}
             gameWidth={gameWidth}
             gameHeight={gameHeight}
+            ySort={currentRoom?.settings?.ySort}
           />
         );
       });
@@ -2656,6 +2693,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                           cameraZoom={cameraZoom}
                           gameWidth={gameWidth}
                           gameHeight={gameHeight}
+                          ySort={currentRoom?.settings?.ySort}
                         />
                       );
                     })}
