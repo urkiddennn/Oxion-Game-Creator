@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.3] - 2026-05-03 - Sticky HUD Support
+### Added
+- **Sticky HUD Behavior**: Added "Sticky HUD" property to the Physics tab for all objects. When enabled:
+  - Objects ignore viewport visibility culling.
+  - Objects dynamically counteract camera translations to remain perfectly fixed to the screen viewport.
+  - Logic engines ignore camera-distance limits for HUD objects, allowing background timers or state trackers to run reliably regardless of player position.
+
+
 ## [1.3.2] - 2026-05-02 - Sprite Repeater & Health UI System
 ### Added
 - **Sprite Repeater Behavior**: Added a new object type for "Lives" and "Hearts" systems.

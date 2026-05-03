@@ -614,6 +614,7 @@ export default function ObjectInspectorModal({
                     onToggle={() => toggleSection('physics')}
                   >
                     <SwitchRow label="Enabled" value={safeObject.physics.enabled} onToggle={(v: boolean) => updateField('physics.enabled', v)} />
+                    <SwitchRow label="Sticky HUD" value={safeObject.isHUD || false} onToggle={(v: boolean) => updateField('isHUD', v)} />
 
                     {safeObject.physics.enabled && (
                       <>

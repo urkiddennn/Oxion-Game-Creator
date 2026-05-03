@@ -2,7 +2,7 @@
   "expo": {
     "name": "Oxion Game Creator",
     "slug": "oxion-game-creator",
-    "version": "1.2.4",
+    "version": "1.3.3",
     "orientation": "landscape",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",

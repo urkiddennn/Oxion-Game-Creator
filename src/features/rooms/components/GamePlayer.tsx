@@ -154,8 +154,12 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
     return animLoop.value ? frame : Math.min(frame, animFrameCount.value - 1);
   });
 
+  const isHUD = obj?.isHUD === true;
+
   const isVisible = useDerivedValue(() => {
     'worklet';
+    if (isHUD) return true;
+
     const camX = cameraX.value;
     const camY = cameraY.value;
     const zoom = cameraZoom.value;
@@ -352,10 +356,18 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
   const animatedStyle = useAnimatedStyle(() => {
     if (!sv || !sv.x || !sv.y) return { display: 'none' as const };
 
+    let tx = sv.x.value;
+    let ty = sv.y.value;
+
+    if (isHUD) {
+      tx += cameraX.value;
+      ty += cameraY.value;
+    }
+
     return {
       transform: [
-        { translateX: sv.x.value },
-        { translateY: sv.y.value },
+        { translateX: tx },
+        { translateY: ty },
         { rotate: `${sv.rot.value}rad` },
         { scaleX: sv.flipX ? sv.flipX.value : 1 }
       ],
@@ -1848,8 +1860,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         if (!s?.enabled || !s.particleObjectId) return;
 
         // Logic Culling for Emitters
+        const isHUD = e.obj.isHUD === true;
         const distSq = Math.pow(e.body.position.x - (cameraRef.current.x + gameWidth / 2), 2) + Math.pow(e.body.position.y - (cameraRef.current.y + gameHeight / 2), 2);
-        if (distSq > Math.pow(Math.max(gameWidth, gameHeight) * 1.5, 2)) return;
+        if (!isHUD && distSq > Math.pow(Math.max(gameWidth, gameHeight) * 1.5, 2)) return;
 
         if (now - e.lastSpawn > 1000 / (s.rate || 5)) {
           e.lastSpawn = now;
@@ -1882,12 +1895,14 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           d.sv.rot.value = d.body.angle;
 
           // Logic Culling for Dynamic Elements (don't run scripts if far away)
+          const info = (d.body as any).gameInfo;
+          const isHUD = info?.obj?.isHUD === true;
+
           const distSq = Math.pow(d.body.position.x - (cameraX.value + gameWidth / 2), 2) + Math.pow(d.body.position.y - (cameraY.value + gameHeight / 2), 2);
           const isFar = distSq > Math.pow(Math.max(gameWidth, gameHeight) * 2, 2);
 
           // Run scripts for dynamic elements (only if not too far)
-          const info = (d.body as any).gameInfo;
-          if (info?.scripts && !isFar) {
+          if (info?.scripts && (!isFar || isHUD)) {
             if (info.obj?.progress_bar) {
               const pb = info.obj.progress_bar;
               
@@ -1958,8 +1973,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         const dx = body.position.x - (camX + gameWidth / 2);
         const dy = body.position.y - (camY + gameHeight / 2);
         const isTarget = cameraTargetBodyRef.current === body;
+        const isHUD = info.obj?.isHUD === true;
 
-        if (!isTarget && (Math.abs(dx) > logicCullRange || Math.abs(dy) > logicCullRange)) {
+        if (!isTarget && !isHUD && (Math.abs(dx) > logicCullRange || Math.abs(dy) > logicCullRange)) {
           continue;
         }
 

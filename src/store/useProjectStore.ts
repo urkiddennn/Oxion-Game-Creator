@@ -61,6 +61,7 @@ export interface GameObject {
   name: string;
   type: string;
   behavior: string;
+  isHUD?: boolean;
   width?: number;
   height?: number;
   health: {
