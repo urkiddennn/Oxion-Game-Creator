@@ -1226,70 +1226,82 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       );
     };
 
+    const parseScriptAction = (actionData: string): { cmd: string, parts: string[] } => {
+      const trimmed = actionData.trim();
+
+      // --- Natural Syntax Transpiler (Pre-parsed) ---
+      // Pattern: target.prop op value (e.g. self.x += 10, other.health -= 5)
+      const match = trimmed.match(/^([\w]+)\.([\w]+)\s*([\+\-]?=)\s*(.*)$/);
+      if (match) {
+        const [_, target, prop, op, val] = match;
+        let cmd = '';
+
+        if (prop === 'x') cmd = op === '=' ? 'set_x' : 'add_x';
+        else if (prop === 'y') cmd = op === '=' ? 'set_y' : 'add_y';
+        else if (prop === 'vx') cmd = 'set_vx';
+        else if (prop === 'vy') cmd = 'set_vy';
+        else if (prop === 'angle') cmd = op === '=' ? 'set_angle' : 'add_angle';
+        else if (prop === 'current_count') {
+          if (op === '=') cmd = 'set_count';
+          else if (op === '-=') cmd = 'damage';
+          else if (op === '+=') cmd = 'heal';
+        } else if (prop === 'value') {
+          if (op === '=') cmd = 'set_value';
+          else if (op === '+=') cmd = 'add_value';
+          else if (op === '-=') cmd = 'add_value'; // Handled by sign in parts
+        } else {
+          cmd = op === '=' ? 'lvar_set' : 'lvar_add';
+        }
+
+        const finalVal = (prop === 'value' && op === '-=') ? `-${val}` : val;
+        
+        if (target === 'other') {
+          return { cmd: 'target_other', parts: ['target_other', cmd, prop, finalVal] };
+        }
+        
+        return { cmd, parts: [cmd, prop, finalVal] };
+      }
+
+      // Pattern: var op value (e.g. score += 1) - Assume global variable if no dot
+      const varMatch = trimmed.match(/^([\w]+)\s*([\+\-]?=)\s*(.*)$/);
+      if (varMatch) {
+        const [_, varName, op, val] = varMatch;
+        const command = op === '=' ? 'var_set' : 'var_add';
+        const sign = op === '-=' ? '-' : '';
+        return { cmd: command, parts: [command, varName, sign + val] };
+      }
+
+      const p = trimmed.split(':').map(part => part.trim());
+      let cmd = p[0] || '';
+      if (cmd.toLowerCase() === 'do') {
+        return { cmd: p[1] || '', parts: p.slice(1) };
+      }
+      return { cmd, parts: p };
+    };
+
     const executeAction = (actionData: string | { cmd: string, parts: string[] }, body: Matter.Body, obj?: GameObject, source: string = 'unknown', otherBody?: Matter.Body) => {
       if (!isPlayingRef.current) return;
 
-      let finalAction = actionData;
+      const isParsedData = typeof actionData !== 'string';
+      let cmd = isParsedData ? (actionData as any).cmd : '';
+      let parts = isParsedData ? (actionData as any).parts : [];
 
-      // --- Natural Syntax Transpiler ---
-      if (typeof actionData === 'string') {
-        const trimmed = actionData.trim();
+      if (!isParsedData) {
+        const parsed = parseScriptAction(actionData as string);
+        cmd = parsed.cmd;
+        parts = parsed.parts;
+      }
 
-        // Pattern: target.prop op value (e.g. self.x += 10, other.health -= 5)
-        const match = trimmed.match(/^([\w]+)\.([\w]+)\s*([\+\-]?=)\s*(.*)$/);
-        if (match) {
-          const [_, target, prop, op, val] = match;
-          const targetBody = target === 'self' ? body : (target === 'other' ? otherBody : null);
-
-          if (targetBody) {
-            // Mapping common properties to internal commands
-            if (prop === 'x') finalAction = op === '=' ? `set_x:${val}` : `add_x:${val}`;
-            else if (prop === 'y') finalAction = op === '=' ? `set_y:${val}` : `add_y:${val}`;
-            else if (prop === 'vx') finalAction = `set_vx:${val}`;
-            else if (prop === 'vy') finalAction = `set_vy:${val}`;
-            else if (prop === 'angle') finalAction = op === '=' ? `set_angle:${val}` : `add_angle:${val}`;
-            else if (prop === 'current_count') {
-              if (op === '=') finalAction = `set_count:${val}`;
-              else if (op === '-=') finalAction = `damage:${val}`;
-              else if (op === '+=') finalAction = `heal:${val}`;
-            } else if (prop === 'value') {
-              if (op === '=') finalAction = `set_value:${val}`;
-              else if (op === '+=') finalAction = `add_value:${val}`;
-              else if (op === '-=') finalAction = `add_value:-${val}`;
-            } else {
-              // Assume it's a local variable
-              const command = op === '=' ? 'lvar_set' : 'lvar_add';
-              const sign = op === '-=' ? '-' : '';
-              finalAction = `${command}:${prop}:${sign}${val}`;
-            }
-
-            // If target was 'other', we need to execute on that body instead
-            if (target === 'other' && otherBody) {
-              executeAction(finalAction, otherBody, (otherBody as any).gameInfo?.obj, `${source}:TargetOther`);
-              return;
-            }
-          }
-        } else {
-          // Pattern: var op value (e.g. score += 1) - Assume global variable if no dot
-          const varMatch = trimmed.match(/^([\w]+)\s*([\+\-]?=)\s*(.*)$/);
-          if (varMatch) {
-            const [_, varName, op, val] = varMatch;
-            const command = op === '=' ? 'var_set' : 'var_add';
-            const sign = op === '-=' ? '-' : '';
-            finalAction = `${command}:${varName}:${sign}${val}`;
-          }
+      // Handle 'other' target redirection for pre-parsed actions
+      if (cmd === 'target_other') {
+        if (otherBody) {
+          const actualCmd = parts[1];
+          const actualParts = [actualCmd, parts[2], parts[3]];
+          executeAction({ cmd: actualCmd, parts: actualParts }, otherBody, (otherBody as any).gameInfo?.obj, `${source}:TargetOther`);
         }
+        return;
       }
 
-      const isParsed = typeof finalAction !== 'string';
-      let cmd = isParsed ? (finalAction as any).cmd : finalAction.split(':')[0].trim();
-      let parts = isParsed ? (finalAction as any).parts : finalAction.split(':').map(p => p.trim());
-
-      // Skip 'do' prefix if present
-      if (cmd.toLowerCase() === 'do') {
-        parts = parts.slice(1);
-        cmd = parts[0] || '';
-      }
       if (cmd === 'restart_room' || cmd === 'go_to_room') {
         // Only allow player
         if (!isPlayer(obj)) {
@@ -1495,19 +1507,49 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
     const executeListenerLogic = (listener: any, body: Matter.Body, obj: GameObject, source: string) => {
       // 1. Legacy support
-      if (listener.action) executeAction(listener.action, body, obj, source);
+      if (listener.parsedAction) {
+        executeAction(listener.parsedAction, body, obj, source);
+      } else if (listener.action) {
+        executeAction(listener.action, body, obj, source);
+      }
+
       if (listener.condition && checkCondition(listener.condition, body, obj)) {
         if (listener.conditionAction) executeAction(listener.conditionAction, body, obj, source + ':Cond');
       }
 
       // 2. New Logic Editor support
-      if (listener.immediateActions) {
+      if (listener.parsedImmediate) {
+        listener.parsedImmediate.forEach((act: any) => {
+          executeAction(act, body, obj, source + ':Imm');
+        });
+      } else if (listener.immediateActions) {
         listener.immediateActions.forEach((act: string) => {
           if (act) executeAction(act, body, obj, source + ':Imm');
         });
       }
 
-      if (listener.subConditions) {
+      if (listener.parsedSubConditions) {
+        listener.parsedSubConditions.forEach((sc: any) => {
+          const met = checkCondition(sc.condition, body, obj);
+          if (met) {
+            if (sc.parsedActions) {
+              sc.parsedActions.forEach((act: any) => executeAction(act, body, obj, source + ':IfT'));
+            } else if (sc.actions) {
+              sc.actions.forEach((act: string) => {
+                if (act) executeAction(act, body, obj, source + ':IfT');
+              });
+            }
+          } else {
+            if (sc.parsedElseActions) {
+              sc.parsedElseActions.forEach((act: any) => executeAction(act, body, obj, source + ':IfF'));
+            } else if (sc.elseActions) {
+              sc.elseActions.forEach((act: string) => {
+                if (act) executeAction(act, body, obj, source + ':IfF');
+              });
+            }
+          }
+        });
+      } else if (listener.subConditions) {
         listener.subConditions.forEach((sc: any) => {
           const met = checkCondition(sc.condition, body, obj);
           if (met) {
@@ -1618,6 +1660,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           cmd,
           parts: p,
           actionPart,
+          parsedAction: actionPart ? parseScriptAction(actionPart) : null,
           timerMs,
           lastTrigger: Date.now()
         };
@@ -1631,13 +1674,26 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           if (cmd === 'on_timer' && p.length > 1) {
             timerMs = parseInt(p[1], 10) || 1000;
           }
+
+          // Pre-parse all actions in the listener
+          const parsedImmediate = l.immediateActions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean);
+          const parsedSubConditions = l.subConditions?.map((sc: any) => ({
+            ...sc,
+            parsedActions: sc.actions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean),
+            parsedElseActions: sc.elseActions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean),
+          }));
+
           parsedScripts.push({
             cmd,
             parts: p,
-            actionPart: '', // Actions are handled by listenerData
+            actionPart: '',
             timerMs,
             lastTrigger: Date.now(),
-            listenerData: l
+            listenerData: {
+              ...l,
+              parsedImmediate,
+              parsedSubConditions
+            }
           });
         }
       });
@@ -1722,6 +1778,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           cmd,
           parts: p,
           actionPart,
+          parsedAction: actionPart ? parseScriptAction(actionPart) : null,
           timerMs,
           lastTrigger: Date.now()
         };
@@ -1737,13 +1794,25 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           if (cmd === 'on_timer' && p.length > 1) {
             timerMs = parseInt(p[1], 10) || 1000;
           }
+
+          const parsedImmediate = l.immediateActions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean);
+          const parsedSubConditions = l.subConditions?.map((sc: any) => ({
+            ...sc,
+            parsedActions: sc.actions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean),
+            parsedElseActions: sc.elseActions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean),
+          }));
+
           parsedScripts.push({
             cmd,
             parts: p,
-            actionPart: '', // Actions are handled by listenerData
+            actionPart: '',
             timerMs,
             lastTrigger: Date.now(),
-            listenerData: l
+            listenerData: {
+              ...l,
+              parsedImmediate,
+              parsedSubConditions
+            }
           });
         }
       });

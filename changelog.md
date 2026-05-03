@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.5.1] - 2026-05-03
+### Added
+- **Script Pre-parsing Optimization**: Natural syntax transpilation (e.g., `self.x += 10`) is now performed once during object spawning or room initialization. This eliminates regex overhead from the 60FPS game loop.
+- **Optimized Instruction Pipeline**: `executeAction` and `executeListenerLogic` now support pre-parsed instruction objects, reducing JS thread overhead during intense gameplay.
+
+## [1.5.0] - 2026-05-03
+### Removed
+- **React Native Skia Rendering Engine**: Reverted to the stable legacy View-based renderer. While Skia offered high performance, it caused compatibility issues and hook violations in the current architecture.
+### Fixed
+- **Engine Stability**: Stabilized asset initialization and hook management within the `GamePlayer` component to prevent runtime crashes.
 ## [1.4.6] - 2026-05-03
 ### Fixed
 - Sprite Repeater icons not displaying in published games (remote asset fetching)

@@ -1,6 +1,6 @@
 {
   "name": "oxion-game-creator",
-  "version": "1.4.6",
+  "version": "1.5.1",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
