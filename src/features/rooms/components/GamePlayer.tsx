@@ -1132,8 +1132,12 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         const [target, prop] = valStr.split('.');
         let targetBody: Matter.Body | null = null;
 
-        if (target === 'this') {
+        if (target === 'this' || target === 'self') {
           targetBody = currentBody;
+        } else if (target === 'tap') {
+          if (prop === 'x') return variablesRef.current.tap_x || 0;
+          if (prop === 'y') return variablesRef.current.tap_y || 0;
+          return 0;
         } else if (target === 'joystick') {
           if (prop === 'x') return joystickData.current.x;
           if (prop === 'y') return joystickData.current.y;
@@ -2588,6 +2592,15 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                       cameraAnimStyle
                     ]}
                   >
+                    <Pressable
+                      style={StyleSheet.absoluteFill}
+                      onPress={(e) => {
+                        inputTap.current = 1;
+                        variablesRef.current.tap_x = e.nativeEvent.locationX;
+                        variablesRef.current.tap_y = e.nativeEvent.locationY;
+                        DeviceEventEmitter.emit('builtin_tap', { x: e.nativeEvent.locationX, y: e.nativeEvent.locationY });
+                      }}
+                    />
                     {staticElements}
                     {(dynamicElements || []).map(d => {
                       if (!d || !d.sv) return null;
@@ -2623,13 +2636,6 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                         />
                       );
                     })}
-                    <Pressable
-                      style={StyleSheet.absoluteFill}
-                      onPress={(e) => {
-                        inputTap.current = 1;
-                        DeviceEventEmitter.emit('builtin_tap', { x: e.nativeEvent.locationX, y: e.nativeEvent.locationY });
-                      }}
-                    />
                   </Animated.View>
                 </Animated.View>
               </View>
