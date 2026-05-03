@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "Oxion Game Creator",
-    "slug": "oxion-game-creator",
-    "version": "1.4.4",
+    "name": "Oxion2d",
+    "slug": "oxion2d",
+    "version": "1.5.2",
     "orientation": "landscape",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/oxion_4.svg",
     "userInterfaceStyle": "dark",
     "jsEngine": "hermes",
     "androidStatusBar": {
@@ -12,24 +12,24 @@
     },
     "androidNavigationBar": {
       "visible": "never",
-      "backgroundColor": "#000000"
+      "backgroundColor": "#1D1D3E"
     },
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/oxion_4.svg",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#1D1D3E"
     },
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/oxion_4.svg",
+        "backgroundColor": "#1D1D3E"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.richardbanguiz.oxiongamecreator"
+      "package": "com.richardbanguiz.oxion2d"
     },
     "web": {
       "favicon": "./assets/favicon.png"

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2] - 2026-05-03
+### Changed
+- **Rebranded App**: Renamed the application from "Oxion Game Creator" to **Oxion2d**.
+- **Final App Logo**: Switched to the final PNG-based logo (`assets/oxion2.png`).
+- **Integrated Expo Splash Screen**: Added `expo-splash-screen` for smooth loading transitions.
+- **Updated Package Name**: Changed Android package to `com.richardbanguiz.oxion2d` and slug to `oxion2d`.
+
 ## [1.5.1] - 2026-05-03
 ### Added
 - **Script Pre-parsing Optimization**: Natural syntax transpilation (e.g., `self.x += 10`) is now performed once during object spawning or room initialization. This eliminates regex overhead from the 60FPS game loop.

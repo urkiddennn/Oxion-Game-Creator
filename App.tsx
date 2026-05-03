@@ -7,7 +7,19 @@ import RootNavigator from './src/navigation/RootNavigator';
 
 import { StatusBar as RNStatusBar } from 'react-native';
 
+import * as SplashScreen from 'expo-splash-screen';
+
+// Keep the splash screen visible while we fetch resources
+SplashScreen.preventAutoHideAsync();
+
 export default function App() {
+  React.useEffect(() => {
+    // Hide splash screen after 1.5 seconds or when app is ready
+    setTimeout(async () => {
+      await SplashScreen.hideAsync();
+    }, 1500);
+  }, []);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
