@@ -136,72 +136,92 @@ const VirtualJoystick = ({ settings, onMove, onRelease }: {
   );
 };
 
-const pixelsToBmp = (pixels: string[][], spriteId: string) => {
+/**
+ * Generates a BMP at the exact display resolution using true nearest-neighbor scaling.
+ * By rendering at 1:1 pixel ratio, the Image component does ZERO scaling,
+ * completely eliminating bilinear filtering blur on all platforms.
+ */
+const pixelsToBmp = (pixels: string[][], spriteId: string, displayWidth?: number, displayHeight?: number) => {
   if (!pixels || pixels.length === 0) return null;
 
-  const originalWidth = pixels[0]?.length || 0;
-  const originalHeight = pixels.length || 0;
-  if (originalWidth === 0 || originalHeight === 0) return null;
+  const srcW = pixels[0]?.length || 0;
+  const srcH = pixels.length || 0;
+  if (srcW === 0 || srcH === 0) return null;
 
-  // Internal upscaling to achieve pixel-perfect look on high-res screens
-  const UPSCALE = 1;
-  const width = originalWidth * UPSCALE;
-  const height = originalHeight * UPSCALE;
+  // Output at exact display size (minimum 2x source to ensure sharpness)
+  const minScale = Math.max(2, Math.ceil((displayWidth || 32) / srcW));
+  const width = displayWidth ? Math.max(displayWidth, srcW * 2) : srcW * minScale;
+  const height = displayHeight ? Math.max(displayHeight, srcH * 2) : srcH * minScale;
 
-  const pixelHash = originalWidth * originalHeight;
-  const cacheKey = `${spriteId}_${pixelHash}_${pixels[0]?.[0] || ''}_v2`;
-
+  const cacheKey = `${spriteId}_${width}x${height}_v5`;
   if (SPRITE_CACHE.has(cacheKey)) return SPRITE_CACHE.get(cacheKey);
 
-  // 32-bit BMP (BGRA) with BI_BITFIELDS
   const rowSize = width * 4;
   const pixelDataSize = rowSize * height;
-  const headerSize = 70; // 14 (file) + 40 (DIB) + 16 (masks)
+  const headerSize = 72; // 4-byte aligned for Uint32Array
   const fileSize = headerSize + pixelDataSize;
 
   const buffer = new Uint8Array(fileSize);
   const view = new DataView(buffer.buffer);
 
   // BMP File Header
-  view.setUint16(0, 0x4D42, true); // 'BM'
+  view.setUint16(0, 0x4D42, true);
   view.setUint32(2, fileSize, true);
-  view.setUint32(10, headerSize, true); // Offset to pixel data
+  view.setUint32(10, headerSize, true);
 
   // DIB Header (BITMAPINFOHEADER)
-  view.setUint32(14, 40, true); // Header size
+  view.setUint32(14, 40, true);
   view.setUint32(18, width, true);
   view.setUint32(22, -height, true); // Top-down
-  view.setUint16(26, 1, true); // Planes
-  view.setUint16(28, 32, true); // 32 bits
+  view.setUint16(26, 1, true);
+  view.setUint16(28, 32, true);
   view.setUint32(30, 3, true); // BI_BITFIELDS
   view.setUint32(34, pixelDataSize, true);
 
-  // Masks at offset 54
-  view.setUint32(54, 0x00FF0000, true); // Red
-  view.setUint32(58, 0x0000FF00, true); // Green
-  view.setUint32(62, 0x000000FF, true); // Blue
-  view.setUint32(66, 0xFF000000, true); // Alpha
+  // Channel masks (BGRA)
+  view.setUint32(54, 0x00FF0000, true); // R
+  view.setUint32(58, 0x0000FF00, true); // G
+  view.setUint32(62, 0x000000FF, true); // B
+  view.setUint32(66, 0xFF000000, true); // A
 
-  for (let y = 0; y < height; y++) {
-    const originalY = Math.floor(y / UPSCALE);
-    for (let x = 0; x < width; x++) {
-      const originalX = Math.floor(x / UPSCALE);
-      const color = pixels[originalY][originalX] || 'transparent';
-      let r = 0, g = 0, b = 0, a = 0;
+  const pixelView = new Uint32Array(buffer.buffer, headerSize, width * height);
 
-      if (color !== 'transparent') {
+  // Pre-parse all unique colors in the sprite
+  const colorLut = new Map<string, number>();
+  for (let sy = 0; sy < srcH; sy++) {
+    const row = pixels[sy];
+    for (let sx = 0; sx < srcW; sx++) {
+      const color = row[sx] || 'transparent';
+      if (color !== 'transparent' && !colorLut.has(color)) {
         const hex = color.startsWith('#') ? color.slice(1) : 'FFFFFF';
-        r = parseInt(hex.slice(0, 2), 16);
-        g = parseInt(hex.slice(2, 4), 16);
-        b = parseInt(hex.slice(4, 6), 16);
-        a = 255;
+        const r = parseInt(hex.slice(0, 2), 16);
+        const g = parseInt(hex.slice(2, 4), 16);
+        const b = parseInt(hex.slice(4, 6), 16);
+        colorLut.set(color, (255 << 24) | (r << 16) | (g << 8) | b);
       }
+    }
+  }
 
-      const offset = headerSize + (y * rowSize) + (x * 4);
-      buffer[offset] = b;
-      buffer[offset + 1] = g;
-      buffer[offset + 2] = r;
-      buffer[offset + 3] = a;
+  // True nearest-neighbor: iterate source pixels → fill output blocks
+  for (let sy = 0; sy < srcH; sy++) {
+    const row = pixels[sy];
+    const outYStart = Math.floor(sy * height / srcH);
+    const outYEnd = Math.floor((sy + 1) * height / srcH);
+    const blockH = outYEnd - outYStart;
+
+    for (let sx = 0; sx < srcW; sx++) {
+      const color = row[sx] || 'transparent';
+      const argb = color === 'transparent' ? 0 : (colorLut.get(color) || 0);
+
+      const outXStart = Math.floor(sx * width / srcW);
+      const outXEnd = Math.floor((sx + 1) * width / srcW);
+      const blockW = outXEnd - outXStart;
+
+      // Fill entire rectangular block for this source pixel
+      for (let py = 0; py < blockH; py++) {
+        const rowStart = (outYStart + py) * width + outXStart;
+        pixelView.fill(argb, rowStart, rowStart + blockW);
+      }
     }
   }
 
@@ -531,7 +551,7 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
     if (!currentSprite) return null;
     if (currentSprite.type === 'imported') return currentSprite.uri;
     if (!currentSprite.pixels) return null;
-    return pixelsToBmp(currentSprite.pixels, currentSprite.id);
+    return pixelsToBmp(currentSprite.pixels, currentSprite.id, width, height);
   }, [currentSprite?.id, currentSprite?.uri, width, height]);
 
   let content: React.ReactNode = null;
@@ -560,7 +580,7 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
         borderColor: pb.borderColor || '#555'
       }}>
         {bmpUri && (
-          <Image source={{ uri: bmpUri }} style={{ width: '100%', height: '100%', position: 'absolute' }} resizeMode="stretch" />
+          <Image source={{ uri: bmpUri }} style={{ width: '100%', height: '100%', position: 'absolute' }} resizeMode="stretch" resizeMethod="scale" />
         )}
         {pb.direction === 'radial' ? (
           <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: `${ratio * 100}%`, backgroundColor: pb.fillColor }} />
@@ -590,11 +610,11 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
       const isActive = i < count;
       const spriteId = isActive ? sr.activeSpriteId : sr.inactiveSpriteId;
       const sprite = (sprites || []).find(s => s.id === spriteId);
-      const uri = sprite ? (sprite.type === 'imported' ? sprite.uri : pixelsToBmp(sprite.pixels || [], sprite.id)) : null;
+      const uri = sprite ? (sprite.type === 'imported' ? sprite.uri : pixelsToBmp(sprite.pixels || [], sprite.id, sr.iconSize, sr.iconSize)) : null;
 
       icons.push(
         <View key={i} style={{ width: sr.iconSize, height: sr.iconSize, backgroundColor: !uri ? 'rgba(255,255,255,0.1)' : 'transparent', borderRadius: 2 }}>
-          {uri && <Image source={{ uri }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />}
+          {uri && <Image source={{ uri }} style={{ width: '100%', height: '100%' }} resizeMode="contain" resizeMethod="scale" />}
         </View>
       );
     }
@@ -626,6 +646,7 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
               imageAnimatedStyle
             ]}
             resizeMode="stretch"
+            resizeMethod="scale"
           />
         </View>
       )
@@ -641,6 +662,7 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
             top: -sprite.crop.y * (height / sprite.crop.height),
           }}
           resizeMode="stretch"
+          resizeMethod="scale"
         />
       </View>
     ) : (
@@ -648,6 +670,7 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
         source={{ uri: bmpUri }}
         style={{ width, height }}
         resizeMode="stretch"
+        resizeMethod="scale"
       />
     );
   } else if (obj?.text) {

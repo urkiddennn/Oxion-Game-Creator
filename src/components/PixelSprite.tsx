@@ -82,7 +82,9 @@ export const PixelSprite = React.memo(({
             left: -col * fw * scale,
             top: -row * fh * scale,
             // Use 'stretch' to ensure it follows our calculated pixels exactly
-            resizeMode: 'stretch'
+            resizeMode: 'stretch',
+            // @ts-ignore
+            resizeMethod: 'scale'
           }} 
         />
       </View>

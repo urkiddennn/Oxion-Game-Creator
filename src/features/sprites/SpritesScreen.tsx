@@ -147,7 +147,7 @@ export default function SpritesScreen() {
             >
               <View style={styles.previewContainer}>
                 {sprite.type === 'imported' ? (
-                  <Image source={{ uri: sprite.uri }} style={styles.spritePreview} />
+                  <Image source={{ uri: sprite.uri }} style={styles.spritePreview} resizeMethod="scale" />
                 ) : (
                   <View style={styles.pixelGridPreview}>
                     {sprite.pixels?.map((row, r) => (
@@ -418,6 +418,8 @@ export default function SpritesScreen() {
                                       imageRendering: 'pixelated',
                                     }}
                                     resizeMode="stretch"
+                                    // @ts-ignore
+                                    resizeMethod="scale"
                                   />
                                 </View>
                               </View>
