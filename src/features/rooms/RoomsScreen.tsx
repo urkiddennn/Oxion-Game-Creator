@@ -1050,6 +1050,19 @@ export default function RoomsScreen() {
                     </View>
                     <View style={[styles.toggleIndicator, currentRoom?.settings?.ySort && styles.toggleIndicatorActive]} />
                   </TouchableOpacity>
+
+                  {currentRoom?.settings?.ySort && (
+                    <RoomSettingInput
+                      label="Y-Sort Offset"
+                      value={currentRoom?.settings?.ySortAmount ?? 0}
+                      onChange={(v) => {
+                        if (!currentRoom) return;
+                        updateRoom(currentRoom.id, {
+                          settings: { ...(currentRoom.settings || {}), ySortAmount: v }
+                        });
+                      }}
+                    />
+                  )}
                 </View>
               )}
             </View>

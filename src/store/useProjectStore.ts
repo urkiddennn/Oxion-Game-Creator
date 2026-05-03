@@ -86,6 +86,7 @@ export interface GameObject {
     animationState?: string; // Current state name (e.g. 'idle')
     color?: string;
     animationSpeed: number;
+    ySortOffset?: number;
   };
 
   physics: {
@@ -107,6 +108,7 @@ export interface GameObject {
       radius?: number;
       offsetX?: number;
       offsetY?: number;
+      collisionScale?: number;
     };
   };
 
@@ -251,6 +253,7 @@ export interface Room {
       enabled: boolean;
     };
     ySort?: boolean;
+    ySortAmount?: number;
   };
 }
 
@@ -370,7 +373,8 @@ export const useProjectStore = create<ProjectState>()(
                 zoom: 1,
                 enabled: false
               },
-              ySort: false
+              ySort: false,
+              ySortAmount: 0
             }
           }],
           sounds: [],

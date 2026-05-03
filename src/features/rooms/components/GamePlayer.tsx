@@ -230,7 +230,7 @@ const pixelsToBmp = (pixels: string[][], spriteId: string, displayWidth?: number
   return base64;
 };
 
-const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteId, isRemote, onFetch, variables, nonce, localVariables, obj, debug, animations, sprites, override, globalFrameTimer, cameraX, cameraY, cameraZoom, gameWidth, gameHeight, ySort }: {
+const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteId, isRemote, onFetch, variables, nonce, localVariables, obj, debug, animations, sprites, override, globalFrameTimer, cameraX, cameraY, cameraZoom, gameWidth, gameHeight, ySort, ySortAmount }: {
   sprite: any,
   sv: any,
   width?: number,
@@ -254,7 +254,8 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
   cameraZoom: SharedValue<number>,
   gameWidth: number,
   gameHeight: number,
-  ySort?: boolean
+  ySort?: boolean,
+  ySortAmount?: number
 }) => {
   const [imgDimensions, setImgDimensions] = useState({ w: 0, h: 0 });
   const [currentDimId, setCurrentDimId] = useState<string | null>(null);
@@ -501,6 +502,13 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
     return result;
   };
 
+  const col = obj?.physics?.collision;
+  const offsetX = col?.offsetX || 0;
+  const offsetY = col?.offsetY || 0;
+  const scale = obj?.physics?.scale || 1;
+  const colW = (col?.type === 'circle' ? (col.radius || width / 2) * 2 : (col?.width || width)) * scale * 2;
+  const colH = (col?.type === 'circle' ? (col.radius || width / 2) * 2 : (col?.height || height)) * scale * 2;
+
   const animatedStyle = useAnimatedStyle(() => {
     if (!sv || !sv.x || !sv.y) return { display: 'none' as const };
 
@@ -512,16 +520,25 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
       ty += cameraY.value;
     }
 
+    const offsetXScaled = offsetX * scale;
+    const offsetYScaled = offsetY * scale;
+
+    // Physics center relative to sprite top-left
+    const px = offsetXScaled + colW / 2;
+    const py = offsetYScaled + colH / 2;
+
     return {
       transform: [
-        { translateX: tx },
-        { translateY: ty },
+        { translateX: tx + px },
+        { translateY: ty + py },
         { rotate: `${sv.rot.value}rad` },
-        { scaleX: sv.flipX ? sv.flipX.value : 1 }
+        { scaleX: sv.flipX ? sv.flipX.value : 1 },
+        { translateX: -px },
+        { translateY: -py }
       ],
       display: isVisible.value ? 'flex' : 'none',
       borderColor: debug ? (sv.isColliding?.value ? '#ff0000' : '#00ff00') : 'transparent',
-      zIndex: ySort ? Math.floor(ty) : undefined,
+      zIndex: ySort ? Math.floor(ty + height + (ySortAmount || 0) + (obj?.appearance?.ySortOffset || 0)) : undefined,
     };
   });
 
@@ -710,16 +727,31 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
           style={[
             {
               position: 'absolute',
-              top: 0,
-              left: 0,
-              width,
-              height,
-              borderWidth: 2,
               pointerEvents: 'none',
               zIndex: 9999,
+              borderWidth: 1.5,
+              borderRadius: obj?.physics?.collision?.type === 'circle' ? 9999 : 2,
+              width: colW,
+              height: colH,
+              left: (width / 2) - (colW / 2) + (offsetX * scale),
+              top: (height / 2) - (colH / 2) + (offsetY * scale),
             },
             debugBoxStyle
           ]}
+        />
+      )}
+      {debug && (
+        <View 
+          style={{
+            position: 'absolute',
+            width: 4,
+            height: 4,
+            borderRadius: 2,
+            backgroundColor: '#FFF',
+            left: (offsetX * scale) + (colW / 2) - 2,
+            top: (offsetY * scale) + (colH / 2) - 2,
+            zIndex: 10000,
+          }}
         />
       )}
     </Animated.View>
@@ -740,10 +772,11 @@ const PhysicsBody = React.memo(PhysicsBodyBase, (prev, next) => {
       prev.gameWidth === next.gameWidth &&
       prev.gameHeight === next.gameHeight &&
       prev.override === next.override &&
-      prev.ySort === next.ySort;
+      prev.ySort === next.ySort &&
+      prev.ySortAmount === next.ySortAmount;
   }
 
-  // For regular sprites, IGNORE nonce. Only re-render if visual properties change.
+  // For regular sprites, IGNORE nonce. Only re-render if visual properties or physics change.
   return prev.spriteId === next.spriteId &&
     prev.width === next.width &&
     prev.height === next.height &&
@@ -751,7 +784,8 @@ const PhysicsBody = React.memo(PhysicsBodyBase, (prev, next) => {
     prev.gameWidth === next.gameWidth &&
     prev.gameHeight === next.gameHeight &&
     prev.override === next.override &&
-    prev.ySort === next.ySort;
+    prev.ySort === next.ySort &&
+    JSON.stringify(prev.obj?.physics) === JSON.stringify(next.obj?.physics);
 });
 
 const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
@@ -1656,6 +1690,32 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       subscriptions.push(tapSub);
     };
 
+    const createBodyForObject = (x: number, y: number, width: number, height: number, obj: GameObject, options: any) => {
+      const col = obj.physics?.collision;
+      const scale = obj.physics?.scale || 1;
+      
+      const offsetX = (col?.offsetX || 0) * scale;
+      const offsetY = (col?.offsetY || 0) * scale;
+      
+      const colW = (col?.type === 'circle' ? (col.radius || width / 2) * 2 : (col?.width || width)) * scale * 2;
+      const colH = (col?.type === 'circle' ? (col.radius || width / 2) * 2 : (col?.height || height)) * scale * 2;
+
+      // x, y is sprite center.
+      // With center-relative offsets, body center is just x + scaled offsets.
+      const bodyCenterX = x + offsetX;
+      const bodyCenterY = y + offsetY;
+
+      // Store scaled dimensions for debug rendering
+      (options as any).colW = colW;
+      (options as any).colH = colH;
+
+      if (col?.type === 'circle') {
+        return Matter.Bodies.circle(bodyCenterX, bodyCenterY, colW / 2, options);
+      } else {
+        return Matter.Bodies.rectangle(bodyCenterX, bodyCenterY, colW, colH, options);
+      }
+    };
+
     const spawnInstance = (objectId: string, x: number, y: number, isParticle = false, settings?: any) => {
       const pObj = objectMapRef.current.get(objectId);
       if (!pObj) return;
@@ -1673,7 +1733,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       const spawnId = `${isParticle ? 'p' : 'dyn'}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
       const body = isParticle
         ? Matter.Bodies.circle(x, y, 8, { frictionAir: 0.02, restitution: 0.5, density: 0.0005, label: spawnId })
-        : Matter.Bodies.rectangle(x, y, width, height, { isStatic, friction: physics.friction || 0.1, restitution: physics.restitution || 0.1, label: spawnId });
+        : createBodyForObject(x, y, width, height, pObj, { isStatic, friction: physics.friction || 0.1, restitution: physics.restitution || 0.1, label: spawnId });
 
       if (isParticle && settings) {
         const spread = settings.spread !== undefined ? settings.spread : 45;
@@ -1880,7 +1940,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       let width = isGrid ? fw : (pObj.width || inst.width || fw || 32);
       let height = isGrid ? fh : (pObj.height || inst.height || fh || 32);
 
-      const body = Matter.Bodies.rectangle(inst.x + width / 2, inst.y + height / 2, width, height, {
+      const body = createBodyForObject(inst.x + width / 2, inst.y + height / 2, width, height, obj, {
         isStatic,
         isSensor: !physics.enabled,
         collisionFilter: physics.enabled ? { category: 0x0001, mask: 0xFFFFFFFF, group: 0 } : { category: 0x0000, mask: 0x0000, group: 0 },
@@ -2263,12 +2323,17 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           dynamicRef.splice(i, 1);
           dynamicChanged = true;
         } else {
-          d.sv.x.value = d.body.position.x - d.width / 2;
-          d.sv.y.value = d.body.position.y - d.height / 2;
+          const info = (d.body as any).gameInfo;
+          const col = info?.obj?.physics?.collision;
+          const scale = info?.obj?.physics?.scale || 1;
+          const offsetX = (col?.offsetX || 0) * scale;
+          const offsetY = (col?.offsetY || 0) * scale;
+
+          d.sv.x.value = d.body.position.x - d.width / 2 - offsetX;
+          d.sv.y.value = d.body.position.y - d.height / 2 - offsetY;
           d.sv.rot.value = d.body.angle;
 
           // Logic Culling for Dynamic Elements (don't run scripts if far away)
-          const info = (d.body as any).gameInfo;
           const isHUD = info?.obj?.isHUD === true;
 
           const distSq = Math.pow(d.body.position.x - (cameraX.value + gameWidth / 2), 2) + Math.pow(d.body.position.y - (cameraY.value + gameHeight / 2), 2);
@@ -2438,10 +2503,16 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         // 2. Position Sync Optimization
         if (body.isStatic && body.position.x === (body as any).lastX && body.position.y === (body as any).lastY) continue;
 
+        const col = info.obj?.physics?.collision;
+        const offsetX = col?.offsetX || 0;
+        const offsetY = col?.offsetY || 0;
+        const colW = col?.type === 'circle' ? (col.radius || info.width / 2) * 2 : (col?.width || info.width);
+        const colH = col?.type === 'circle' ? (col.radius || info.width / 2) * 2 : (col?.height || info.height);
+        
         const sv = instanceSharedValues[i];
         if (sv && sv.x && sv.y) {
-          sv.x.value = body.position.x - info.width / 2;
-          sv.y.value = body.position.y - info.height / 2;
+          sv.x.value = body.position.x - info.width / 2 - offsetX;
+          sv.y.value = body.position.y - info.height / 2 - offsetY;
           sv.rot.value = body.angle;
           (body as any).lastX = body.position.x;
           (body as any).lastY = body.position.y;
@@ -2555,7 +2626,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       });
       soundObjectsRef.current.clear();
     };
-  }, [visible, currentRoom?.id, restartKey, instanceSharedValues, allSprites, allAnimations]);
+  }, [visible, currentRoom?.id, restartKey, instanceSharedValues, allSprites, allAnimations, currentProject?.objects]);
 
   const staticElements = useMemo(() => {
     if (!currentRoom || !currentRoom.instances) return null;
@@ -2617,6 +2688,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             gameWidth={gameWidth}
             gameHeight={gameHeight}
             ySort={currentRoom?.settings?.ySort}
+            ySortAmount={currentRoom?.settings?.ySortAmount}
           />
         );
       });
@@ -2694,6 +2766,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                           gameWidth={gameWidth}
                           gameHeight={gameHeight}
                           ySort={currentRoom?.settings?.ySort}
+                          ySortAmount={currentRoom?.settings?.ySortAmount}
                         />
                       );
                     })}

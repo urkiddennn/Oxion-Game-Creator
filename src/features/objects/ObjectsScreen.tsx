@@ -148,12 +148,23 @@ export default function ObjectsScreen() {
       return <PixelSprite sprite={sprite} size={size} />;
     }
 
+    const rows = sprite.pixels || [];
+    const fullH = rows.length || 1;
+    const fullW = rows[0]?.length || 1;
+    
+    // Grid support
+    const isGrid = !!sprite.grid?.enabled;
+    const fw = isGrid ? (sprite.grid?.frameWidth || fullW) : fullW;
+    const fh = isGrid ? (sprite.grid?.frameHeight || fullH) : fullH;
+    
+    const pixelSize = size / Math.max(fw, fh);
+
     return (
-      <View style={{ width: size, height: size, flexDirection: 'row', flexWrap: 'wrap' }}>
-        {sprite.pixels?.map((row, r) => (
+      <View style={{ width: fw * pixelSize, height: fh * pixelSize, flexDirection: 'column', overflow: 'hidden' }}>
+        {rows.slice(0, fh).map((row, r) => (
           <View key={r} style={{ flexDirection: 'row' }}>
-            {row.map((color, c) => (
-              <View key={c} style={{ width: size / 16, height: size / 16, backgroundColor: color }} />
+            {row.slice(0, fw).map((color, c) => (
+              <View key={c} style={{ width: pixelSize, height: pixelSize, backgroundColor: color }} />
             ))}
           </View>
         ))}

@@ -85,6 +85,71 @@ const VariableRow = ({
   );
 };
 
+const CollisionPreview = ({ obj, renderSpritePreview, currentProject }: { obj: any, renderSpritePreview: any, currentProject: any }) => {
+  const col = obj.physics?.collision || {
+    type: 'rectangle',
+    width: obj.width || 32,
+    height: obj.height || 32,
+    offsetX: 0,
+    offsetY: 0
+  };
+
+  const sprite = (currentProject?.sprites || []).find((s: any) => s.id === obj.appearance.spriteId);
+  const isGrid = !!sprite?.grid?.enabled;
+  const fw = isGrid ? (sprite?.grid?.frameWidth || sprite?.width || 32) : (obj.width || 32);
+  const fh = isGrid ? (sprite?.grid?.frameHeight || sprite?.height || 32) : (obj.height || 32);
+
+  const baseSize = 64;
+  const objW = fw;
+  const objH = fh;
+  const scale = baseSize / Math.max(objW, objH, 1);
+
+  const shapeWidth = (col.type === 'circle' ? (col.radius || objW / 2) * 2 : (col.width ?? objW));
+  const shapeHeight = (col.type === 'circle' ? (col.radius || objW / 2) * 2 : (col.height ?? objH));
+
+  // Aspect ratio scaling for the sprite preview
+  const displayW = objW * scale;
+  const displayH = objH * scale;
+
+  // Center-relative offsets
+  const left = (displayW / 2) - (shapeWidth * scale / 2) + (col.offsetX || 0) * scale;
+  const top = (displayH / 2) - (shapeHeight * scale / 2) + (col.offsetY || 0) * scale;
+
+  return (
+    <View style={{ width: baseSize, height: baseSize, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000', borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#333' }}>
+      <View style={{ width: displayW, height: displayH, backgroundColor: 'rgba(255,255,255,0.02)', borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.1)' }}>
+        {renderSpritePreview(obj.appearance.spriteId, Math.max(displayW, displayH))}
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            borderWidth: 1.5,
+            borderColor: '#00D1FF',
+            backgroundColor: 'rgba(0, 209, 255, 0.25)',
+            borderRadius: col.type === 'circle' ? 999 : 2,
+            width: shapeWidth * scale,
+            height: shapeHeight * scale,
+            left: left,
+            top: top,
+          }}
+        />
+        {/* Pivot indicator */}
+        <View
+          style={{
+            position: 'absolute',
+            width: 4,
+            height: 4,
+            borderRadius: 2,
+            backgroundColor: '#FFF',
+            left: left + (shapeWidth * scale / 2) - 2,
+            top: top + (shapeHeight * scale / 2) - 2,
+          }}
+        />
+      </View>
+    </View>
+  );
+};
+
 const ParticlePreview = ({ settings, particleSprite }: { settings: any, particleSprite: any }) => {
   const [p, setP] = useState<{ id: number, x: number, y: number, vx: number, vy: number, life: number }[]>([]);
   const frameRef = useRef<number | null>(null);
@@ -189,7 +254,7 @@ export default function ObjectInspectorModal({
 
   const suggestions = useMemo(() => {
     if (!suggestionQuery) return [];
-    
+
     const query = suggestionQuery.toLowerCase().split(/[ .><=!+*/%^(),]/).pop() || '';
     if (!query && !suggestionQuery.endsWith('.') && !suggestionQuery.endsWith('(')) return [];
 
@@ -267,6 +332,7 @@ export default function ObjectInspectorModal({
     appearance: {
       ...selectedObject.appearance,
       animationSpeed: selectedObject.appearance?.animationSpeed || 100,
+      ySortOffset: selectedObject.appearance?.ySortOffset || 0,
     },
     physics: {
       enabled: true,
@@ -378,7 +444,7 @@ export default function ObjectInspectorModal({
       (global as any).pickingForRepeater = null;
     } else if (pickingSecondaryIndex === -1) {
       updateField('appearance.spriteId', spriteId);
-      
+
       // Auto-update dimensions if they are at default 32x32
       const sprite = allSprites.find((s: any) => s.id === spriteId);
       if (sprite && safeObject.width === 32 && safeObject.height === 32) {
@@ -445,7 +511,7 @@ export default function ObjectInspectorModal({
         // Intelligent Appending: if the last action ends with ':', append to it.
         const actions = [...(listener.immediateActions || [])];
         const targetIdx = activeActionIndex !== null ? activeActionIndex : actions.length - 1;
-        
+
         if (targetIdx >= 0 && actions[targetIdx] && actions[targetIdx].endsWith(':')) {
           actions[targetIdx] = actions[targetIdx] + actionStr;
         } else if (targetIdx >= 0 && activeActionIndex !== null && actions[targetIdx] !== undefined) {
@@ -460,7 +526,7 @@ export default function ObjectInspectorModal({
         const targetKey = (global as any).pickingForElse ? 'elseActions' : 'actions';
         const actions = [...(sub[targetKey] || [])];
         const targetIdx = activeActionIndex !== null ? activeActionIndex : actions.length - 1;
-        
+
         if (targetIdx >= 0 && actions[targetIdx] && actions[targetIdx].endsWith(':')) {
           actions[targetIdx] = actions[targetIdx] + actionStr;
         } else if (targetIdx >= 0 && activeActionIndex !== null && actions[targetIdx] !== undefined) {
@@ -469,7 +535,7 @@ export default function ObjectInspectorModal({
           actions.push(actionStr);
         }
         sub[targetKey] = actions;
-        
+
         if ((global as any).pickingForElse) (global as any).pickingForElse = false;
         listener.subConditions = [...listener.subConditions];
         listener.subConditions[activeSubIndex] = sub;
@@ -489,7 +555,7 @@ export default function ObjectInspectorModal({
     if (activeListenerIndex !== null) {
       const newListeners = [...currentListeners];
       const listener = { ...newListeners[activeListenerIndex] };
-      
+
       if (activeSubIndex !== null) {
         // Appending to EXISTING SUB-CONDITION
         const sub = { ...listener.subConditions[activeSubIndex] };
@@ -511,10 +577,10 @@ export default function ObjectInspectorModal({
       const newListeners = [...currentListeners];
       const listener = { ...newListeners[isAddingSubForIndex] };
       listener.subConditions = [...(listener.subConditions || [])];
-      
+
       let condition = eventId;
       let extra: any = {};
-      
+
       if (eventId === 'if') condition = '';
       else if (eventId === 'if_else') { condition = ''; extra = { elseActions: [] }; }
       else if (eventId === 'wait_until') condition = 'wait until: ';
@@ -547,7 +613,7 @@ export default function ObjectInspectorModal({
     if (activePropertyIndex !== null) {
       const newListeners = [...currentListeners];
       const listener = { ...newListeners[activePropertyIndex] };
-      
+
       if (activeSubIndex !== null) {
         const sub = { ...listener.subConditions[activeSubIndex] };
         const currentCond = sub.condition || '';
@@ -651,6 +717,11 @@ export default function ObjectInspectorModal({
                     expanded={expandedSections.physics}
                     onToggle={() => toggleSection('physics')}
                   >
+                    {safeObject.physics.enabled && (
+                      <View style={{ marginBottom: 12, alignItems: 'center' }}>
+                        <CollisionPreview obj={safeObject} renderSpritePreview={renderSpritePreview} currentProject={currentProject} />
+                      </View>
+                    )}
                     <SwitchRow label="Enabled" value={safeObject.physics.enabled} onToggle={(v: boolean) => updateField('physics.enabled', v)} />
                     <SwitchRow label="Sticky HUD" value={safeObject.isHUD || false} onToggle={(v: boolean) => updateField('isHUD', v)} />
 
@@ -711,10 +782,83 @@ export default function ObjectInspectorModal({
                         <PropertyRow label="Friction">
                           <InputGroup label="0.1" value={safeObject.physics.friction.toString()} onChange={(v: string) => updateField('physics.friction', parseFloat(v) || 0)} keyboardType="numeric" />
                         </PropertyRow>
-                        
+
                         <PropertyRow label="Scale">
                           <InputGroup label="1.0" value={(safeObject.physics.scale || 1).toString()} onChange={(v: string) => updateField('physics.scale', parseFloat(v) || 1)} keyboardType="numeric" />
                         </PropertyRow>
+
+                        <View style={styles.divider} />
+                        <Text style={styles.subSectionTitleCompact}>COLLISION SHAPE</Text>
+
+                        <PropertyRow label="Shape">
+                          <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
+                            {['rectangle', 'circle'].map(shape => (
+                              <TouchableOpacity
+                                key={shape}
+                                onPress={() => updateField('physics.collision.type', shape)}
+                                style={{ flex: 1, padding: 6, borderRadius: 4, backgroundColor: (safeObject.physics.collision?.type || 'rectangle') === shape ? theme.colors.primary : '#16191E', borderWidth: 1, borderColor: '#333' }}
+                              >
+                                <Text style={{ color: (safeObject.physics.collision?.type || 'rectangle') === shape ? '#000' : '#888', fontSize: 9, textAlign: 'center', fontWeight: 'bold' }}>{shape.toUpperCase()}</Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        </PropertyRow>
+
+                        {(safeObject.physics.collision?.type || 'rectangle') === 'rectangle' ? (
+                          <PropertyRow label="Size">
+                            <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
+                              <InputGroup
+                                label="W"
+                                value={(safeObject.physics.collision?.width ?? safeObject.width ?? 32).toString()}
+                                onChange={(v: string) => updateField('physics.collision.width', parseInt(v) || 0)}
+                                keyboardType="numeric"
+                              />
+                              <InputGroup
+                                label="H"
+                                value={(safeObject.physics.collision?.height ?? safeObject.height ?? 32).toString()}
+                                onChange={(v: string) => updateField('physics.collision.height', parseInt(v) || 0)}
+                                keyboardType="numeric"
+                              />
+                            </View>
+                          </PropertyRow>
+                        ) : (
+                          <PropertyRow label="Radius">
+                            <InputGroup
+                              label="R"
+                              value={(safeObject.physics.collision?.radius ?? (safeObject.width || 32) / 2).toString()}
+                              onChange={(v: string) => updateField('physics.collision.radius', parseInt(v) || 0)}
+                              keyboardType="numeric"
+                            />
+                          </PropertyRow>
+                        )}
+
+                        <PropertyRow label="Pivot Offset">
+                          <TouchableOpacity
+                            onPress={() => {
+                              updateField('physics.collision.offsetX', 0);
+                              updateField('physics.collision.offsetY', 0);
+                            }}
+                            style={{ position: 'absolute', right: -60, top: 0, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: theme.colors.surfaceElevated, borderRadius: 4, borderWidth: 1, borderColor: '#444' }}
+                          >
+                            <Text style={{ color: theme.colors.primary, fontSize: 8, fontWeight: 'bold' }}>CENTER</Text>
+                          </TouchableOpacity>
+                          <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
+                            <InputGroup
+                              label="X"
+                              value={(safeObject.physics.collision?.offsetX ?? 0).toString()}
+                              onChange={(v: string) => updateField('physics.collision.offsetX', parseInt(v) || 0)}
+                              keyboardType="numeric"
+                            />
+                            <InputGroup
+                              label="Y"
+                              value={(safeObject.physics.collision?.offsetY ?? 0).toString()}
+                              onChange={(v: string) => updateField('physics.collision.offsetY', parseInt(v) || 0)}
+                              keyboardType="numeric"
+                            />
+                          </View>
+                        </PropertyRow>
+
+                        <View style={styles.divider} />
                       </>
                     )}
                   </Section>
@@ -826,7 +970,7 @@ export default function ObjectInspectorModal({
                         <InputGroup label="VAR" value={safeObject.progress_bar.linkedVariable || ''} onChange={(v: string) => updateField('progress_bar.linkedVariable', v)} />
                       </PropertyRow>
                       <PropertyRow label="Direction">
-                         <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
+                        <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
                           {(['horizontal', 'vertical', 'radial'] as const).map(dir => (
                             <TouchableOpacity
                               key={dir}
@@ -855,11 +999,11 @@ export default function ObjectInspectorModal({
                       <PropertyRow label="Border">
                         <View style={{ gap: 6 }}>
                           <View style={{ flexDirection: 'row', gap: 6 }}>
-                             <InputGroup 
-                              label="WIDTH" 
-                              value={(safeObject.progress_bar.borderWidth ?? 1).toString()} 
-                              onChange={(v) => updateField('progress_bar.borderWidth', parseInt(v) || 0)} 
-                              keyboardType="numeric" 
+                            <InputGroup
+                              label="WIDTH"
+                              value={(safeObject.progress_bar.borderWidth ?? 1).toString()}
+                              onChange={(v) => updateField('progress_bar.borderWidth', parseInt(v) || 0)}
+                              keyboardType="numeric"
                               width="40%"
                             />
                             <TouchableOpacity
@@ -895,7 +1039,7 @@ export default function ObjectInspectorModal({
 
                         <PropertyRow label="Sprites">
                           <View style={{ flex: 1, gap: 6 }}>
-                            <TouchableOpacity 
+                            <TouchableOpacity
                               style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#16191E', padding: 8, borderRadius: 4, borderWidth: 1, borderColor: '#333' }}
                               onPress={() => {
                                 (global as any).pickingForRepeater = 'active';
@@ -905,7 +1049,7 @@ export default function ObjectInspectorModal({
                               {renderSpritePreview(safeObject.sprite_repeater!.activeSpriteId, 20)}
                               <Text style={{ color: '#888', fontSize: 10 }}>ACTIVE ICON</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity 
+                            <TouchableOpacity
                               style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#16191E', padding: 8, borderRadius: 4, borderWidth: 1, borderColor: '#333' }}
                               onPress={() => {
                                 (global as any).pickingForRepeater = 'inactive';
@@ -919,7 +1063,7 @@ export default function ObjectInspectorModal({
                         </PropertyRow>
 
                         <PropertyRow label="Layout">
-                           <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
+                          <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
                             {['horizontal', 'vertical'].map(l => (
                               <TouchableOpacity
                                 key={l}
@@ -935,7 +1079,7 @@ export default function ObjectInspectorModal({
                         </PropertyRow>
 
                         <PropertyRow label="Style">
-                           <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
+                          <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
                             <InputGroup label="SIZE" value={safeObject.sprite_repeater!.iconSize.toString()} onChange={(v: string) => updateField('sprite_repeater.iconSize', parseInt(v) || 0)} keyboardType="numeric" />
                             <InputGroup label="GAP" value={safeObject.sprite_repeater!.spacing.toString()} onChange={(v: string) => updateField('sprite_repeater.spacing', parseInt(v) || 0)} keyboardType="numeric" />
                           </View>
@@ -1020,10 +1164,10 @@ export default function ObjectInspectorModal({
 
                             {!isCollapsed && (
                               <>
-                                 <View style={{ backgroundColor: '#16191E', padding: 8, paddingTop: 0, borderBottomWidth: 1, borderBottomColor: '#222' }}>
+                                <View style={{ backgroundColor: '#16191E', padding: 8, paddingTop: 0, borderBottomWidth: 1, borderBottomColor: '#222' }}>
                                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                                     <View style={{ flex: 1, position: 'relative' }}>
-                                       <TextInput
+                                      <TextInput
                                         style={{ backgroundColor: '#0A0C10', borderRadius: 4, padding: 8, paddingRight: 35, borderWidth: 1, borderColor: '#333', color: '#FFF', fontSize: 11, fontWeight: 'bold' }}
                                         value={listener.eventId}
                                         placeholder="Set Event (e.g. on_tap, collision:Player)..."
@@ -1091,25 +1235,25 @@ export default function ObjectInspectorModal({
                                             onBlur={() => setTimeout(() => setActiveActionIndex(null), 200)}
                                             disableFullscreenUI={true}
                                           />
-                                            <TouchableOpacity
-                                              onPress={() => {
-                                                setActiveListenerIndex(index);
-                                                setActiveSubIndex(null);
-                                                setActiveActionIndex(aIdx);
-                                                setActionPickerVisible(true);
-                                              }}
-                                            >
-                                              <Plus size={14} color={theme.colors.primary} />
-                                            </TouchableOpacity>
-                                            <TouchableOpacity onPress={() => {
-                                              const newListeners = [...safeObject.logic.listeners];
-                                              newListeners[index].immediateActions.splice(aIdx, 1);
-                                              updateField('logic.listeners', newListeners);
-                                            }}>
-                                              <Trash2 size={10} color="#444" />
-                                            </TouchableOpacity>
-                                          </View>
-                                        ))}
+                                          <TouchableOpacity
+                                            onPress={() => {
+                                              setActiveListenerIndex(index);
+                                              setActiveSubIndex(null);
+                                              setActiveActionIndex(aIdx);
+                                              setActionPickerVisible(true);
+                                            }}
+                                          >
+                                            <Plus size={14} color={theme.colors.primary} />
+                                          </TouchableOpacity>
+                                          <TouchableOpacity onPress={() => {
+                                            const newListeners = [...safeObject.logic.listeners];
+                                            newListeners[index].immediateActions.splice(aIdx, 1);
+                                            updateField('logic.listeners', newListeners);
+                                          }}>
+                                            <Trash2 size={10} color="#444" />
+                                          </TouchableOpacity>
+                                        </View>
+                                      ))}
                                       <TouchableOpacity
                                         onPress={() => {
                                           setActiveListenerIndex(index);
@@ -1147,7 +1291,7 @@ export default function ObjectInspectorModal({
                                         <View key={scIdx} style={{ backgroundColor: '#16191E', borderRadius: 4, borderWidth: 1, borderColor: '#333', overflow: 'hidden' }}>
                                           {/* Sub-IF Header */}
                                           <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#0A0C10', padding: 6, gap: 8, borderBottomWidth: 1, borderBottomColor: '#222' }}>
-                                             <TextInput
+                                            <TextInput
                                               style={{ flex: 1, color: sc.inverted ? theme.colors.error : '#FFF', fontSize: 10, padding: 2 }}
                                               value={sc.condition}
                                               placeholder="Condition (e.g. self.x > 100)"
@@ -1204,26 +1348,26 @@ export default function ObjectInspectorModal({
                                                   onBlur={() => setTimeout(() => setActiveActionIndex(null), 200)}
                                                   disableFullscreenUI={true}
                                                 />
-                                                  <TouchableOpacity
-                                                    onPress={() => {
-                                                      setActiveListenerIndex(index);
-                                                      setActiveSubIndex(scIdx);
-                                                      setActiveActionIndex(aIdx);
-                                                      (global as any).pickingForElse = false;
-                                                      setActionPickerVisible(true);
-                                                    }}
-                                                  >
-                                                    <Plus size={14} color={theme.colors.primary} />
-                                                  </TouchableOpacity>
-                                                  <TouchableOpacity onPress={() => {
-                                                    const newListeners = [...safeObject.logic.listeners];
-                                                    newListeners[index].subConditions[scIdx].actions.splice(aIdx, 1);
-                                                    updateField('logic.listeners', newListeners);
-                                                  }}>
-                                                    <Trash2 size={10} color="#444" />
-                                                  </TouchableOpacity>
-                                                </View>
-                                              ))}
+                                                <TouchableOpacity
+                                                  onPress={() => {
+                                                    setActiveListenerIndex(index);
+                                                    setActiveSubIndex(scIdx);
+                                                    setActiveActionIndex(aIdx);
+                                                    (global as any).pickingForElse = false;
+                                                    setActionPickerVisible(true);
+                                                  }}
+                                                >
+                                                  <Plus size={14} color={theme.colors.primary} />
+                                                </TouchableOpacity>
+                                                <TouchableOpacity onPress={() => {
+                                                  const newListeners = [...safeObject.logic.listeners];
+                                                  newListeners[index].subConditions[scIdx].actions.splice(aIdx, 1);
+                                                  updateField('logic.listeners', newListeners);
+                                                }}>
+                                                  <Trash2 size={10} color="#444" />
+                                                </TouchableOpacity>
+                                              </View>
+                                            ))}
                                             <TouchableOpacity
                                               onPress={() => {
                                                 setActiveListenerIndex(index);
@@ -1237,82 +1381,82 @@ export default function ObjectInspectorModal({
                                             </TouchableOpacity>
 
                                             {/* Sub-ELSE Section */}
-                                              {sc.elseActions ? (
-                                                <View style={{ marginTop: 4, gap: 4 }}>
-                                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                                    <Text style={{ color: '#E67E22', fontSize: 8, fontWeight: 'bold' }}>ELSE</Text>
-                                                    <View style={{ flex: 1, height: 1, backgroundColor: '#E67E2210' }} />
-                                                    <TouchableOpacity onPress={() => {
-                                                      const newListeners = [...safeObject.logic.listeners];
-                                                      delete newListeners[index].subConditions[scIdx].elseActions;
-                                                      updateField('logic.listeners', newListeners);
-                                                    }}>
-                                                      <X size={10} color="#555" />
-                                                    </TouchableOpacity>
-                                                  </View>
-                                                  {(sc.elseActions || []).map((act: string, aIdx: number) => (
-                                                    <View key={aIdx} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#0A0C10', paddingHorizontal: 5, borderRadius: 3, borderWidth: 1, borderColor: '#222', gap: 6 }}>
-                                                      <TextInput
-                                                        style={{ flex: 1, color: '#BBB', fontSize: 10, paddingVertical: 4 }}
-                                                        value={act}
-                                                        onChangeText={(v) => {
-                                                          const newListeners = [...safeObject.logic.listeners];
-                                                          newListeners[index].subConditions[scIdx].elseActions[aIdx] = v;
-                                                          updateField('logic.listeners', newListeners);
-                                                        }}
-                                                        onFocus={() => {
-                                                          setActiveListenerIndex(index);
-                                                          setActiveSubIndex(scIdx);
-                                                          setActiveActionIndex(aIdx);
-                                                          (global as any).pickingForElse = true;
-                                                        }}
-                                                        onBlur={() => setTimeout(() => setActiveActionIndex(null), 200)}
-                                                        disableFullscreenUI={true}
-                                                      />
-                                                      <TouchableOpacity
-                                                        onPress={() => {
-                                                          setActiveListenerIndex(index);
-                                                          setActiveSubIndex(scIdx);
-                                                          setActiveActionIndex(aIdx);
-                                                          (global as any).pickingForElse = true;
-                                                          setActionPickerVisible(true);
-                                                        }}
-                                                      >
-                                                        <Plus size={14} color={theme.colors.primary} />
-                                                      </TouchableOpacity>
-                                                      <TouchableOpacity onPress={() => {
-                                                        const newListeners = [...safeObject.logic.listeners];
-                                                        newListeners[index].subConditions[scIdx].elseActions.splice(aIdx, 1);
-                                                        updateField('logic.listeners', newListeners);
-                                                      }}>
-                                                        <Trash2 size={10} color="#444" />
-                                                      </TouchableOpacity>
-                                                    </View>
-                                                  ))}
-                                                  <TouchableOpacity
-                                                    onPress={() => {
-                                                      setActiveListenerIndex(index);
-                                                      setActiveSubIndex(scIdx);
-                                                      (global as any).pickingForElse = true;
-                                                      setActionPickerVisible(true);
-                                                    }}
-                                                    style={{ padding: 4, borderStyle: 'dashed', borderWidth: 1, borderColor: '#333', borderRadius: 4, alignItems: 'center' }}
-                                                  >
-                                                    <Text style={{ color: '#E67E22', fontSize: 8, fontWeight: 'bold' }}>+ ADD ACTION</Text>
+                                            {sc.elseActions ? (
+                                              <View style={{ marginTop: 4, gap: 4 }}>
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                  <Text style={{ color: '#E67E22', fontSize: 8, fontWeight: 'bold' }}>ELSE</Text>
+                                                  <View style={{ flex: 1, height: 1, backgroundColor: '#E67E2210' }} />
+                                                  <TouchableOpacity onPress={() => {
+                                                    const newListeners = [...safeObject.logic.listeners];
+                                                    delete newListeners[index].subConditions[scIdx].elseActions;
+                                                    updateField('logic.listeners', newListeners);
+                                                  }}>
+                                                    <X size={10} color="#555" />
                                                   </TouchableOpacity>
                                                 </View>
-                                              ) : (
+                                                {(sc.elseActions || []).map((act: string, aIdx: number) => (
+                                                  <View key={aIdx} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#0A0C10', paddingHorizontal: 5, borderRadius: 3, borderWidth: 1, borderColor: '#222', gap: 6 }}>
+                                                    <TextInput
+                                                      style={{ flex: 1, color: '#BBB', fontSize: 10, paddingVertical: 4 }}
+                                                      value={act}
+                                                      onChangeText={(v) => {
+                                                        const newListeners = [...safeObject.logic.listeners];
+                                                        newListeners[index].subConditions[scIdx].elseActions[aIdx] = v;
+                                                        updateField('logic.listeners', newListeners);
+                                                      }}
+                                                      onFocus={() => {
+                                                        setActiveListenerIndex(index);
+                                                        setActiveSubIndex(scIdx);
+                                                        setActiveActionIndex(aIdx);
+                                                        (global as any).pickingForElse = true;
+                                                      }}
+                                                      onBlur={() => setTimeout(() => setActiveActionIndex(null), 200)}
+                                                      disableFullscreenUI={true}
+                                                    />
+                                                    <TouchableOpacity
+                                                      onPress={() => {
+                                                        setActiveListenerIndex(index);
+                                                        setActiveSubIndex(scIdx);
+                                                        setActiveActionIndex(aIdx);
+                                                        (global as any).pickingForElse = true;
+                                                        setActionPickerVisible(true);
+                                                      }}
+                                                    >
+                                                      <Plus size={14} color={theme.colors.primary} />
+                                                    </TouchableOpacity>
+                                                    <TouchableOpacity onPress={() => {
+                                                      const newListeners = [...safeObject.logic.listeners];
+                                                      newListeners[index].subConditions[scIdx].elseActions.splice(aIdx, 1);
+                                                      updateField('logic.listeners', newListeners);
+                                                    }}>
+                                                      <Trash2 size={10} color="#444" />
+                                                    </TouchableOpacity>
+                                                  </View>
+                                                ))}
                                                 <TouchableOpacity
                                                   onPress={() => {
-                                                    const newListeners = [...safeObject.logic.listeners];
-                                                    newListeners[index].subConditions[scIdx].elseActions = [];
-                                                    updateField('logic.listeners', newListeners);
+                                                    setActiveListenerIndex(index);
+                                                    setActiveSubIndex(scIdx);
+                                                    (global as any).pickingForElse = true;
+                                                    setActionPickerVisible(true);
                                                   }}
-                                                  style={{ marginTop: 4, padding: 4, borderStyle: 'dashed', borderWidth: 1, borderColor: '#444', borderRadius: 4, alignItems: 'center', opacity: 0.6 }}
+                                                  style={{ padding: 4, borderStyle: 'dashed', borderWidth: 1, borderColor: '#333', borderRadius: 4, alignItems: 'center' }}
                                                 >
-                                                  <Text style={{ color: '#E67E22', fontSize: 8, fontWeight: 'bold' }}>+ ADD ELSE BLOCK</Text>
+                                                  <Text style={{ color: '#E67E22', fontSize: 8, fontWeight: 'bold' }}>+ ADD ACTION</Text>
                                                 </TouchableOpacity>
-                                              )}
+                                              </View>
+                                            ) : (
+                                              <TouchableOpacity
+                                                onPress={() => {
+                                                  const newListeners = [...safeObject.logic.listeners];
+                                                  newListeners[index].subConditions[scIdx].elseActions = [];
+                                                  updateField('logic.listeners', newListeners);
+                                                }}
+                                                style={{ marginTop: 4, padding: 4, borderStyle: 'dashed', borderWidth: 1, borderColor: '#444', borderRadius: 4, alignItems: 'center', opacity: 0.6 }}
+                                              >
+                                                <Text style={{ color: '#E67E22', fontSize: 8, fontWeight: 'bold' }}>+ ADD ELSE BLOCK</Text>
+                                              </TouchableOpacity>
+                                            )}
                                           </View>
                                         </View>
                                       ))}
@@ -1378,7 +1522,7 @@ export default function ObjectInspectorModal({
                       <Text style={styles.previewBadgeText}>{safeObject.behavior.toUpperCase()}</Text>
                     </View>
                     <View style={{ width: 100, height: 100, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111', borderRadius: 50, borderWidth: 1, borderColor: '#222', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 10 }}>
-                      {renderSpritePreview(safeObject.appearance.spriteId, 64)}
+                      <CollisionPreview obj={safeObject} renderSpritePreview={renderSpritePreview} currentProject={currentProject} />
                     </View>
                     <Text style={[styles.inspectorTitle, { marginTop: 12, fontSize: 16 }]}>{safeObject.name.toUpperCase()}</Text>
                     <Text style={{ color: theme.colors.textMuted, fontSize: 9, marginTop: 2 }}>ID: {safeObject.id.slice(0, 8)}...</Text>
@@ -1512,61 +1656,70 @@ export default function ObjectInspectorModal({
                         )}
                       </View>
 
-                        {(safeObject.behavior === 'player' || safeObject.behavior === 'enemy' || safeObject.behavior === 'particle') && (
-                          <PropertyRow label="Anim Speed">
-                            <InputGroup
-                              label="100"
-                              value={safeObject.appearance.animationSpeed.toString()}
-                              onChange={(v: string) => updateField('appearance.animationSpeed', parseInt(v) || 0)}
-                              keyboardType="numeric"
-                            />
-                          </PropertyRow>
-                        )}
+                      {(safeObject.behavior === 'player' || safeObject.behavior === 'enemy' || safeObject.behavior === 'particle') && (
+                        <PropertyRow label="Anim Speed">
+                          <InputGroup
+                            label="100"
+                            value={safeObject.appearance.animationSpeed.toString()}
+                            onChange={(v: string) => updateField('appearance.animationSpeed', parseInt(v) || 0)}
+                            keyboardType="numeric"
+                          />
+                        </PropertyRow>
+                      )}
 
-                        {safeObject.behavior === 'button' && (
-                          <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#222', paddingTop: 12 }}>
-                            <Text style={{ color: theme.colors.textMuted, fontSize: 8, fontWeight: 'bold', marginBottom: 8, textTransform: 'uppercase' }}>BUTTON VISUALS</Text>
-                            <PropertyRow label="On Click">
-                              <TouchableOpacity
-                                style={styles.spriteSelectButtonCompact}
-                                onPress={() => {
-                                  (global as any).lastSpritePickerCallback = (id: string) => {
-                                    updateField('button.clickSpriteId', id);
-                                    setSpritePickerVisible?.(false);
-                                  };
-                                  setSpritePickerVisible?.(true);
-                                }}
-                              >
-                                <View style={styles.spritePreviewContainerSmall}>
-                                  {renderSpritePreview(safeObject.button?.clickSpriteId ?? null, 24)}
-                                </View>
-                                <Text style={styles.spriteSelectLabelSmall} numberOfLines={1}>
-                                  {(currentProject?.sprites || []).find((s: any) => s.id === safeObject.button?.clickSpriteId)?.name || 'SELECT...'}
-                                </Text>
-                              </TouchableOpacity>
-                            </PropertyRow>
-                            <PropertyRow label="On Release">
-                              <TouchableOpacity
-                                style={styles.spriteSelectButtonCompact}
-                                onPress={() => {
-                                  (global as any).lastSpritePickerCallback = (id: string) => {
-                                    updateField('button.releaseSpriteId', id);
-                                    setSpritePickerVisible?.(false);
-                                  };
-                                  setSpritePickerVisible?.(true);
-                                }}
-                              >
-                                <View style={styles.spritePreviewContainerSmall}>
-                                  {renderSpritePreview(safeObject.button?.releaseSpriteId ?? null, 24)}
-                                </View>
-                                <Text style={styles.spriteSelectLabelSmall} numberOfLines={1}>
-                                  {(currentProject?.sprites || []).find((s: any) => s.id === safeObject.button?.releaseSpriteId)?.name || 'SELECT...'}
-                                </Text>
-                              </TouchableOpacity>
-                            </PropertyRow>
-                          </View>
-                        )}
-                      </Section>
+                      <PropertyRow label="Depth Offset">
+                        <InputGroup
+                          label="0"
+                          value={(safeObject.appearance.ySortOffset || 0).toString()}
+                          onChange={(v: string) => updateField('appearance.ySortOffset', parseInt(v) || 0)}
+                          keyboardType="numeric"
+                        />
+                      </PropertyRow>
+
+                      {safeObject.behavior === 'button' && (
+                        <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#222', paddingTop: 12 }}>
+                          <Text style={{ color: theme.colors.textMuted, fontSize: 8, fontWeight: 'bold', marginBottom: 8, textTransform: 'uppercase' }}>BUTTON VISUALS</Text>
+                          <PropertyRow label="On Click">
+                            <TouchableOpacity
+                              style={styles.spriteSelectButtonCompact}
+                              onPress={() => {
+                                (global as any).lastSpritePickerCallback = (id: string) => {
+                                  updateField('button.clickSpriteId', id);
+                                  setSpritePickerVisible?.(false);
+                                };
+                                setSpritePickerVisible?.(true);
+                              }}
+                            >
+                              <View style={styles.spritePreviewContainerSmall}>
+                                {renderSpritePreview(safeObject.button?.clickSpriteId ?? null, 24)}
+                              </View>
+                              <Text style={styles.spriteSelectLabelSmall} numberOfLines={1}>
+                                {(currentProject?.sprites || []).find((s: any) => s.id === safeObject.button?.clickSpriteId)?.name || 'SELECT...'}
+                              </Text>
+                            </TouchableOpacity>
+                          </PropertyRow>
+                          <PropertyRow label="On Release">
+                            <TouchableOpacity
+                              style={styles.spriteSelectButtonCompact}
+                              onPress={() => {
+                                (global as any).lastSpritePickerCallback = (id: string) => {
+                                  updateField('button.releaseSpriteId', id);
+                                  setSpritePickerVisible?.(false);
+                                };
+                                setSpritePickerVisible?.(true);
+                              }}
+                            >
+                              <View style={styles.spritePreviewContainerSmall}>
+                                {renderSpritePreview(safeObject.button?.releaseSpriteId ?? null, 24)}
+                              </View>
+                              <Text style={styles.spriteSelectLabelSmall} numberOfLines={1}>
+                                {(currentProject?.sprites || []).find((s: any) => s.id === safeObject.button?.releaseSpriteId)?.name || 'SELECT...'}
+                              </Text>
+                            </TouchableOpacity>
+                          </PropertyRow>
+                        </View>
+                      )}
+                    </Section>
                   )}
 
                   <Section
@@ -1577,9 +1730,9 @@ export default function ObjectInspectorModal({
                   >
                     {(safeObject.behavior === 'player' || safeObject.behavior === 'enemy' || safeObject.behavior === 'bullet') && (
                       <View style={{ gap: 4 }}>
-                        { (safeObject.behavior === 'bullet' ? ['hit'] : ['jump', 'shoot', 'melee', 'hit', 'dead', 'run']).map(sound => (
+                        {(safeObject.behavior === 'bullet' ? ['hit'] : ['jump', 'shoot', 'melee', 'hit', 'dead', 'run']).map(sound => (
                           <PropertyRow key={sound} label={sound === 'hit' && safeObject.behavior === 'bullet' ? 'Impact' : sound}>
-                            <TouchableOpacity 
+                            <TouchableOpacity
                               style={[styles.soundPicker, { backgroundColor: '#16191E', padding: 6 }]}
                               onPress={() => openSoundPicker(sound)}
                             >
