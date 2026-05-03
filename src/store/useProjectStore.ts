@@ -987,6 +987,12 @@ export const useProjectStore = create<ProjectState>()(
               }));
             }
 
+            // Sprite Repeater references
+            if (obj.behavior === 'sprite_repeater' && obj.sprite_repeater) {
+              if (obj.sprite_repeater.activeSpriteId) obj.sprite_repeater.activeSpriteId = ensureUUID(obj.sprite_repeater.activeSpriteId);
+              if (obj.sprite_repeater.inactiveSpriteId) obj.sprite_repeater.inactiveSpriteId = ensureUUID(obj.sprite_repeater.inactiveSpriteId);
+            }
+
             return { ...obj, id: newObjId };
           });
 

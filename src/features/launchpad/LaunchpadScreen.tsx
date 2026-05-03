@@ -116,13 +116,13 @@ export default function LaunchpadScreen() {
           <View style={styles.infoSidebar}>
             <View style={styles.logoContainer}>
               <View style={styles.logoIcon}>
-                <OxionLogo size={160} />
+                <OxionLogo size={120} />
               </View>
-              <Text style={styles.appTitle}>Oxion2d v0.0.13</Text>
+              <Text style={styles.appTitle}>Oxion2d v0.4.2</Text>
             </View>
 
             <View style={styles.sidebarLinks}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.sidebarLinkButton}
                 onPress={() => Linking.openURL('https://paypal.me/yourprofile')}
               >
@@ -130,7 +130,7 @@ export default function LaunchpadScreen() {
                 <Text style={styles.sidebarLinkText}>Donate</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.sidebarLinkButton}
                 onPress={() => Linking.openURL('https://youtube.com/@yourchannel')}
               >

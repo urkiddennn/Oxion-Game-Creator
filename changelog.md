@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.4.6] - 2026-05-03
+### Fixed
+- Sprite Repeater icons not displaying in published games (remote asset fetching)
+- Sprite Repeater active/inactive icon selection in Object Inspector
+- Missing sprite ID migration for Sprite Repeater during project publish
+- Stale static elements rendering when remote sprites are streamed
+
+## [1.4.4] - 2026-05-03 - Sound Playback & Logic Event Fixes
+### Fixed
+- **on_start Event Reliability**: Fixed a critical bug where `on_start` scripts and visual logic were not being executed for initial room objects.
+- **Event Consistency**: Synchronized event handling between `spawnInstance` and room initialization, ensuring `on_empty`, `on_full`, `on_life_lost`, and `on_zero_lives` work correctly for spawned objects.
+- **Sound Playback**: Resolved an issue where sounds triggered by `on_start` events failed to play by ensuring the event trigger is correctly registered during engine startup.
+
+### Added
+- **Enhanced Autocomplete**: Added `on_start`, `on_tick`, `on_timer:`, `on_collision`, and `on_tap` to the logic editor's autocomplete system for faster scripting.
+
+## [1.4.3] - 2026-05-03 - Sound Picker & Audio Engine Integration
+### Added
+- **Sound Picker UI**: New modal interface for selecting audio assets in the Object Logic Editor.
+  - Integrated into the "Audio" section of the Object Inspector.
+  - Support for clearing selections (None/Default).
+- **Automatic Sound Triggers**: The game engine now automatically handles sound effects for built-in behaviors:
+  - **Jump**: Plays when the player jumps.
+  - **Shoot**: Plays when an object spawns a bullet.
+  - **Run**: Rhythmic footstep sounds during ground movement.
+  - **Impact**: Plays when a bullet hits an object.
+  - **Damage/Death**: Plays `hit` or `dead` sounds when health is modified.
+- **Logic Actions & Events**: Added full support for manual sound control:
+  - Actions: `start_sound:name`, `stop_sound:name`.
+  - Events: `on_start_sound`, `on_stop_sound`, `on_start_sound:name`.
+- **Autocomplete Integration**: Added all sound-related actions and events to the logic editor's autocomplete and property pickers.
+
 ## [1.4.2] - 2026-05-03
 ### Fixed
 - Critical JSX syntax errors in `RoomsScreen.tsx` sidebar causing compilation failures.

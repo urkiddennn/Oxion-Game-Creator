@@ -19,6 +19,8 @@ interface ObjectInspectorModalProps {
   setPropertyPickerVisible: (visible: boolean) => void;
   statePickerVisible?: boolean;
   setStatePickerVisible?: (visible: boolean) => void;
+  soundPickerVisible?: boolean;
+  setSoundPickerVisible?: (visible: boolean) => void;
   pickingForEngineState?: string | null;
   setPickingForEngineState?: (state: string | null) => void;
   renderSpritePreview: (spriteId: string | null, size?: number) => JSX.Element;
@@ -150,6 +152,7 @@ export default function ObjectInspectorModal({
   setSpritePickerVisible, setAnimationPickerVisible,
   setActionPickerVisible, setEventPickerVisible, setPropertyPickerVisible,
   statePickerVisible, setStatePickerVisible,
+  soundPickerVisible, setSoundPickerVisible,
   pickingForEngineState, setPickingForEngineState,
   renderSpritePreview, onSelectSprite,
   activeListenerIndex, setActiveListenerIndex,
@@ -197,8 +200,11 @@ export default function ObjectInspectorModal({
       'set_value', 'add_value', 'tween_to', 'bind_to_variable', 'on_empty', 'on_full',
       'damage', 'heal', 'set_count', 'on_life_lost', 'on_zero_lives',
       'current_count', 'max_count', 'value', 'health',
+      'start_sound:', 'stop_sound:', 'on_start_sound', 'on_start_sound:', 'on_stop_sound', 'on_stop_sound:',
+      'on_start', 'on_tick', 'on_timer:', 'on_collision', 'on_tap',
       ...(currentProject?.objects?.map((o: any) => o.name) || []),
-      ...(Object.keys(currentProject?.variables?.global || {}).map((v: any) => v))
+      ...(Object.keys(currentProject?.variables?.global || {}).map((v: any) => v)),
+      ...(currentProject?.sounds?.map((s: any) => s.name) || [])
     ];
 
     return allKeywords.filter(k => k.toLowerCase().startsWith(query.toLowerCase()) && k.toLowerCase() !== query.toLowerCase());
@@ -330,6 +336,24 @@ export default function ObjectInspectorModal({
     },
   };
 
+  const openSoundPicker = (type: string) => {
+    if (!setSoundPickerVisible) return;
+
+    (global as any).handleSoundSelect = (soundName: string | null) => {
+      if (!safeObject) return;
+      const currentSounds = safeObject.sounds || {};
+      updateObject(safeObject.id, {
+        sounds: {
+          ...currentSounds,
+          [type]: soundName || undefined
+        }
+      });
+      (global as any).handleSoundSelect = null;
+    };
+
+    setSoundPickerVisible(true);
+  };
+
   const globalVars = currentProject?.variables?.global || {};
 
   const otherObjects = useMemo(() => {
@@ -347,7 +371,12 @@ export default function ObjectInspectorModal({
   const [pickingSecondaryIndex, setPickingSecondaryIndex] = useState(-1); // -1 for primary, >=0 for additional
 
   const handleSpriteSelectLocal = (spriteId: string) => {
-    if (pickingSecondaryIndex === -1) {
+    const repeaterType = (global as any).pickingForRepeater;
+    if (repeaterType) {
+      if (repeaterType === 'active') updateField('sprite_repeater.activeSpriteId', spriteId);
+      else if (repeaterType === 'inactive') updateField('sprite_repeater.inactiveSpriteId', spriteId);
+      (global as any).pickingForRepeater = null;
+    } else if (pickingSecondaryIndex === -1) {
       updateField('appearance.spriteId', spriteId);
     } else {
       const currentIds = [...(safeObject.appearance.additionalSpriteIds || [])];
@@ -1537,26 +1566,22 @@ export default function ObjectInspectorModal({
                     expanded={expandedSections.sounds}
                     onToggle={() => toggleSection('sounds')}
                   >
-                    {(safeObject.behavior === 'player' || safeObject.behavior === 'enemy') && (
+                    {(safeObject.behavior === 'player' || safeObject.behavior === 'enemy' || safeObject.behavior === 'bullet') && (
                       <View style={{ gap: 4 }}>
-                        {['jump', 'shoot', 'melee', 'hit', 'dead', 'run'].map(sound => (
-                          <PropertyRow key={sound} label={sound}>
-                            <TouchableOpacity style={[styles.soundPicker, { backgroundColor: '#16191E', padding: 6 }]}>
+                        { (safeObject.behavior === 'bullet' ? ['hit'] : ['jump', 'shoot', 'melee', 'hit', 'dead', 'run']).map(sound => (
+                          <PropertyRow key={sound} label={sound === 'hit' && safeObject.behavior === 'bullet' ? 'Impact' : sound}>
+                            <TouchableOpacity 
+                              style={[styles.soundPicker, { backgroundColor: '#16191E', padding: 6 }]}
+                              onPress={() => openSoundPicker(sound)}
+                            >
                               <Play size={10} color={theme.colors.primary} />
-                              <Text style={[styles.soundText, { fontSize: 9 }]}>SELECT...</Text>
+                              <Text style={[styles.soundText, { fontSize: 9 }]} numberOfLines={1}>
+                                {safeObject.sounds?.[sound as keyof typeof safeObject.sounds] || 'SELECT...'}
+                              </Text>
                             </TouchableOpacity>
                           </PropertyRow>
                         ))}
                       </View>
-                    )}
-
-                    {safeObject.behavior === 'bullet' && (
-                      <PropertyRow label="Impact">
-                        <TouchableOpacity style={[styles.soundPicker, { backgroundColor: '#16191E', padding: 6 }]}>
-                          <Play size={10} color={theme.colors.primary} />
-                          <Text style={[styles.soundText, { fontSize: 9 }]}>SELECT...</Text>
-                        </TouchableOpacity>
-                      </PropertyRow>
                     )}
 
                     {(safeObject.behavior !== 'player' && safeObject.behavior !== 'enemy' && safeObject.behavior !== 'bullet') && (

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, DeviceEventEmitter, TextInput, Image, Pressable, Modal, Dimensions, ScrollView } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Text, DeviceEventEmitter, TextInput, Image, Pressable, Modal, Dimensions, ScrollView, Alert } from 'react-native';
+import { Audio } from 'expo-av';
 import { styles } from './GamePlayer.styles';
 import Matter from 'matter-js';
 import { X, RotateCcw, Play as PlayIcon, Pause, ArrowLeft, ArrowRight, ChevronUp, Bolt, Database } from 'lucide-react-native';
@@ -417,10 +418,22 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
   // Per-instance interval removed in favor of global worklet timer
 
   useEffect(() => {
-    if (!sprite && isRemote && spriteId && onFetch) {
-      onFetch(spriteId, obj.appearance?.type || 'sprite');
+    if (isRemote && onFetch) {
+      if (!sprite && spriteId) {
+        onFetch(spriteId, obj?.appearance?.type || 'sprite');
+      }
+      // Also fetch repeater sprites if needed
+      if (obj?.behavior === 'sprite_repeater' && obj?.sprite_repeater) {
+        const sr = obj.sprite_repeater;
+        if (sr.activeSpriteId && !sprites?.find(s => s.id === sr.activeSpriteId)) {
+          onFetch(sr.activeSpriteId, 'sprite');
+        }
+        if (sr.inactiveSpriteId && !sprites?.find(s => s.id === sr.inactiveSpriteId)) {
+          onFetch(sr.inactiveSpriteId, 'sprite');
+        }
+      }
     }
-  }, [sprite, spriteId, isRemote]);
+  }, [sprite, spriteId, isRemote, obj?.behavior, obj?.sprite_repeater, sprites?.length]);
 
   const lastResolvedText = useRef<{ content: string, vars: string, result: string }>({ content: '', vars: '', result: '' });
   const varKeysCache = useRef<{ keys: string[], lowerMap: Record<string, string> }>({ keys: [], lowerMap: {} });
@@ -1036,6 +1049,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
   const [instanceOverrides, setInstanceOverrides] = useState<Record<string, { spriteId?: string, animName?: string }>>({});
   const instanceOverridesRef = useRef<Record<string, any>>({});
   const liveObjectsRef = useRef<Map<string, GameObject>>(new Map());
+  const soundObjectsRef = useRef<Map<string, Audio.Sound>>(new Map());
   useEffect(() => { instanceOverridesRef.current = instanceOverrides; }, [instanceOverrides]);
 
   // Sync refs to state at a throttled rate for UI rendering (backup sync)
@@ -1166,6 +1180,38 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       if (currentObj?.variables?.local?.[valStr] !== undefined) return currentObj.variables.local[valStr];
 
       return num || 0;
+    };
+
+    const playSoundEffect = async (soundName: string) => {
+      const soundAsset = currentProject?.sounds?.find((s: any) => s.name === soundName || s.id === soundName);
+      if (!soundAsset || !soundAsset.uri) return;
+
+      try {
+        if (soundObjectsRef.current.has(soundName)) {
+          const existing = soundObjectsRef.current.get(soundName);
+          await existing?.stopAsync();
+          await existing?.unloadAsync();
+        }
+
+        const { sound: newSound } = await Audio.Sound.createAsync(
+          { uri: soundAsset.uri },
+          { shouldPlay: true }
+        );
+        soundObjectsRef.current.set(soundName, newSound);
+        DeviceEventEmitter.emit('on_start_sound', { name: soundName });
+        DeviceEventEmitter.emit(`on_start_sound:${soundName}`, { name: soundName });
+
+        newSound.setOnPlaybackStatusUpdate((status) => {
+          if (status.isLoaded && status.didJustFinish) {
+            newSound.unloadAsync();
+            soundObjectsRef.current.delete(soundName);
+            DeviceEventEmitter.emit('on_stop_sound', { name: soundName });
+            DeviceEventEmitter.emit(`on_stop_sound:${soundName}`, { name: soundName });
+          }
+        });
+      } catch (err) {
+        console.log('[Oxion] Error playing sound:', err);
+      }
     };
 
     const isPlayer = (o?: GameObject) => {
@@ -1336,14 +1382,20 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         const val = resolveValue(parts[1], body, obj);
         const info = (body as any).gameInfo;
         if (info?.obj?.health) {
+          const old = info.obj.health.current;
           info.obj.health.current = Math.max(0, Math.min(info.obj.health.max, val));
+          if (info.obj.health.current < old && info.obj.sounds?.hit) playSoundEffect(info.obj.sounds.hit);
+          if (info.obj.health.current <= 0 && old > 0 && info.obj.sounds?.dead) playSoundEffect(info.obj.sounds.dead);
           setNonce(n => n + 1); // Trigger re-render to show health change
         }
       } else if (cmd === 'add_health') {
         const val = resolveValue(parts[1], body, obj);
         const info = (body as any).gameInfo;
         if (info?.obj?.health) {
+          const old = info.obj.health.current;
           info.obj.health.current = Math.max(0, Math.min(info.obj.health.max, info.obj.health.current + val));
+          if (info.obj.health.current < old && info.obj.sounds?.hit) playSoundEffect(info.obj.sounds.hit);
+          if (info.obj.health.current <= 0 && old > 0 && info.obj.sounds?.dead) playSoundEffect(info.obj.sounds.dead);
           setNonce(n => n + 1);
         }
       } else if (cmd === 'damage' || cmd === 'heal' || cmd === 'set_count') {
@@ -1409,6 +1461,20 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
               [body.label]: { spriteId: targetSpriteId, animName: targetAnimName }
             }));
           }
+        }
+      } else if (cmd === 'start_sound') {
+        const soundName = parts[1];
+        playSoundEffect(soundName);
+      } else if (cmd === 'stop_sound') {
+        const soundName = parts[1];
+        const snd = soundObjectsRef.current.get(soundName);
+        if (snd) {
+          snd.stopAsync().then(() => {
+            snd.unloadAsync();
+            soundObjectsRef.current.delete(soundName);
+            DeviceEventEmitter.emit('on_stop_sound', { name: soundName });
+            DeviceEventEmitter.emit(`on_stop_sound:${soundName}`, { name: soundName });
+          });
         }
       }
     };
@@ -1557,9 +1623,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         };
       }) || [];
 
-      // Process Visual Logic Editor listeners
       pObj.logic?.listeners?.forEach((l: any) => {
-        if (l.eventId?.startsWith('on_timer') || l.eventId === 'on_tick' || l.eventId === 'on_start') {
+        if (l.eventId?.startsWith('on_timer') || l.eventId === 'on_tick' || l.eventId === 'on_start' || l.eventId === 'on_empty' || l.eventId === 'on_full' || l.eventId === 'on_life_lost' || l.eventId === 'on_zero_lives') {
           const cmd = l.eventId.startsWith('on_timer') ? 'on_timer' : l.eventId;
           const p = l.eventId.split(':');
           let timerMs = 1000;
@@ -1664,7 +1729,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
       // Process Visual Logic Editor listeners
       obj.logic?.listeners?.forEach(l => {
-        if (l.eventId?.startsWith('on_timer') || l.eventId === 'on_tick' || l.eventId === 'on_empty' || l.eventId === 'on_full' || l.eventId === 'on_life_lost' || l.eventId === 'on_zero_lives') {
+        if (l.eventId?.startsWith('on_timer') || l.eventId === 'on_tick' || l.eventId === 'on_start' || l.eventId === 'on_empty' || l.eventId === 'on_full' || l.eventId === 'on_life_lost' || l.eventId === 'on_zero_lives') {
           let cmd = l.eventId;
           if (l.eventId.startsWith('on_timer')) cmd = 'on_timer';
           const p = l.eventId.split(':');
@@ -1869,6 +1934,10 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
         DeviceEventEmitter.emit(`collision:${objA.name}`, eventDataB);
         DeviceEventEmitter.emit('on_collision', eventDataB);
+
+        // Automatic Sound Triggers for Collisions (e.g. Bullets Impact)
+        if (objA.behavior === 'bullet' && objA.sounds?.hit) playSoundEffect(objA.sounds.hit);
+        if (objB.behavior === 'bullet' && objB.sounds?.hit) playSoundEffect(objB.sounds.hit);
       });
     });
 
@@ -1982,11 +2051,20 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         // Emit events AFTER velocity is set so scripts can override it if they wish
         if (didJump) {
           DeviceEventEmitter.emit('builtin_jump', { targetId: b.label });
+          if (pb.obj.sounds?.jump) playSoundEffect(pb.obj.sounds.jump);
         }
         if (inputLeft.current === 1) {
           DeviceEventEmitter.emit('builtin_left', { targetId: b.label });
         } else if (inputRight.current === 1) {
           DeviceEventEmitter.emit('builtin_right', { targetId: b.label });
+        }
+
+        // Automatic Running Sound (approx once every 300ms)
+        if (onGround && Math.abs(b.velocity.x) > 1 && pb.obj.sounds?.run) {
+          if (!pb.lastRunSoundTime || now - pb.lastRunSoundTime > 300) {
+            playSoundEffect(pb.obj.sounds.run);
+            pb.lastRunSoundTime = now;
+          }
         }
 
         // Update animation state based on velocity (fresh from body)
@@ -2005,6 +2083,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
               lifetime: 1500,
               spread: 0 // Bullets shoot straight
             });
+            if (pb.obj.sounds?.shoot) playSoundEffect(pb.obj.sounds.shoot);
           }
         }
       });
@@ -2334,6 +2413,15 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       Matter.Engine.clear(engine);
       Matter.World.clear(engine.world, false);
       cameraTargetBodyRef.current = null;
+
+      // Sound cleanup
+      soundObjectsRef.current.forEach(async (s) => {
+        try {
+          await s.stopAsync();
+          await s.unloadAsync();
+        } catch (e) { }
+      });
+      soundObjectsRef.current.clear();
     };
   }, [visible, currentRoom?.id, restartKey, instanceSharedValues, allSprites, allAnimations]);
 
@@ -2400,7 +2488,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         );
       });
     });
-  }, [currentRoom, instanceSharedValues, objectMap, spriteMap, currentProject, handleFetchAsset, variables, localVariables, nonce, globalFrameTimer, cameraX, cameraY, gameWidth, gameHeight]);
+  }, [currentRoom, instanceSharedValues, objectMap, spriteMap, currentProject, handleFetchAsset, variables, localVariables, nonce, globalFrameTimer, cameraX, cameraY, gameWidth, gameHeight, allSprites]);
 
 
   if (!visible) return null;

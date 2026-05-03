@@ -31,6 +31,7 @@ export default function ObjectsScreen() {
   const [eventPickerVisible, setEventPickerVisible] = useState(false);
   const [propertyPickerVisible, setPropertyPickerVisible] = useState(false);
   const [statePickerVisible, setStatePickerVisible] = useState(false);
+  const [soundPickerVisible, setSoundPickerVisible] = useState(false);
   const [pickingForEngineState, setPickingForEngineState] = useState<string | null>(null);
   const [activeListenerIndex, setActiveListenerIndex] = useState<number | null>(null);
   const [activeSubIndex, setActiveSubIndex] = useState<number | null>(null);
@@ -222,6 +223,8 @@ export default function ObjectsScreen() {
           setPropertyPickerVisible={setPropertyPickerVisible}
           statePickerVisible={statePickerVisible}
           setStatePickerVisible={setStatePickerVisible}
+          soundPickerVisible={soundPickerVisible}
+          setSoundPickerVisible={setSoundPickerVisible}
           pickingForEngineState={pickingForEngineState}
           setPickingForEngineState={setPickingForEngineState}
           activeListenerIndex={activeListenerIndex}
