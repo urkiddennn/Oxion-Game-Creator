@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.4.2] - 2026-05-03
+### Fixed
+- Critical JSX syntax errors in `RoomsScreen.tsx` sidebar causing compilation failures.
+- Inconsistent sidebar padding and redundant dividers.
+- Indentation and structural issues in nested conditional rendering.
+
+### Added
+- Improved Sidebar UI with increased width (200px) and standardized section padding.
+- Enhanced section headers with consistent iconography and better visual hierarchy.
+- Adjusted sidebar toggle position to match the new layout.
+
+## [1.4.1] - 2026-05-03 - Critical Syntax Fixes
+### Fixed
+- **JSX Syntax Errors**: Fixed multiple unclosed `View` and `ScrollView` tags in the Rooms sidebar that were causing build failures.
+- **Selection Logic**: Fixed unclosed conditional blocks in the Object Instance inspector.
+
 ## [1.4.0] - 2026-05-03 - Virtual Joystick Support
 ### Added
 - **Virtual Joystick**: New high-performance input control for mobile.

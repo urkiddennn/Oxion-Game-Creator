@@ -230,16 +230,6 @@ const RoomSettingInput = ({ label, value, onChange }: { label: string, value: nu
   );
 };
 
-const SidebarDivider = () => (
-  <View style={{
-    height: 1,
-    backgroundColor: theme.colors.border,
-    opacity: 0.15,
-    marginVertical: 12,
-    marginHorizontal: -8
-  }} />
-);
-
 export default function RoomsScreen() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { activeProject: currentProject, updateRoom, addInstanceToRoom, updateInstancePosition, updateInstanceSize, updateInstanceAngle, removeInstanceFromRoom, reorderInstance, addRoom, addLayer, removeLayer, updateLayer, reorderLayer, activeRoomId, setActiveRoomId } = useProjectStore();
@@ -263,6 +253,18 @@ export default function RoomsScreen() {
   const currentRoom = useMemo(() =>
     (currentProject?.rooms || []).find((r: any) => r.id === activeRoomId) || (currentProject?.rooms || [])[0],
     [currentProject, activeRoomId]);
+
+  const [expandedSections, setExpandedSections] = useState({
+    layers: true,
+    instance: true,
+    settings: true,
+    camera: false,
+    controls: false
+  });
+
+  const toggleSection = (section: keyof typeof expandedSections) => {
+    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
 
   useEffect(() => {
     if (currentRoom && currentRoom.layers?.length) {
@@ -627,7 +629,7 @@ export default function RoomsScreen() {
       {/* Right Sidebar */}
       {sidebarOpen && (
         <View style={styles.sidebar}>
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 100 }}>
             <View style={styles.sidebarSection}>
               <View style={styles.sectionHeader}>
                 <Layout color={theme.colors.primary} size={16} />
@@ -696,229 +698,257 @@ export default function RoomsScreen() {
             </View>
 
             <View style={styles.sidebarSection}>
-              <View style={styles.sectionHeader}>
+              <TouchableOpacity 
+                style={styles.sectionHeader}
+                onPress={() => toggleSection('layers')}
+                activeOpacity={0.7}
+              >
                 <Layers color={theme.colors.primary} size={16} />
                 <Text style={styles.sectionTitle}>Layers</Text>
-                <TouchableOpacity onPress={() => currentRoom && addLayer(currentRoom.id)} style={{ marginLeft: 'auto' }}>
-                  <Plus color={theme.colors.primary} size={16} />
-                </TouchableOpacity>
-              </View>
-
-              {(!currentRoom || !currentRoom.layers || currentRoom.layers.length === 0) ? (
-                <View style={styles.emptySidebar}>
-                  <Text style={styles.emptySidebarText}>No layers defined.</Text>
+                <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <TouchableOpacity onPress={() => currentRoom && addLayer(currentRoom.id)}>
+                    <Plus color={theme.colors.primary} size={16} />
+                  </TouchableOpacity>
+                  {expandedSections.layers ? <ChevronUp color={theme.colors.textMuted} size={14} /> : <ChevronDown color={theme.colors.textMuted} size={14} />}
                 </View>
-              ) : (
-                <View style={styles.layersList}>
-                  {/* Render in reverse order (Front at top) */}
-                  {[...(currentRoom.layers || [])].reverse().map((layer, revIdx) => {
-                    const idx = currentRoom.layers.length - 1 - revIdx;
-                    const isActive = activeLayerId === layer.id;
+              </TouchableOpacity>
 
-                    return (
-                      <View
-                        key={layer.id}
-                        style={[
-                          styles.layerItem,
-                          isActive && { borderLeftWidth: 3, borderLeftColor: theme.colors.primary, backgroundColor: 'rgba(0, 209, 255, 0.05)' }
-                        ]}
-                      >
-                        <TouchableOpacity
-                          style={styles.layerInfo}
-                          onPress={() => {
-                            if (isActive) {
-                              Alert.prompt(
-                                'Rename Layer',
-                                'Enter new name',
+              {expandedSections.layers && (
+                (!currentRoom || !currentRoom.layers || currentRoom.layers.length === 0) ? (
+                  <View style={styles.emptySidebar}>
+                    <Text style={styles.emptySidebarText}>No layers defined.</Text>
+                  </View>
+                ) : (
+                  <View style={styles.layersList}>
+                    {[...(currentRoom.layers || [])].reverse().map((layer, revIdx) => {
+                      const isActive = activeLayerId === layer.id;
+                      return (
+                        <View
+                          key={layer.id}
+                          style={[
+                            styles.layerItem,
+                            isActive && styles.layerItemActive
+                          ]}
+                        >
+                          <TouchableOpacity
+                            style={styles.layerInfo}
+                            onPress={() => {
+                              if (isActive) {
+                                Alert.prompt(
+                                  'Rename Layer',
+                                  'Enter new name',
+                                  [
+                                    { text: 'Cancel', style: 'cancel' },
+                                    { text: 'OK', onPress: (name: any) => name && updateLayer(currentRoom.id, layer.id, { name }) }
+                                  ],
+                                  'plain-text',
+                                  layer.name
+                                );
+                              } else {
+                                if (selectedInstanceId) {
+                                  // If an object is selected, move it to this layer
+                                  updateRoom(currentRoom.id, {
+                                    instances: currentRoom.instances.map(i =>
+                                      i.id === selectedInstanceId ? { ...i, layerId: layer.id } : i
+                                    )
+                                  });
+                                }
+                                setActiveLayerId(layer.id);
+                              }
+                            }}
+                            onLongPress={() => {
+                              if (currentRoom.layers.length <= 1) {
+                                Alert.alert('Cannot Delete', 'A room must have at least one layer.');
+                                return;
+                              }
+                              Alert.alert(
+                                'Delete Layer',
+                                `Are you sure you want to delete "${layer.name}"? ALL objects on this layer will also be deleted.`,
                                 [
                                   { text: 'Cancel', style: 'cancel' },
-                                  { text: 'OK', onPress: (name: any) => name && updateLayer(currentRoom.id, layer.id, { name }) }
-                                ],
-                                'plain-text',
-                                layer.name
+                                  { text: 'Delete', style: 'destructive', onPress: () => removeLayer(currentRoom.id, layer.id) }
+                                ]
                               );
-                            } else {
-                              if (selectedInstanceId) {
-                                // If an object is selected, move it to this layer
-                                updateRoom(currentRoom.id, {
-                                  instances: currentRoom.instances.map(i =>
-                                    i.id === selectedInstanceId ? { ...i, layerId: layer.id } : i
-                                  )
-                                });
-                              }
-                              setActiveLayerId(layer.id);
-                            }
-                          }}
-                          onLongPress={() => {
-                            if (currentRoom.layers.length <= 1) {
-                              Alert.alert('Cannot Delete', 'A room must have at least one layer.');
-                              return;
-                            }
-                            Alert.alert(
-                              'Delete Layer',
-                              `Are you sure you want to delete "${layer.name}"? ALL objects on this layer will also be deleted.`,
-                              [
-                                { text: 'Cancel', style: 'cancel' },
-                                { text: 'Delete', style: 'destructive', onPress: () => removeLayer(currentRoom.id, layer.id) }
-                              ]
-                            );
-                          }}
-                        >
-                          <Text style={[styles.layerName, isActive && { fontWeight: 'bold', color: theme.colors.primary }]} numberOfLines={1}>
-                            {layer.name}
-                          </Text>
-                        </TouchableOpacity>
+                            }}
+                          >
+                            <Text style={[styles.layerName, isActive && { fontWeight: 'bold', color: theme.colors.primary }]} numberOfLines={1}>
+                              {layer.name}
+                            </Text>
+                          </TouchableOpacity>
 
-                        <View style={styles.layerActions}>
-                          <TouchableOpacity onPress={() => updateLayer(currentRoom.id, layer.id, { visible: !layer.visible })}>
-                            {layer.visible ? <Eye color={theme.colors.text} size={14} /> : <EyeOff color={theme.colors.textMuted} size={14} />}
-                          </TouchableOpacity>
-                          <TouchableOpacity onPress={() => updateLayer(currentRoom.id, layer.id, { locked: !layer.locked })}>
-                            {layer.locked ? <Lock color={theme.colors.primary} size={14} /> : <Unlock color={theme.colors.textMuted} size={14} />}
-                          </TouchableOpacity>
+                          <View style={styles.layerActions}>
+                            <TouchableOpacity onPress={() => updateLayer(currentRoom.id, layer.id, { visible: !layer.visible })}>
+                              {layer.visible ? <Eye color={theme.colors.text} size={14} /> : <EyeOff color={theme.colors.textMuted} size={14} />}
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => updateLayer(currentRoom.id, layer.id, { locked: !layer.locked })}>
+                              {layer.locked ? <Lock color={theme.colors.primary} size={14} /> : <Unlock color={theme.colors.textMuted} size={14} />}
+                            </TouchableOpacity>
+                          </View>
                         </View>
-                      </View>
-                    );
-                  })}
-                </View>
-              )}
+                      );
+                    })}
+                  </View>
+                ))}
             </View>
 
             {selectedInstanceId && currentRoom && (
               <View style={styles.sidebarSection}>
-                <View style={styles.sectionHeader}>
+                <TouchableOpacity
+                  style={styles.sectionHeader}
+                  onPress={() => toggleSection('instance')}
+                  activeOpacity={0.7}
+                >
                   <MousePointer color={theme.colors.primary} size={16} />
                   <Text style={styles.sectionTitle}>Selection</Text>
-                  <TouchableOpacity onPress={() => setSelectedInstanceId(null)} style={{ marginLeft: 'auto' }}>
-                    <X color={theme.colors.textMuted} size={14} />
-                  </TouchableOpacity>
-                </View>
+                  <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <TouchableOpacity onPress={() => setSelectedInstanceId(null)}>
+                      <X color={theme.colors.textMuted} size={14} />
+                    </TouchableOpacity>
+                    {expandedSections.instance ? <ChevronUp color={theme.colors.textMuted} size={14} /> : <ChevronDown color={theme.colors.textMuted} size={14} />}
+                  </View>
+                </TouchableOpacity>
 
-                {(() => {
-                  const inst = currentRoom.instances.find(i => i.id === selectedInstanceId);
-                  if (!inst) return null;
-                  const obj = currentProject?.objects.find(o => o.id === inst.objectId);
-                  return (
-                    <View style={styles.settingsList}>
-                      <View style={{ gap: 12 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          {obj?.behavior === 'text' ? (
-                            <Layout size={18} color={theme.colors.primary} />
-                          ) : (
-                            <PixelSprite
-                              sprite={currentProject?.sprites.find(s => s.id === obj?.appearance.spriteId)}
-                              size={24}
-                              animationState={obj?.appearance?.animationState}
-                            />
+                {expandedSections.instance && (
+                  <View style={styles.settingsList}>
+                    {(() => {
+                      const inst = currentRoom.instances.find(i => i.id === selectedInstanceId);
+                      if (!inst) return null;
+                      const obj = currentProject?.objects.find(o => o.id === inst.objectId);
+                      return (
+                        <View style={{ gap: 12 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            {obj?.behavior === 'text' ? (
+                              <Layout size={18} color={theme.colors.primary} />
+                            ) : (
+                              <PixelSprite
+                                sprite={currentProject?.sprites.find(s => s.id === obj?.appearance.spriteId)}
+                                size={24}
+                                animationState={obj?.appearance?.animationState}
+                              />
+                            )}
+                            <Text style={{ color: '#fff', marginLeft: 8, fontSize: 14 }}>{obj?.name || 'Unknown Object'}</Text>
+                          </View>
+
+                          {obj?.behavior === 'text' && (
+                            <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', padding: 8, borderRadius: 8, borderLeftWidth: 2, borderLeftColor: theme.colors.primary }}>
+                              <Text style={{ color: theme.colors.textMuted, fontSize: 10, marginBottom: 4 }}>TEXT CONTENT</Text>
+                              <Text style={{ color: '#fff', fontSize: 12, fontFamily: obj.text?.fontFamily === 'pixel' ? 'Pixel' : undefined }}>
+                                {obj.text?.content || '(Empty)'}
+                              </Text>
+                            </View>
                           )}
-                          <Text style={{ color: '#fff', marginLeft: 8, fontSize: 14 }}>{obj?.name || 'Unknown Object'}</Text>
-                        </View>
 
-                        {obj?.behavior === 'text' && (
-                          <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', padding: 8, borderRadius: 8, borderLeftWidth: 2, borderLeftColor: theme.colors.primary }}>
-                            <Text style={{ color: theme.colors.textMuted, fontSize: 10, marginBottom: 4 }}>TEXT CONTENT</Text>
-                            <Text style={{ color: '#fff', fontSize: 12, fontFamily: obj.text?.fontFamily === 'pixel' ? 'Pixel' : undefined }}>
-                              {obj.text?.content || '(Empty)'}
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text style={{ color: theme.colors.textMuted, fontSize: 11 }}>Position</Text>
+                            <Text style={{ color: theme.colors.text, fontSize: 11 }}>{inst.x}, {inst.y}</Text>
+                          </View>
+
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text style={{ color: theme.colors.textMuted, fontSize: 11 }}>Layer</Text>
+                            <Text style={{ color: theme.colors.primary, fontSize: 11, fontWeight: 'bold' }}>
+                              {currentRoom.layers.find(l => l.id === (inst.layerId || currentRoom.layers?.[0]?.id || 'default'))?.name || 'Layer 1'}
                             </Text>
                           </View>
-                        )}
 
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Text style={{ color: theme.colors.textMuted, fontSize: 11 }}>Position</Text>
-                          <Text style={{ color: theme.colors.text, fontSize: 11 }}>{inst.x}, {inst.y}</Text>
+                          <TouchableOpacity
+                            style={[styles.toggleRow, { marginTop: 4, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)' }]}
+                            onPress={() => {
+                              removeInstanceFromRoom(currentRoom.id, selectedInstanceId);
+                              setSelectedInstanceId(null);
+                            }}
+                          >
+                            <Trash2 color="#ef4444" size={14} />
+                            <Text style={{ color: '#ef4444', marginLeft: 8, fontSize: 12 }}>Remove Instance</Text>
+                          </TouchableOpacity>
                         </View>
-
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Text style={{ color: theme.colors.textMuted, fontSize: 11 }}>Layer</Text>
-                          <Text style={{ color: theme.colors.primary, fontSize: 11, fontWeight: 'bold' }}>
-                            {currentRoom.layers.find(l => l.id === (inst.layerId || currentRoom.layers?.[0]?.id || 'default'))?.name || 'Layer 1'}
-                          </Text>
-                        </View>
-
-                        <TouchableOpacity
-                          style={[styles.toggleRow, { marginTop: 4, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)' }]}
-                          onPress={() => {
-                            removeInstanceFromRoom(currentRoom.id, selectedInstanceId);
-                            setSelectedInstanceId(null);
-                          }}
-                        >
-                          <Trash2 color="#ef4444" size={14} />
-                          <Text style={{ color: '#ef4444', marginLeft: 8, fontSize: 12 }}>Remove Instance</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  );
-                })()}
+                      );
+                    })()}
+                  </View>
+                )}
               </View>
             )}
 
             <View style={styles.sidebarSection}>
-              <SidebarDivider />
-              <View style={styles.sectionHeader}>
+              <TouchableOpacity
+                style={styles.sectionHeader}
+                onPress={() => toggleSection('settings')}
+                activeOpacity={0.7}
+              >
                 <Settings color={theme.colors.primary} size={16} />
                 <Text style={styles.sectionTitle}>Room Settings</Text>
-              </View>
-              <View style={styles.settingsList}>
-                <RoomSettingInput
-                  label="Width"
-                  value={roomWidth}
-                  onChange={(v) => currentRoom && updateRoom(currentRoom.id, { width: v })}
-                />
-                <RoomSettingInput
-                  label="Height"
-                  value={roomHeight}
-                  onChange={(v) => currentRoom && updateRoom(currentRoom.id, { height: v })}
-                />
-                <RoomSettingInput
-                  label="Gravity"
-                  value={currentRoom?.settings?.gravity ?? 9.8}
-                  onChange={(v) => currentRoom && updateRoom(currentRoom.id, {
-                    settings: { ...(currentRoom.settings || {}), gravity: v }
-                  })}
-                />
-                <RoomSettingInput
-                  label="Grid Size"
-                  value={currentRoom?.settings?.gridSize ?? 32}
-                  onChange={(v) => currentRoom && updateRoom(currentRoom.id, {
-                    settings: { ...(currentRoom.settings || {}), gridSize: Math.max(1, v) }
-                  })}
-                />
+                <View style={{ marginLeft: 'auto' }}>
+                  {expandedSections.settings ? <ChevronUp color={theme.colors.textMuted} size={14} /> : <ChevronDown color={theme.colors.textMuted} size={14} />}
+                </View>
+              </TouchableOpacity>
 
-                <View style={{ marginTop: 12 }}>
-                  <Text style={[styles.settingLabel, { marginBottom: 8 }]}>Background Color</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <TouchableOpacity
-                      style={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: 8,
-                        backgroundColor: currentRoom?.settings?.backgroundColor || '#2E333D',
-                        borderWidth: 2,
-                        borderColor: 'rgba(255,255,255,0.1)'
-                      }}
-                      onPress={() => setColorPickerVisible(true)}
-                    />
-                    <View style={{ flex: 1 }}>
-                      <TextInput
-                        style={[styles.settingInput, { textAlign: 'left', width: '100%', paddingVertical: 8 }]}
-                        value={currentRoom?.settings?.backgroundColor?.toUpperCase() || '#2E333D'}
-                        onChangeText={(c) => currentRoom && updateRoom(currentRoom.id, {
-                          settings: { ...(currentRoom.settings || {}), backgroundColor: c }
-                        })}
-                        placeholder="#HEX"
-                        placeholderTextColor={theme.colors.textMuted}
-                        maxLength={7}
+              {expandedSections.settings && (
+                <View style={styles.settingsList}>
+                  <RoomSettingInput
+                    label="Width"
+                    value={roomWidth}
+                    onChange={(v) => currentRoom && updateRoom(currentRoom.id, { width: v })}
+                  />
+                  <RoomSettingInput
+                    label="Height"
+                    value={roomHeight}
+                    onChange={(v) => currentRoom && updateRoom(currentRoom.id, { height: v })}
+                  />
+                  <RoomSettingInput
+                    label="Gravity"
+                    value={currentRoom?.settings?.gravity ?? 9.8}
+                    onChange={(v) => currentRoom && updateRoom(currentRoom.id, {
+                      settings: { ...(currentRoom.settings || {}), gravity: v }
+                    })}
+                  />
+                  <RoomSettingInput
+                    label="Grid Size"
+                    value={currentRoom?.settings?.gridSize ?? 32}
+                    onChange={(v) => currentRoom && updateRoom(currentRoom.id, {
+                      settings: { ...(currentRoom.settings || {}), gridSize: Math.max(1, v) }
+                    })}
+                  />
+
+                  <View style={{ marginTop: 12 }}>
+                    <Text style={[styles.settingLabel, { marginBottom: 8 }]}>Background Color</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <TouchableOpacity
+                        style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: 8,
+                          backgroundColor: currentRoom?.settings?.backgroundColor || '#2E333D',
+                          borderWidth: 2,
+                          borderColor: 'rgba(255,255,255,0.1)'
+                        }}
+                        onPress={() => setColorPickerVisible(true)}
                       />
+                      <View style={{ flex: 1 }}>
+                        <TextInput
+                          style={[styles.settingInput, { textAlign: 'left', width: '100%', paddingVertical: 8 }]}
+                          value={currentRoom?.settings?.backgroundColor?.toUpperCase() || '#2E333D'}
+                          onChangeText={(c) => currentRoom && updateRoom(currentRoom.id, {
+                            settings: { ...(currentRoom.settings || {}), backgroundColor: c }
+                          })}
+                          placeholder="#HEX"
+                          placeholderTextColor={theme.colors.textMuted}
+                          maxLength={7}
+                        />
+                      </View>
                     </View>
                   </View>
                 </View>
-              </View>
+              )}
+            </View>
 
-              <SidebarDivider />
-              <View style={{ marginTop: 12 }}>
-                <View style={[styles.sectionHeader, { marginBottom: 12 }]}>
-                  <View style={{ width: 16, height: 16, backgroundColor: theme.colors.primary, borderRadius: 4, marginRight: 8 }} />
-                  <Text style={styles.sectionTitle}>Camera</Text>
+            <View style={styles.sidebarSection}>
+              <TouchableOpacity
+                style={styles.sectionHeader}
+                onPress={() => toggleSection('camera')}
+                activeOpacity={0.7}
+              >
+                <HelpCircle color={theme.colors.primary} size={16} />
+                <Text style={styles.sectionTitle}>Camera</Text>
+                <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Switch
                     value={currentRoom?.settings?.camera?.enabled ?? false}
                     onValueChange={(enabled) => {
@@ -931,56 +961,69 @@ export default function RoomsScreen() {
                     trackColor={{ false: '#333', true: theme.colors.primary + '80' }}
                     thumbColor={(currentRoom?.settings?.camera?.enabled) ? theme.colors.primary : '#666'}
                   />
+                  {expandedSections.camera ? <ChevronUp color={theme.colors.textMuted} size={14} /> : <ChevronDown color={theme.colors.textMuted} size={14} />}
                 </View>
+              </TouchableOpacity>
 
-                {currentRoom?.settings?.camera?.enabled && (
-                  <View style={styles.settingsList}>
-                    <View style={styles.settingItem}>
-                      <Text style={styles.settingLabel}>Follow</Text>
-                      <TouchableOpacity
-                        style={styles.dropdownButton}
-                        onPress={() => setCameraTargetPickerVisible(true)}
-                      >
-                        <Text style={styles.dropdownText} numberOfLines={1}>
-                          {currentRoom?.settings?.camera?.targetObjectId
-                            ? (currentProject?.objects || []).find(o => o.id === currentRoom.settings?.camera?.targetObjectId)?.name || 'None'
-                            : 'None'
-                          }
-                        </Text>
-                        <ChevronDown color={theme.colors.textMuted} size={14} />
-                      </TouchableOpacity>
-                    </View>
-
-                    <RoomSettingInput
-                      label="Smoothing (0-1)"
-                      value={currentRoom?.settings?.camera?.smoothing ?? 0.1}
-                      onChange={(v) => {
-                        if (!currentRoom) return;
-                        const cam = currentRoom.settings?.camera || { targetObjectId: null, smoothing: 0.1, zoom: 1, enabled: true };
-                        updateRoom(currentRoom.id, {
-                          settings: { ...currentRoom.settings, camera: { ...cam, smoothing: Math.max(0, Math.min(1, v)) } }
-                        });
-                      }}
-                    />
-
-                    <RoomSettingInput
-                      label="Zoom"
-                      value={currentRoom?.settings?.camera?.zoom ?? 1}
-                      onChange={(v) => {
-                        if (!currentRoom) return;
-                        const cam = currentRoom.settings?.camera || { targetObjectId: null, smoothing: 0.1, zoom: 1, enabled: true };
-                        updateRoom(currentRoom.id, {
-                          settings: { ...currentRoom.settings, camera: { ...cam, zoom: Math.max(0.1, v) } }
-                        });
-                      }}
-                    />
+              {expandedSections.camera && (
+                <View style={styles.settingsList}>
+                  <View style={styles.settingItem}>
+                    <Text style={styles.settingLabel}>Follow</Text>
+                    <TouchableOpacity
+                      style={styles.dropdownButton}
+                      onPress={() => setCameraTargetPickerVisible(true)}
+                    >
+                      <Text style={styles.dropdownText} numberOfLines={1}>
+                        {currentRoom?.settings?.camera?.targetObjectId
+                          ? (currentProject?.objects || []).find(o => o.id === currentRoom.settings?.camera?.targetObjectId)?.name || 'None'
+                          : 'None'
+                        }
+                      </Text>
+                      <ChevronDown color={theme.colors.textMuted} size={14} />
+                    </TouchableOpacity>
                   </View>
-                )}
-              </View>
 
-              <SidebarDivider />
-              <View style={{ marginTop: 12 }}>
-                <Text style={[styles.sectionTitle, { fontSize: 10, marginBottom: 12 }]}>Built-in Controls</Text>
+                  <RoomSettingInput
+                    label="Smoothing (0-1)"
+                    value={currentRoom?.settings?.camera?.smoothing ?? 0.1}
+                    onChange={(v) => {
+                      if (!currentRoom) return;
+                      const cam = currentRoom.settings?.camera || { targetObjectId: null, smoothing: 0.1, zoom: 1, enabled: true };
+                      updateRoom(currentRoom.id, {
+                        settings: { ...currentRoom.settings, camera: { ...cam, smoothing: Math.max(0, Math.min(1, v)) } }
+                      });
+                    }}
+                  />
+
+                  <RoomSettingInput
+                    label="Zoom"
+                    value={currentRoom?.settings?.camera?.zoom ?? 1}
+                    onChange={(v) => {
+                      if (!currentRoom) return;
+                      const cam = currentRoom.settings?.camera || { targetObjectId: null, smoothing: 0.1, zoom: 1, enabled: true };
+                      updateRoom(currentRoom.id, {
+                        settings: { ...currentRoom.settings, camera: { ...cam, zoom: Math.max(0.1, v) } }
+                      });
+                    }}
+                  />
+                </View>
+              )}
+            </View>
+
+            <View style={styles.sidebarSection}>
+              <TouchableOpacity
+                style={styles.sectionHeader}
+                onPress={() => toggleSection('controls')}
+                activeOpacity={0.7}
+              >
+                <Grid3X3 color={theme.colors.primary} size={16} />
+                <Text style={styles.sectionTitle}>Built-in Controls</Text>
+                <View style={{ marginLeft: 'auto' }}>
+                  {expandedSections.controls ? <ChevronUp color={theme.colors.textMuted} size={14} /> : <ChevronDown color={theme.colors.textMuted} size={14} />}
+                </View>
+              </TouchableOpacity>
+
+              {expandedSections.controls && (
                 <View style={{ gap: 8 }}>
                   {['left', 'right', 'jump', 'shoot', 'joystick'].map((btn) => {
                     const controls = currentRoom?.settings?.showControls as any;
@@ -992,13 +1035,13 @@ export default function RoomsScreen() {
                           onPress={() => {
                             if (!currentRoom) return;
                             const newControls = { ...(currentRoom.settings?.showControls || { left: true, right: true, jump: true, shoot: true, joystick: { enabled: false, dead_zone: 10, stick_range: 50, output_mode: 'vector', persistence: false } }) };
-                            
+
                             if (btn === 'joystick') {
                               newControls.joystick = { ...(newControls.joystick || { enabled: false, dead_zone: 10, stick_range: 50, output_mode: 'vector', persistence: false }), enabled: !isShowing };
                             } else {
                               (newControls as any)[btn] = !isShowing;
                             }
-                            
+
                             updateRoom(currentRoom.id, {
                               settings: { ...(currentRoom.settings || {}), showControls: newControls }
                             });
@@ -1089,7 +1132,7 @@ export default function RoomsScreen() {
                     );
                   })}
                 </View>
-              </View>
+              )}
             </View>
           </ScrollView>
         </View>
