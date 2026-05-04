@@ -893,11 +893,49 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
   const varCooldowns = useRef<Record<string, number>>({});
   const lastRestartRef = useRef(0);
 
+  // Calculate initial camera position based on target to avoid "jump" on first frame
+  const initialCamPos = useMemo(() => {
+    const cam = currentRoom?.settings?.camera;
+    if (!cam?.enabled) return { x: 0, y: 0 };
+    
+    const targetId = cam.targetId || cam.targetObjectId;
+    let targetInst = currentRoom.instances?.find(i => i.id === targetId || i.objectId === targetId);
+    
+    // Fallback to finding a player object if no specific target is set or found
+    if (!targetInst) {
+      targetInst = currentRoom.instances?.find(i => {
+        const obj = currentProject?.objects?.find(o => o.id === i.objectId);
+        return obj?.behavior === 'player' || obj?.name?.toLowerCase().includes('player');
+      });
+    }
+
+    if (targetInst) {
+      const zoom = cam.zoom || 1;
+      // Reference viewport dimensions used in the game loop
+      const rw = currentRoom?.width || 800;
+      const rh = currentRoom?.height || 600;
+      const gw = Math.min(rw, 800);
+      const gh = Math.min(rh, 600);
+      const vw = gw / zoom;
+      const vh = gh / zoom;
+
+      const obj = currentProject?.objects?.find(o => o.id === targetInst.objectId);
+      const w = obj?.width || targetInst.width || 32;
+      const h = obj?.height || targetInst.height || 32;
+
+      return {
+        x: (targetInst.x + w / 2) - vw / 2,
+        y: (targetInst.y + h / 2) - vh / 2
+      };
+    }
+    return { x: 0, y: 0 };
+  }, [currentRoom?.id, restartKey]);
+
   // Camera shared values — updated in the game loop, drive canvas translation
-  const cameraX = useSharedValue(0);
-  const cameraY = useSharedValue(0);
+  const cameraX = useSharedValue(initialCamPos.x);
+  const cameraY = useSharedValue(initialCamPos.y);
   const cameraZoom = useSharedValue(currentRoom?.settings?.camera?.zoom || 1);
-  const cameraRef = useRef({ x: 0, y: 0 });
+  const cameraRef = useRef({ x: initialCamPos.x, y: initialCamPos.y });
 
   // Keep cameraZoom in sync with component state
   useEffect(() => {
@@ -976,13 +1014,15 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
   const instanceSharedValues = useMemo(() => {
     if (!currentRoom || !currentRoom.instances) return [];
-    return Array.from({ length: currentRoom.instances.length }).map(() => ({
-      x: makeMutable(0), y: makeMutable(0), rot: makeMutable(0),
+    return (currentRoom.instances || []).map((inst: any) => ({
+      x: makeMutable(inst.x || 0),
+      y: makeMutable(inst.y || 0),
+      rot: makeMutable((inst.angle || 0) * Math.PI / 180),
       isColliding: makeMutable(0),
       animState: makeMutable(0), // 0: idle, 1: move, 2: jump, 3: hit, 4: dead
       flipX: makeMutable(1),
     }));
-  }, [currentRoom?.id, (currentRoom?.instances || []).length, restartKey]);
+  }, [currentRoom?.id, currentRoom?.instances, restartKey]);
 
   const [variables, setVariables] = useState<Record<string, number>>(currentProject?.variables?.global || { score: 0 });
   const variablesRef = useRef<Record<string, number>>(currentProject?.variables?.global || { score: 0 });
@@ -1155,6 +1195,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     inputShoot.current = 0;
     inputTap.current = 0;
     cameraTargetBodyRef.current = null; // Reset camera target on room restart
+    cameraX.value = initialCamPos.x;
+    cameraY.value = initialCamPos.y;
+    cameraRef.current = { x: initialCamPos.x, y: initialCamPos.y };
     setDynamicElements([]);
     setInstanceOverrides({});
     setLocalVariables({});
@@ -1313,27 +1356,26 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         const [_, target, prop, op, val] = match;
         let cmd = '';
 
-        if (prop === 'x') cmd = op === '=' ? 'set_x' : 'add_x';
-        else if (prop === 'y') cmd = op === '=' ? 'set_y' : 'add_y';
-        else if (prop === 'vx') cmd = 'set_vx';
-        else if (prop === 'vy') cmd = 'set_vy';
-        else if (prop === 'angle') cmd = op === '=' ? 'set_angle' : 'add_angle';
-        else if (prop === 'current_count') {
-          if (op === '=') cmd = 'set_count';
-          else if (op === '-=') cmd = 'damage';
-          else if (op === '+=') cmd = 'heal';
-        } else if (prop === 'value') {
-          if (op === '=') cmd = 'set_value';
-          else if (op === '+=') cmd = 'add_value';
-          else if (op === '-=') cmd = 'add_value'; // Handled by sign in parts
+        const lowerTarget = target.toLowerCase();
+        if (lowerTarget === 'global') {
+          cmd = op === '=' ? 'var_set' : 'var_add';
+        } else if (lowerTarget === 'self' || lowerTarget === 'this') {
+          if (prop === 'x') cmd = op === '=' ? 'set_x' : 'add_x';
+          else if (prop === 'y') cmd = op === '=' ? 'set_y' : 'add_y';
+          else if (prop === 'vx') cmd = 'set_vx';
+          else if (prop === 'vy') cmd = 'set_vy';
+          else if (prop === 'angle') cmd = op === '=' ? 'set_angle' : 'add_angle';
+          else if (prop === 'health' || prop === 'hp') cmd = op === '=' ? 'set_health' : 'add_health';
+          else cmd = op === '=' ? 'lvar_set' : 'lvar_add';
         } else {
-          cmd = op === '=' ? 'lvar_set' : 'lvar_add';
+          // Cross-object targeting handled in executeAction via cmd
+          cmd = op === '=' ? 'set_property' : 'add_property';
         }
 
         const finalVal = (prop === 'value' && op === '-=') ? `-${val}` : val;
         
-        if (target === 'other') {
-          return { cmd: 'target_other', parts: ['target_other', cmd, prop, finalVal] };
+        if (lowerTarget !== 'global' && lowerTarget !== 'self' && lowerTarget !== 'this') {
+          return { cmd: lowerTarget, parts: [lowerTarget, op === '=' ? 'set' : 'add', prop, finalVal] };
         }
         
         return { cmd, parts: [cmd, prop, finalVal] };
@@ -1369,6 +1411,34 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         parts = parsed.parts;
       }
 
+      // --- Action Targeting (e.g. "player:jump" or "enemy:damage:10") ---
+      const knownCommands = [
+        'jump', 'move_left', 'move_right', 'stop_x', 'set_vx', 'set_vy', 'set_x', 'set_y', 'add_x', 'add_y',
+        'set_angle', 'add_angle', 'point_towards', 'var_add', 'var_set', 'lvar_add', 'lvar_set',
+        'set_value', 'tween_to', 'add_value', 'bind_to_variable', 'set_health', 'add_health',
+        'damage', 'heal', 'set_count', 'restart_room', 'go_to_room', 'create_instance',
+        'animation', 'set_animation', 'start_sound', 'stop_sound', 'target_other'
+      ];
+
+      if (!knownCommands.includes(cmd)) {
+        const targetName = cmd.toLowerCase();
+        const targets = cachedBodies.filter(b => {
+          const info = (b as any).gameInfo;
+          return info?.obj?.name?.toLowerCase() === targetName || info?.obj?.behavior?.toLowerCase() === targetName;
+        });
+
+        if (targets.length > 0) {
+          const actualCmd = parts[1];
+          const actualParts = parts.slice(1);
+          if (actualCmd) {
+            targets.forEach(t => {
+              executeAction({ cmd: actualCmd, parts: actualParts }, t, (t as any).gameInfo?.obj, `${source}:Target:${cmd}`, otherBody);
+            });
+          }
+          return;
+        }
+      }
+
       // Handle 'other' target redirection for pre-parsed actions
       if (cmd === 'target_other') {
         if (otherBody) {
@@ -1390,8 +1460,28 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       }
 
       if (cmd === 'jump') {
-        const jmp = obj?.physics?.jumpStrength !== undefined ? obj.physics.jumpStrength : 10;
+        const jmp = obj?.physics?.jumpStrength !== undefined ? obj.physics.jumpStrength : 12;
         Matter.Body.setVelocity(body, { x: body.velocity.x, y: -jmp });
+      } else if (cmd === 'damage' || cmd === 'heal') {
+        const amount = resolveValue(parts[1], body, obj);
+        const info = (body as any).gameInfo;
+        const sign = cmd === 'damage' ? -1 : 1;
+
+        // Apply to health if exists
+        if (info?.obj?.health) {
+          const old = info.obj.health.current;
+          info.obj.health.current = Math.max(0, Math.min(info.obj.health.max, info.obj.health.current + (amount * sign)));
+          if (sign < 0 && info.obj.sounds?.hit) playSoundEffect(info.obj.sounds.hit);
+          if (info.obj.health.current <= 0 && old > 0 && info.obj.sounds?.dead) playSoundEffect(info.obj.sounds.dead);
+          setNonce(n => n + 1);
+        }
+        // Apply to sprite repeater if exists
+        if (info?.obj?.sprite_repeater) {
+          const sr = info.obj.sprite_repeater;
+          if (sign < 0) sr.currentCount = Math.max(0, sr.currentCount - amount);
+          else sr.currentCount = Math.min(sr.maxCount, sr.currentCount + amount);
+          setNonce(n => n + 1);
+        }
       } else if (cmd === 'move_left') {
         Matter.Body.setVelocity(body, { x: -(obj?.physics?.moveSpeed || 5) * 0.8, y: body.velocity.y });
       } else if (cmd === 'move_right') {
@@ -1487,14 +1577,12 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           if (info.obj.health.current <= 0 && old > 0 && info.obj.sounds?.dead) playSoundEffect(info.obj.sounds.dead);
           setNonce(n => n + 1);
         }
-      } else if (cmd === 'damage' || cmd === 'heal' || cmd === 'set_count') {
+      } else if (cmd === 'set_count') {
         const amount = resolveValue(parts[1], body, obj);
         const info = (body as any).gameInfo;
         if (info?.obj?.sprite_repeater) {
           const sr = info.obj.sprite_repeater;
-          if (cmd === 'damage') sr.currentCount = Math.max(0, sr.currentCount - amount);
-          else if (cmd === 'heal') sr.currentCount = Math.min(sr.maxCount, sr.currentCount + amount);
-          else if (cmd === 'set_count') sr.currentCount = Math.max(0, Math.min(sr.maxCount, amount));
+          sr.currentCount = Math.max(0, Math.min(sr.maxCount, amount));
           setNonce(n => n + 1);
         }
       } else if (cmd === 'restart_room') {
@@ -1644,8 +1732,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
     const attachListeners = (body: Matter.Body, obj: GameObject) => {
       obj.logic?.listeners?.forEach(l => {
-        // Skip events handled elsewhere: on_timer/on_tick run in game loop, on_start runs at spawn, on_tap handled by builtin_tap
-        if (l.eventId?.startsWith('on_timer') || l.eventId === 'on_tick' || l.eventId === 'on_start' || l.eventId === 'on_tap') return;
+        // Skip events handled elsewhere to prevent double-firing or handled by specialized loops
+        const skippedEvents = ['on_timer', 'on_tick', 'on_start', 'on_tap', 'builtin_tap', 'on_screen_tap'];
+        if (skippedEvents.some(se => l.eventId === se || l.eventId?.startsWith(se + ':'))) return;
 
         const sub = DeviceEventEmitter.addListener(l.eventId, (data: any) => {
           // If the event has a targetId, only react if it matches this body
@@ -1663,7 +1752,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
       // Built-in tap listener for 'on_tap' scripts (legacy) and visual logic
       const tapSub = DeviceEventEmitter.addListener('builtin_tap', (data: any) => {
+        // For object-specific taps, check targetId
         if (data?.targetId && String(data.targetId) !== String(body.label)) return;
+        
         // Legacy scripts
         const info = (body as any).gameInfo;
         if (info?.scripts) {
@@ -1674,14 +1765,24 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             }
           });
         }
-        // Visual logic listeners for on_tap
+        // Visual logic listeners for on_tap and builtin_tap
         obj.logic?.listeners?.forEach((l: any) => {
-          if (l.eventId === 'on_tap') {
+          if (l.eventId === 'on_tap' || l.eventId === 'builtin_tap') {
             executeListenerLogic(l, body, obj, 'TapListener');
           }
         });
       });
       subscriptions.push(tapSub);
+
+      // Dedicated screen tap listener
+      const screenTapSub = DeviceEventEmitter.addListener('on_screen_tap', (data: any) => {
+        obj.logic?.listeners?.forEach((l: any) => {
+          if (l.eventId === 'on_screen_tap') {
+            executeListenerLogic(l, body, obj, 'ScreenTapListener');
+          }
+        });
+      });
+      subscriptions.push(screenTapSub);
     };
 
     const createBodyForObject = (x: number, y: number, width: number, height: number, obj: GameObject, options: any) => {
@@ -2727,6 +2828,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                         variablesRef.current.tap_x = e.nativeEvent.locationX;
                         variablesRef.current.tap_y = e.nativeEvent.locationY;
                         DeviceEventEmitter.emit('builtin_tap', { x: e.nativeEvent.locationX, y: e.nativeEvent.locationY });
+                        DeviceEventEmitter.emit('on_screen_tap', { x: e.nativeEvent.locationX, y: e.nativeEvent.locationY });
                       }}
                     />
                     {staticElements}

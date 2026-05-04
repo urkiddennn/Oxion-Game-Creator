@@ -30,5 +30,7 @@ yarn-error.*
 # Ignore design assets not needed for the build
 assets/original-designs/
 Oxion_Documentation.html
+Oxion_QuickStart.html
+Lear.html
 README.md
 docs/

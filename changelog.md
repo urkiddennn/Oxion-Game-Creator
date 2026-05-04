@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.6.4] - 2026-05-04
+### Fixed
+- **Dynamic Room Grid**: Resolved the "disappearing grid" bug when using small grid sizes (e.g., 8). The editor grid now dynamically calculates the number of lines required based on the room dimensions and current grid size, ensuring full coverage across the entire room workspace.
+
+
 ## [1.5.7] - 2026-05-04
 ### Fixed
 - **Visual Scaling Parity (Editor vs Play)**: Synchronized the Room Editor with the physics scale property. Object instances in the room editor now correctly reflect their scaled size, ensuring what you see in the editor perfectly matches the gameplay.

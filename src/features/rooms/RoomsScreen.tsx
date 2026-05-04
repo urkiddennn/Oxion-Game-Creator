@@ -380,6 +380,24 @@ export default function RoomsScreen() {
   const savedOffsetY = useSharedValue(0);
   const GRID_SIZE = currentRoom?.settings?.gridSize ?? 32;
 
+  const gridLines = useMemo(() => {
+    const hLines = [];
+    const vLines = [];
+    const buffer = 2000;
+    const startX = -buffer;
+    const endX = roomWidth + buffer;
+    const startY = -buffer;
+    const endY = roomHeight + buffer;
+
+    for (let x = Math.floor(startX / GRID_SIZE) * GRID_SIZE; x <= endX; x += GRID_SIZE) {
+      vLines.push(x);
+    }
+    for (let y = Math.floor(startY / GRID_SIZE) * GRID_SIZE; y <= endY; y += GRID_SIZE) {
+      hLines.push(y);
+    }
+    return { hLines, vLines };
+  }, [roomWidth, roomHeight, GRID_SIZE]);
+
   const handleDragEnd = (instId: string, x: number, y: number) => {
     if (currentRoom) {
       updateInstancePosition(currentRoom.id, instId, x, y);
@@ -607,20 +625,20 @@ export default function RoomsScreen() {
               {/* Infinite Grid Layer - Always on Top */}
               {showGrid && (
                 <View style={{ position: 'absolute', pointerEvents: 'none', zIndex: 10000 }}>
-                  {Array.from({ length: 120 }).map((_, i) => (
+                  {gridLines.hLines.map((y, i) => (
                     <View key={`h-${i}`} pointerEvents="none" style={[styles.gridLineH, {
-                      top: (i - 60) * GRID_SIZE,
-                      width: 4000,
+                      top: y,
+                      width: roomWidth + 4000,
                       left: -2000,
-                      opacity: (i - 60) * GRID_SIZE >= 0 && (i - 60) * GRID_SIZE <= roomHeight ? 0.3 : 0.1
+                      opacity: y >= 0 && y <= roomHeight ? 0.3 : 0.1
                     }]} />
                   ))}
-                  {Array.from({ length: 120 }).map((_, i) => (
+                  {gridLines.vLines.map((x, i) => (
                     <View key={`v-${i}`} pointerEvents="none" style={[styles.gridLineV, {
-                      left: (i - 60) * GRID_SIZE,
-                      height: 4000,
+                      left: x,
+                      height: roomHeight + 4000,
                       top: -2000,
-                      opacity: (i - 60) * GRID_SIZE >= 0 && (i - 60) * GRID_SIZE <= roomWidth ? 0.3 : 0.1
+                      opacity: x >= 0 && x <= roomWidth ? 0.3 : 0.1
                     }]} />
                   ))}
                 </View>

@@ -273,7 +273,7 @@ export default function ObjectModals({
                   <>
                     <View style={styles.divider} />
                     <Text style={styles.subSectionTitleCompact}>Engine Events</Text>
-                    {matchesSearch('Every Frame') && matchesSearch('on_tick') && (
+                    {(matchesSearch('Every Frame') || matchesSearch('on_tick')) && (
                       <TouchableOpacity
                         style={styles.actionPresetItem}
                         onPress={() => {
@@ -287,7 +287,7 @@ export default function ObjectModals({
                         <Text style={[styles.actionPresetText, { fontWeight: 'bold', color: theme.colors.primary }]}>Every Frame (on tick)</Text>
                       </TouchableOpacity>
                     )}
-                    {matchesSearch('On Start') && matchesSearch('on_start') && (
+                    {(matchesSearch('On Start') || matchesSearch('on_start')) && (
                       <TouchableOpacity
                         style={styles.actionPresetItem}
                         onPress={() => {
@@ -301,7 +301,7 @@ export default function ObjectModals({
                         <Text style={[styles.actionPresetText, { fontWeight: 'bold', color: theme.colors.secondary }]}>On Start (once)</Text>
                       </TouchableOpacity>
                     )}
-                    {matchesSearch('Timer') && matchesSearch('on_timer') && (
+                    {(matchesSearch('Timer') || matchesSearch('on_timer')) && (
                       <TouchableOpacity
                         style={styles.actionPresetItem}
                         onPress={() => {
@@ -448,7 +448,7 @@ export default function ObjectModals({
                 )}
 
               {/* Collisions */}
-              {((matchesSearch('collision') || matchesSearch('hit')).length > 0 || (currentProject?.objects || []).filter((obj: any) => matchesSearch(obj.name)).length > 0) && (
+              {(matchesSearch('collision') || matchesSearch('hit') || (currentProject?.objects || []).filter((obj: any) => matchesSearch(obj.name)).length > 0) && (
                 <>
                   <View style={styles.divider} />
                   <Text style={styles.subSectionTitleCompact}>Collisions & Interactions</Text>
@@ -634,102 +634,165 @@ export default function ObjectModals({
           <TouchableOpacity activeOpacity={1} onPress={(e) => (e as any).stopPropagation?.()} style={[styles.pickerContent, { maxHeight: '85%' }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Insert Property / Variable</Text>
-              <TouchableOpacity onPress={() => setPropertyPickerVisible(false)}>
+              <TouchableOpacity onPress={() => { setPropertyPickerVisible(false); setSearchQuery(''); }}>
                 <X color={theme.colors.textMuted} size={24} />
               </TouchableOpacity>
             </View>
 
+            {/* Search Bar */}
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: 'rgba(255,255,255,0.05)',
+              borderRadius: 12,
+              paddingHorizontal: 12,
+              marginBottom: 20,
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.1)'
+            }}>
+              <Search size={18} color={theme.colors.textMuted} />
+              <TextInput
+                style={{
+                  flex: 1,
+                  color: theme.colors.text,
+                  paddingVertical: 12,
+                  paddingHorizontal: 10,
+                  fontSize: 14
+                }}
+                placeholder="Search properties (e.g. x, health, score...)"
+                placeholderTextColor={theme.colors.textMuted}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoFocus={false}
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <X size={16} color={theme.colors.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+
             <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.subSectionTitleCompact}>Dynamic References</Text>
-              <View style={styles.pickerRowSmall}>
-                {['self', 'other'].map(p => (
-                  <TouchableOpacity key={p} style={[styles.pickerChip, { borderColor: theme.colors.primary }]} onPress={() => {
-                    if (handlePropertySelect) handlePropertySelect(p + '.');
-                    else if ((global as any).handlePropertySelect) (global as any).handlePropertySelect(p + '.');
-                    setPropertyPickerVisible(false);
-                  }}>
-                    <Text style={[styles.pickerChipText, { color: theme.colors.primary }]}>{p.toUpperCase()}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              {['self', 'other'].filter(p => matchesSearch(p)).length > 0 && (
+                <>
+                  <Text style={styles.subSectionTitleCompact}>Dynamic References</Text>
+                  <View style={styles.pickerRowSmall}>
+                    {['self', 'other'].filter(p => matchesSearch(p)).map(p => (
+                      <TouchableOpacity key={p} style={[styles.pickerChip, { borderColor: theme.colors.primary }]} onPress={() => {
+                        if (handlePropertySelect) handlePropertySelect(p + '.');
+                        else if ((global as any).handlePropertySelect) (global as any).handlePropertySelect(p + '.');
+                        setPropertyPickerVisible(false);
+                        setSearchQuery('');
+                      }}>
+                        <Text style={[styles.pickerChipText, { color: theme.colors.primary }]}>{p.toUpperCase()}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
 
-              <View style={styles.divider} />
-              <Text style={styles.subSectionTitleCompact}>Current Object (this/self)</Text>
-              <View style={styles.pickerRowSmall}>
-                {['x', 'y', 'vx', 'vy', 'width', 'height', 'health', 'angle', 'scale', 'value', 'current_count', 'max_count'].map(p => (
-                  <TouchableOpacity key={p} style={styles.pickerChip} onPress={() => {
-                    const val = `self.${p}`;
-                    if (handlePropertySelect) handlePropertySelect(val);
-                    else if ((global as any).handlePropertySelect) (global as any).handlePropertySelect(val);
-                    setPropertyPickerVisible(false);
-                  }}>
-                    <Text style={styles.pickerChipText}>{p.toUpperCase()}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              {['x', 'y', 'vx', 'vy', 'width', 'height', 'health', 'angle', 'scale', 'value', 'current_count', 'max_count'].filter(p => matchesSearch(p)).length > 0 && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Current Object (this/self)</Text>
+                  <View style={styles.pickerRowSmall}>
+                    {['x', 'y', 'vx', 'vy', 'width', 'height', 'health', 'angle', 'scale', 'value', 'current_count', 'max_count'].filter(p => matchesSearch(p)).map(p => (
+                      <TouchableOpacity key={p} style={styles.pickerChip} onPress={() => {
+                        const val = `self.${p}`;
+                        if (handlePropertySelect) handlePropertySelect(val);
+                        else if ((global as any).handlePropertySelect) (global as any).handlePropertySelect(val);
+                        setPropertyPickerVisible(false);
+                        setSearchQuery('');
+                      }}>
+                        <Text style={styles.pickerChipText}>{p.toUpperCase()}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
 
-              <View style={styles.divider} />
-              <Text style={styles.subSectionTitleCompact}>Room & Environment</Text>
-              <View style={styles.pickerRowSmall}>
-                {['room_width', 'room_height', 'time', 'tap_x', 'tap_y'].map(p => (
-                  <TouchableOpacity key={p} style={[styles.pickerChip, { backgroundColor: '#111' }]} onPress={() => {
-                    if (handlePropertySelect) handlePropertySelect(p);
-                    else if ((global as any).handlePropertySelect) (global as any).handlePropertySelect(p);
-                    setPropertyPickerVisible(false);
-                  }}>
-                    <Text style={[styles.pickerChipText, { color: theme.colors.warning }]}>{p.toUpperCase()}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              {['room_width', 'room_height', 'time', 'tap_x', 'tap_y'].filter(p => matchesSearch(p)).length > 0 && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Room & Environment</Text>
+                  <View style={styles.pickerRowSmall}>
+                    {['room_width', 'room_height', 'time', 'tap_x', 'tap_y'].filter(p => matchesSearch(p)).map(p => (
+                      <TouchableOpacity key={p} style={[styles.pickerChip, { backgroundColor: '#111' }]} onPress={() => {
+                        if (handlePropertySelect) handlePropertySelect(p);
+                        else if ((global as any).handlePropertySelect) (global as any).handlePropertySelect(p);
+                        setPropertyPickerVisible(false);
+                        setSearchQuery('');
+                      }}>
+                        <Text style={[styles.pickerChipText, { color: theme.colors.warning }]}>{p.toUpperCase()}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
 
-              <View style={styles.divider} />
-              <Text style={styles.subSectionTitleCompact}>Logic & Math</Text>
-              <View style={styles.pickerRowSmall}>
-                {['clamp(', 'min(', 'max(', 'abs(', 'floor(', 'random('].map(p => (
-                  <TouchableOpacity key={p} style={[styles.pickerChip, { backgroundColor: '#0A0C10' }]} onPress={() => {
-                    if (handlePropertySelect) handlePropertySelect(p);
-                    else if ((global as any).handlePropertySelect) (global as any).handlePropertySelect(p);
-                    setPropertyPickerVisible(false);
-                  }}>
-                    <Text style={[styles.pickerChipText, { color: theme.colors.secondary }]}>{p.toUpperCase()}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              {['clamp(', 'min(', 'max(', 'abs(', 'floor(', 'random('].filter(p => matchesSearch(p)).length > 0 && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Logic & Math</Text>
+                  <View style={styles.pickerRowSmall}>
+                    {['clamp(', 'min(', 'max(', 'abs(', 'floor(', 'random('].filter(p => matchesSearch(p)).map(p => (
+                      <TouchableOpacity key={p} style={[styles.pickerChip, { backgroundColor: '#0A0C10' }]} onPress={() => {
+                        if (handlePropertySelect) handlePropertySelect(p);
+                        else if ((global as any).handlePropertySelect) (global as any).handlePropertySelect(p);
+                        setPropertyPickerVisible(false);
+                        setSearchQuery('');
+                      }}>
+                        <Text style={[styles.pickerChipText, { color: theme.colors.secondary }]}>{p.toUpperCase()}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
 
-              <View style={styles.divider} />
-              <Text style={styles.subSectionTitleCompact}>Operators</Text>
-              <View style={styles.pickerRowSmall}>
-                {['>', '<', '==', '!=', '>=', '<=', '+', '-', '*', '/', '^', '%'].map(op => (
-                  <TouchableOpacity key={op} style={[styles.pickerChip, { backgroundColor: theme.colors.surfaceElevated }]} onPress={() => {
-                    if (handlePropertySelect) handlePropertySelect(op);
-                    else if ((global as any).handlePropertySelect) (global as any).handlePropertySelect(op);
-                    setPropertyPickerVisible(false);
-                  }}>
-                    <Text style={styles.pickerChipText}>{op}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              {['>', '<', '==', '!=', '>=', '<=', '+', '-', '*', '/', '^', '%'].filter(op => matchesSearch(op)).length > 0 && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Operators</Text>
+                  <View style={styles.pickerRowSmall}>
+                    {['>', '<', '==', '!=', '>=', '<=', '+', '-', '*', '/', '^', '%'].filter(op => matchesSearch(op)).map(op => (
+                      <TouchableOpacity key={op} style={[styles.pickerChip, { backgroundColor: theme.colors.surfaceElevated }]} onPress={() => {
+                        if (handlePropertySelect) handlePropertySelect(op);
+                        else if ((global as any).handlePropertySelect) (global as any).handlePropertySelect(op);
+                        setPropertyPickerVisible(false);
+                        setSearchQuery('');
+                      }}>
+                        <Text style={styles.pickerChipText}>{op}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
 
-              <View style={styles.divider} />
-              <Text style={styles.subSectionTitleCompact}>Project Variables</Text>
-              <View style={styles.pickerRowSmall}>
-                {Object.keys(currentProject?.variables?.global || {}).map(v => (
-                  <TouchableOpacity key={v} style={styles.pickerChip} onPress={() => {
-                    const val = `Global.${v}`;
-                    if (handlePropertySelect) handlePropertySelect(val);
-                    else if ((global as any).handlePropertySelect) (global as any).handlePropertySelect(val);
-                    setPropertyPickerVisible(false);
-                  }}>
-                    <Text style={styles.pickerChipText}>{v}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              {Object.keys(currentProject?.variables?.global || {}).filter(v => matchesSearch(v)).length > 0 && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Project Variables</Text>
+                  <View style={styles.pickerRowSmall}>
+                    {Object.keys(currentProject?.variables?.global || {}).filter(v => matchesSearch(v)).map(v => (
+                      <TouchableOpacity key={v} style={styles.pickerChip} onPress={() => {
+                        const val = `Global.${v}`;
+                        if (handlePropertySelect) handlePropertySelect(val);
+                        else if ((global as any).handlePropertySelect) (global as any).handlePropertySelect(val);
+                        setPropertyPickerVisible(false);
+                        setSearchQuery('');
+                      }}>
+                        <Text style={styles.pickerChipText}>{v}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
 
-              {(currentProject?.objects || []).filter((o: any) => o.id !== selectedObject?.id).length > 0 && (
+              {(currentProject?.objects || []).filter((o: any) => o.id !== selectedObject?.id && matchesSearch(o.name)).length > 0 && (
                 <>
                   <View style={styles.divider} />
                   <Text style={styles.subSectionTitleCompact}>Other Project Objects</Text>
-                  {(currentProject?.objects || []).filter((o: any) => o.id !== selectedObject?.id).map((obj: any) => {
+                  {(currentProject?.objects || []).filter((o: any) => o.id !== selectedObject?.id && matchesSearch(o.name)).map((obj: any) => {
                     const displayName = obj.name || obj.behavior || 'Unnamed Object';
                     const targetId = obj.name || obj.behavior || obj.id;
                     return (
@@ -746,6 +809,7 @@ export default function ObjectModals({
                               if (handlePropertySelect) handlePropertySelect(`${targetId}.${p}`);
                               else if ((global as any).handlePropertySelect) (global as any).handlePropertySelect(`${targetId}.${p}`);
                               setPropertyPickerVisible(false);
+                              setSearchQuery('');
                             }}>
                               <Text style={styles.pickerChipTextSmall}>{p.toUpperCase()}</Text>
                             </TouchableOpacity>
@@ -760,6 +824,7 @@ export default function ObjectModals({
                                 if (handlePropertySelect) handlePropertySelect(val);
                                 else if ((global as any).handlePropertySelect) (global as any).handlePropertySelect(val);
                                 setPropertyPickerVisible(false);
+                                setSearchQuery('');
                               }}>
                                 <Text style={[styles.pickerChipTextSmall, { color: theme.colors.secondary }]}>{label}</Text>
                               </TouchableOpacity>
@@ -824,303 +889,341 @@ export default function ObjectModals({
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.subSectionTitleCompact}>Presets</Text>
-              <TouchableOpacity
-                style={styles.actionPresetItem}
-                onPress={() => {
-                  if (handleActionSelect) handleActionSelect('tap_x');
-                  else if ((global as any).handleActionSelect) (global as any).handleActionSelect('tap_x');
-                  setActionPickerVisible(false);
-                }}
-              >
-                <MousePointer2 size={14} color={theme.colors.warning} />
-                <Text style={styles.actionPresetText}>Tap X Position</Text>
-              </TouchableOpacity>
+              {([
+                { id: 'tap_x', label: 'Tap X Position', icon: MousePointer2, color: theme.colors.warning },
+                { id: 'tap_y', label: 'Tap Y Position', icon: MousePointer2, color: theme.colors.warning },
+                { id: 'restart_room', label: 'Restart Room', icon: GitBranch, color: theme.colors.info },
+              ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).length > 0) && (
+                  <>
+                    <Text style={styles.subSectionTitleCompact}>Presets</Text>
+                    {[
+                      { id: 'tap_x', label: 'Tap X Position', icon: MousePointer2, color: theme.colors.warning },
+                      { id: 'tap_y', label: 'Tap Y Position', icon: MousePointer2, color: theme.colors.warning },
+                      { id: 'restart_room', label: 'Restart Room', icon: GitBranch, color: theme.colors.info },
+                    ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
+                      <TouchableOpacity
+                        key={act.id}
+                        style={styles.actionPresetItem}
+                        onPress={() => {
+                          if (handleActionSelect) handleActionSelect(act.id);
+                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
+                          setActionPickerVisible(false);
+                          setSearchQuery('');
+                        }}
+                      >
+                        <act.icon size={14} color={act.color} />
+                        <Text style={styles.actionPresetText}>{act.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </>
+                )}
 
-              <TouchableOpacity
-                style={styles.actionPresetItem}
-                onPress={() => {
-                  if (handleActionSelect) handleActionSelect('tap_y');
-                  else if ((global as any).handleActionSelect) (global as any).handleActionSelect('tap_y');
-                  setActionPickerVisible(false);
-                }}
-              >
-                <MousePointer2 size={14} color={theme.colors.warning} />
-                <Text style={styles.actionPresetText}>Tap Y Position</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.actionPresetItem}
-                onPress={() => {
-                  if (handleActionSelect) handleActionSelect('restart_room');
-                  else if ((global as any).handleActionSelect) (global as any).handleActionSelect('restart_room');
-                  setActionPickerVisible(false);
-                }}
-              >
-                <GitBranch size={14} color={theme.colors.info} />
-                <Text style={styles.actionPresetText}>Restart Room</Text>
-              </TouchableOpacity>
-
-              <View style={styles.divider} />
-              <Text style={styles.subSectionTitleCompact}>Sprite Repeater / Lives</Text>
-              {[
+              {([
                 { id: 'damage:1', label: 'Damage (-1 Life)', icon: Heart, color: theme.colors.error },
                 { id: 'heal:1', label: 'Heal (+1 Life)', icon: Heart, color: theme.colors.success },
                 { id: 'set_count:3', label: 'Set Lives Count', icon: Heart, color: theme.colors.primary },
-              ].map(act => (
-                <TouchableOpacity
-                  key={act.id}
-                  style={styles.actionPresetItem}
-                  onPress={() => {
-                    if (handleActionSelect) handleActionSelect(act.id);
-                    else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
-                    setActionPickerVisible(false);
-                  }}
-                >
-                  <act.icon size={14} color={act.color} />
-                  <Text style={[styles.actionPresetText, { color: act.color }]}>{act.label}</Text>
-                </TouchableOpacity>
-              ))}
-
-              <View style={styles.divider} />
-              <Text style={styles.subSectionTitleCompact}>Movement & Rotation</Text>
-              <TouchableOpacity
-                style={styles.actionPresetItem}
-                onPress={() => {
-                  if (handleActionSelect) handleActionSelect('jump');
-                  else if ((global as any).handleActionSelect) (global as any).handleActionSelect('jump');
-                  setActionPickerVisible(false);
-                }}
-              >
-                <ChevronUp size={14} color={theme.colors.primary} />
-                <Text style={styles.actionPresetText}>Jump</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.actionPresetItem}
-                onPress={() => {
-                  if (handleActionSelect) handleActionSelect('move_left');
-                  else if ((global as any).handleActionSelect) (global as any).handleActionSelect('move_left');
-                  setActionPickerVisible(false);
-                }}
-              >
-                <ArrowLeft size={14} color={theme.colors.secondary} />
-                <Text style={styles.actionPresetText}>Move Left</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.actionPresetItem}
-                onPress={() => {
-                  if (handleActionSelect) handleActionSelect('move_right');
-                  else if ((global as any).handleActionSelect) (global as any).handleActionSelect('move_right');
-                  setActionPickerVisible(false);
-                }}
-              >
-                <ArrowRight size={14} color={theme.colors.secondary} />
-                <Text style={styles.actionPresetText}>Move Right</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.actionPresetItem}
-                onPress={() => {
-                  if (handleActionSelect) handleActionSelect('stop_x');
-                  else if ((global as any).handleActionSelect) (global as any).handleActionSelect('stop_x');
-                  setActionPickerVisible(false);
-                }}
-              >
-                <Pause size={14} color={theme.colors.error} />
-                <Text style={styles.actionPresetText}>Stop Horizontal</Text>
-              </TouchableOpacity>
-
-              <View style={styles.divider} />
-              <Text style={styles.subSectionTitleCompact}>Global Variables (Game-wide)</Text>
-              {Object.keys(currentProject?.variables?.global || {}).map(v => (
-                <View key={v} style={{ marginBottom: 12 }}>
-                  <Text style={[styles.miniLabel, { color: theme.colors.primary }]}>{v.toUpperCase()}</Text>
-                  <View style={styles.pickerRowSmall}>
-                    <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => {
-                      if (handleActionSelect) handleActionSelect(`var_add:${v}:1`);
-                      else if ((global as any).handleActionSelect) (global as any).handleActionSelect(`var_add:${v}:1`);
-                      setActionPickerVisible(false);
-                    }}>
-                      <Text style={styles.pickerChipTextSmall}>+1</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => {
-                      if (handleActionSelect) handleActionSelect(`var_add:${v}:-1`);
-                      else if ((global as any).handleActionSelect) (global as any).handleActionSelect(`var_add:${v}:-1`);
-                      setActionPickerVisible(false);
-                    }}>
-                      <Text style={styles.pickerChipTextSmall}>-1</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => {
-                      if (handleActionSelect) handleActionSelect(`var_set:${v}:0`);
-                      else if ((global as any).handleActionSelect) (global as any).handleActionSelect(`var_set:${v}:0`);
-                      setActionPickerVisible(false);
-                    }}>
-                      <Text style={styles.pickerChipTextSmall}>SET 0</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
-
-              <View style={styles.divider} />
-              <Text style={styles.subSectionTitleCompact}>Progress Bar Actions</Text>
-              <View style={styles.pickerRowSmall}>
-                {[
-                  { id: 'set_value:50', label: 'SET VALUE' },
-                  { id: 'add_value:-10', label: 'CHANGE BAR' },
-                  { id: 'tween_to:100:1000', label: 'TWEEN TO' },
-                  { id: 'bind_to_variable:', label: 'BIND TO VAR' },
-                  { id: 'damage:1', label: 'DAMAGE' },
-                  { id: 'heal:1', label: 'HEAL' },
-                  { id: 'set_count:3', label: 'SET COUNT' },
-                ].map(act => (
-                  <TouchableOpacity key={act.id} style={[styles.pickerChipSecondary, { borderColor: theme.colors.primary }]} onPress={() => {
-                    if (handleActionSelect) handleActionSelect(act.id);
-                    else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
-                    setActionPickerVisible(false);
-                  }}>
-                    <Text style={[styles.pickerChipTextSmall, { color: theme.colors.primary }]}>{act.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <View style={styles.divider} />
-              <Text style={styles.subSectionTitleCompact}>Movement & Rotation</Text>
-              <View style={styles.pickerRowSmall}>
-                {['add_x:1', 'add_x:-1', 'add_y:1', 'add_y:-1', 'add_angle:5', 'add_angle:-5', 'set_scale:1.5', 'add_scale:0.1'].map(act => (
-                  <TouchableOpacity key={act} style={styles.pickerChipSecondary} onPress={() => {
-                    if (handleActionSelect) handleActionSelect(act);
-                    else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act);
-                    setActionPickerVisible(false);
-                  }}>
-                    <Text style={styles.pickerChipTextSmall}>{act.toUpperCase().replace('_', ' ')}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <View style={styles.divider} />
-              <Text style={styles.subSectionTitleCompact}>Game Audio</Text>
-              <View style={styles.pickerRowSmall}>
-                {(currentProject?.sounds || []).map((snd: any) => (
-                  <View key={snd.id} style={{ width: '100%', marginBottom: 12 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                      <Volume2 size={12} color={theme.colors.primary} />
-                      <Text style={[styles.miniLabel, { color: theme.colors.primary, marginBottom: 0 }]}>{snd.name?.toUpperCase()}</Text>
-                    </View>
-                    <View style={styles.pickerRowSmall}>
+              ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).length > 0) && (
+                  <>
+                    <View style={styles.divider} />
+                    <Text style={styles.subSectionTitleCompact}>Sprite Repeater / Lives</Text>
+                    {[
+                      { id: 'damage:1', label: 'Damage (-1 Life)', icon: Heart, color: theme.colors.error },
+                      { id: 'heal:1', label: 'Heal (+1 Life)', icon: Heart, color: theme.colors.success },
+                      { id: 'set_count:3', label: 'Set Lives Count', icon: Heart, color: theme.colors.primary },
+                    ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
                       <TouchableOpacity
-                        style={[styles.pickerChipSecondary, { borderColor: theme.colors.primary, borderStyle: 'dashed' }]}
+                        key={act.id}
+                        style={styles.actionPresetItem}
                         onPress={() => {
-                          if (handleActionSelect) handleActionSelect(`start_sound:${snd.name}`);
-                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(`start_sound:${snd.name}`);
+                          if (handleActionSelect) handleActionSelect(act.id);
+                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
                           setActionPickerVisible(false);
+                          setSearchQuery('');
                         }}
                       >
-                        <Text style={[styles.pickerChipTextSmall, { color: theme.colors.primary }]}>PLAY</Text>
+                        <act.icon size={14} color={act.color} />
+                        <Text style={[styles.actionPresetText, { color: act.color }]}>{act.label}</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.pickerChipSecondary, { borderColor: theme.colors.error, borderStyle: 'dashed' }]}
-                        onPress={() => {
-                          if (handleActionSelect) handleActionSelect(`stop_sound:${snd.name}`);
-                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(`stop_sound:${snd.name}`);
-                          setActionPickerVisible(false);
-                        }}
-                      >
-                        <Text style={[styles.pickerChipTextSmall, { color: theme.colors.error }]}>STOP</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))}
-                {(currentProject?.sounds || []).length === 0 && (
-                  <Text style={[styles.pickerLabel, { fontStyle: 'italic', opacity: 0.5 }]}>No sounds imported yet</Text>
+                    ))}
+                  </>
                 )}
-              </View>
 
-              <View style={styles.divider} />
-              <Text style={styles.subSectionTitleCompact}>Scene Control</Text>
-              <View style={styles.pickerRowSmall}>
-                <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => {
-                  if (handleActionSelect) handleActionSelect('restart_room');
-                  else if ((global as any).handleActionSelect) (global as any).handleActionSelect('restart_room');
-                  setActionPickerVisible(false);
-                }}>
-                  <Text style={styles.pickerChipTextSmall}>RESTART ROOM</Text>
-                </TouchableOpacity>
-                {(currentProject?.rooms || []).map((room: any) => (
-                  <TouchableOpacity
-                    key={room.id}
-                    style={styles.pickerChipSecondary}
-                    onPress={() => {
-                      if (handleActionSelect) handleActionSelect(`go_to_room:${room.name}`);
-                      else if ((global as any).handleActionSelect) (global as any).handleActionSelect(`go_to_room:${room.name}`);
-                      setActionPickerVisible(false);
-                    }}
-                  >
-                    <Text style={styles.pickerChipTextSmall}>GO TO {room.name?.toUpperCase()}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              {([
+                { id: 'jump', label: 'Jump', icon: ChevronUp, color: theme.colors.primary },
+                { id: 'move_left', label: 'Move Left', icon: ArrowLeft, color: theme.colors.secondary },
+                { id: 'move_right', label: 'Move Right', icon: ArrowRight, color: theme.colors.secondary },
+                { id: 'stop_x', label: 'Stop Horizontal', icon: Pause, color: theme.colors.error },
+              ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).length > 0) && (
+                  <>
+                    <View style={styles.divider} />
+                    <Text style={styles.subSectionTitleCompact}>Movement & Rotation</Text>
+                    {[
+                      { id: 'jump', label: 'Jump', icon: ChevronUp, color: theme.colors.primary },
+                      { id: 'move_left', label: 'Move Left', icon: ArrowLeft, color: theme.colors.secondary },
+                      { id: 'move_right', label: 'Move Right', icon: ArrowRight, color: theme.colors.secondary },
+                      { id: 'stop_x', label: 'Stop Horizontal', icon: Pause, color: theme.colors.error },
+                    ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
+                      <TouchableOpacity
+                        key={act.id}
+                        style={styles.actionPresetItem}
+                        onPress={() => {
+                          if (handleActionSelect) handleActionSelect(act.id);
+                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
+                          setActionPickerVisible(false);
+                          setSearchQuery('');
+                        }}
+                      >
+                        <act.icon size={14} color={act.color} />
+                        <Text style={styles.actionPresetText}>{act.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </>
+                )}
 
-              <View style={styles.divider} />
-              <Text style={styles.subSectionTitleCompact}>Spawn Objects</Text>
-              <View style={styles.pickerGrid}>
-                {(currentProject?.objects || []).map((obj: any) => (
-                  <TouchableOpacity
-                    key={obj.id}
-                    style={styles.objectPickerItemSmall}
-                    onPress={() => {
-                      if (handleActionSelect) handleActionSelect(`create_instance:${obj.id}:0:0`);
-                      else if ((global as any).handleActionSelect) (global as any).handleActionSelect(`create_instance:${obj.id}:0:0`);
-                      setActionPickerVisible(false);
-                    }}
-                  >
-                    <View style={styles.objectPickerSpriteBox}>
-                      {renderSpritePreview(obj.appearance?.spriteId, 32)}
+              {Object.keys(currentProject?.variables?.global || {}).filter(v => matchesSearch(v)).length > 0 && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Global Variables (Game-wide)</Text>
+                  {Object.keys(currentProject?.variables?.global || {}).filter(v => matchesSearch(v)).map(v => (
+                    <View key={v} style={{ marginBottom: 12 }}>
+                      <Text style={[styles.miniLabel, { color: theme.colors.primary }]}>{v.toUpperCase()}</Text>
+                      <View style={styles.pickerRowSmall}>
+                        <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => {
+                          if (handleActionSelect) handleActionSelect(`var_add:${v}:1`);
+                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(`var_add:${v}:1`);
+                          setActionPickerVisible(false);
+                          setSearchQuery('');
+                        }}>
+                          <Text style={styles.pickerChipTextSmall}>+1</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => {
+                          if (handleActionSelect) handleActionSelect(`var_add:${v}:-1`);
+                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(`var_add:${v}:-1`);
+                          setActionPickerVisible(false);
+                          setSearchQuery('');
+                        }}>
+                          <Text style={styles.pickerChipTextSmall}>-1</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => {
+                          if (handleActionSelect) handleActionSelect(`var_set:${v}:0`);
+                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(`var_set:${v}:0`);
+                          setActionPickerVisible(false);
+                          setSearchQuery('');
+                        }}>
+                          <Text style={styles.pickerChipTextSmall}>SET 0</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
-                    <Text style={styles.objectPickerNameSmall} numberOfLines={1}>SPAWN {obj.name?.toUpperCase()}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+                  ))}
+                </>
+              )}
 
-              <View style={styles.divider} />
-              <Text style={styles.subSectionTitleCompact}>Math & Expressions</Text>
-              <View style={styles.pickerRowSmall}>
-                {['random(10)', 'clamp(0,0,0)', 'min(0,0)', 'max(0,0)', 'abs(0)', 'floor(0)', 'sin(0)', 'cos(0)'].map(m => (
-                  <TouchableOpacity key={m} style={styles.pickerChipSecondary} onPress={() => {
-                    if (handleActionSelect) handleActionSelect(m);
-                    else if ((global as any).handleActionSelect) (global as any).handleActionSelect(m);
-                    setActionPickerVisible(false);
-                  }}>
-                    <Text style={[styles.pickerChipTextSmall, { color: theme.colors.primary }]}>{m.toUpperCase()}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              {[
+                { id: 'set_value:50', label: 'SET VALUE' },
+                { id: 'add_value:-10', label: 'CHANGE BAR' },
+                { id: 'tween_to:100:1000', label: 'TWEEN TO' },
+                { id: 'bind_to_variable:', label: 'BIND TO VAR' },
+                { id: 'damage:1', label: 'DAMAGE' },
+                { id: 'heal:1', label: 'HEAL' },
+                { id: 'set_count:3', label: 'SET COUNT' },
+              ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).length > 0 && (
+                  <>
+                    <View style={styles.divider} />
+                    <Text style={styles.subSectionTitleCompact}>Progress Bar Actions</Text>
+                    <View style={styles.pickerRowSmall}>
+                      {[
+                        { id: 'set_value:50', label: 'SET VALUE' },
+                        { id: 'add_value:-10', label: 'CHANGE BAR' },
+                        { id: 'tween_to:100:1000', label: 'TWEEN TO' },
+                        { id: 'bind_to_variable:', label: 'BIND TO VAR' },
+                        { id: 'damage:1', label: 'DAMAGE' },
+                        { id: 'heal:1', label: 'HEAL' },
+                        { id: 'set_count:3', label: 'SET COUNT' },
+                      ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
+                        <TouchableOpacity key={act.id} style={[styles.pickerChipSecondary, { borderColor: theme.colors.primary }]} onPress={() => {
+                          if (handleActionSelect) handleActionSelect(act.id);
+                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
+                          setActionPickerVisible(false);
+                          setSearchQuery('');
+                        }}>
+                          <Text style={[styles.pickerChipTextSmall, { color: theme.colors.primary }]}>{act.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </>
+                )}
 
-              <View style={styles.divider} />
-              <Text style={styles.subSectionTitleCompact}>Values & Environment</Text>
-              <View style={styles.pickerRowSmall}>
-                {['tap_x', 'tap_y', 'room_width', 'room_height', 'time', 'self.x', 'self.y', 'self.vx', 'self.vy', 'self.rot', 'self.scale'].map(p => (
-                  <TouchableOpacity key={p} style={[styles.pickerChip, { backgroundColor: '#111' }]} onPress={() => {
-                    if (handleActionSelect) handleActionSelect(p);
-                    else if ((global as any).handleActionSelect) (global as any).handleActionSelect(p);
-                    setActionPickerVisible(false);
-                  }}>
-                    <Text style={[styles.pickerChipText, { color: theme.colors.warning }]}>{p.toUpperCase()}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              {['add_x:1', 'add_x:-1', 'add_y:1', 'add_y:-1', 'add_angle:5', 'add_angle:-5', 'set_scale:1.5', 'add_scale:0.1'].filter(act => matchesSearch(act)).length > 0 && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Movement & Rotation</Text>
+                  <View style={styles.pickerRowSmall}>
+                    {['add_x:1', 'add_x:-1', 'add_y:1', 'add_y:-1', 'add_angle:5', 'add_angle:-5', 'set_scale:1.5', 'add_scale:0.1'].filter(act => matchesSearch(act)).map(act => (
+                      <TouchableOpacity key={act} style={styles.pickerChipSecondary} onPress={() => {
+                        if (handleActionSelect) handleActionSelect(act);
+                        else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act);
+                        setActionPickerVisible(false);
+                        setSearchQuery('');
+                      }}>
+                        <Text style={styles.pickerChipTextSmall}>{act.toUpperCase().replace('_', ' ')}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
 
-              {currentProject?.variables?.global && Object.keys(currentProject.variables.global).length > 0 && (
+              {(currentProject?.sounds || []).filter((snd: any) => matchesSearch(snd.name)).length > 0 && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Game Audio</Text>
+                  <View style={styles.pickerRowSmall}>
+                    {(currentProject?.sounds || []).filter((snd: any) => matchesSearch(snd.name)).map((snd: any) => (
+                      <View key={snd.id} style={{ width: '100%', marginBottom: 12 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                          <Volume2 size={12} color={theme.colors.primary} />
+                          <Text style={[styles.miniLabel, { color: theme.colors.primary, marginBottom: 0 }]}>{snd.name?.toUpperCase()}</Text>
+                        </View>
+                        <View style={styles.pickerRowSmall}>
+                          <TouchableOpacity
+                            style={[styles.pickerChipSecondary, { borderColor: theme.colors.primary, borderStyle: 'dashed' }]}
+                            onPress={() => {
+                              if (handleActionSelect) handleActionSelect(`start_sound:${snd.name}`);
+                              else if ((global as any).handleActionSelect) (global as any).handleActionSelect(`start_sound:${snd.name}`);
+                              setActionPickerVisible(false);
+                              setSearchQuery('');
+                            }}
+                          >
+                            <Text style={[styles.pickerChipTextSmall, { color: theme.colors.primary }]}>PLAY</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.pickerChipSecondary, { borderColor: theme.colors.error, borderStyle: 'dashed' }]}
+                            onPress={() => {
+                              if (handleActionSelect) handleActionSelect(`stop_sound:${snd.name}`);
+                              else if ((global as any).handleActionSelect) (global as any).handleActionSelect(`stop_sound:${snd.name}`);
+                              setActionPickerVisible(false);
+                              setSearchQuery('');
+                            }}
+                          >
+                            <Text style={[styles.pickerChipTextSmall, { color: theme.colors.error }]}>STOP</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                    {(currentProject?.sounds || []).length === 0 && (
+                      <Text style={[styles.pickerLabel, { fontStyle: 'italic', opacity: 0.5 }]}>No sounds imported yet</Text>
+                    )}
+                  </View>
+                </>
+              )}
+
+              {(matchesSearch('restart_room') || (currentProject?.rooms || []).filter((room: any) => matchesSearch(room.name)).length > 0) && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Scene Control</Text>
+                  <View style={styles.pickerRowSmall}>
+                    {matchesSearch('restart_room') && (
+                      <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => {
+                        if (handleActionSelect) handleActionSelect('restart_room');
+                        else if ((global as any).handleActionSelect) (global as any).handleActionSelect('restart_room');
+                        setActionPickerVisible(false);
+                        setSearchQuery('');
+                      }}>
+                        <Text style={styles.pickerChipTextSmall}>RESTART ROOM</Text>
+                      </TouchableOpacity>
+                    )}
+                    {(currentProject?.rooms || []).filter((room: any) => matchesSearch(room.name)).map((room: any) => (
+                      <TouchableOpacity
+                        key={room.id}
+                        style={styles.pickerChipSecondary}
+                        onPress={() => {
+                          if (handleActionSelect) handleActionSelect(`go_to_room:${room.name}`);
+                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(`go_to_room:${room.name}`);
+                          setActionPickerVisible(false);
+                          setSearchQuery('');
+                        }}
+                      >
+                        <Text style={styles.pickerChipTextSmall}>GO TO {room.name?.toUpperCase()}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
+
+              {(currentProject?.objects || []).filter((obj: any) => matchesSearch(obj.name)).length > 0 && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Spawn Objects</Text>
+                  <View style={styles.pickerGrid}>
+                    {(currentProject?.objects || []).filter((obj: any) => matchesSearch(obj.name)).map((obj: any) => (
+                      <TouchableOpacity
+                        key={obj.id}
+                        style={styles.objectPickerItemSmall}
+                        onPress={() => {
+                          if (handleActionSelect) handleActionSelect(`create_instance:${obj.id}:0:0`);
+                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(`create_instance:${obj.id}:0:0`);
+                          setActionPickerVisible(false);
+                          setSearchQuery('');
+                        }}
+                      >
+                        <View style={styles.objectPickerSpriteBox}>
+                          {renderSpritePreview(obj.appearance?.spriteId, 32)}
+                        </View>
+                        <Text style={styles.objectPickerNameSmall} numberOfLines={1}>SPAWN {obj.name?.toUpperCase()}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
+
+              {['random(10)', 'clamp(0,0,0)', 'min(0,0)', 'max(0,0)', 'abs(0)', 'floor(0)', 'sin(0)', 'cos(0)'].filter(m => matchesSearch(m)).length > 0 && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Math & Expressions</Text>
+                  <View style={styles.pickerRowSmall}>
+                    {['random(10)', 'clamp(0,0,0)', 'min(0,0)', 'max(0,0)', 'abs(0)', 'floor(0)', 'sin(0)', 'cos(0)'].filter(m => matchesSearch(m)).map(m => (
+                      <TouchableOpacity key={m} style={styles.pickerChipSecondary} onPress={() => {
+                        if (handleActionSelect) handleActionSelect(m);
+                        else if ((global as any).handleActionSelect) (global as any).handleActionSelect(m);
+                        setActionPickerVisible(false);
+                        setSearchQuery('');
+                      }}>
+                        <Text style={[styles.pickerChipTextSmall, { color: theme.colors.primary }]}>{m.toUpperCase()}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
+
+              {['tap_x', 'tap_y', 'room_width', 'room_height', 'time', 'self.x', 'self.y', 'self.vx', 'self.vy', 'self.rot', 'self.scale'].filter(p => matchesSearch(p)).length > 0 && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Values & Environment</Text>
+                  <View style={styles.pickerRowSmall}>
+                    {['tap_x', 'tap_y', 'room_width', 'room_height', 'time', 'self.x', 'self.y', 'self.vx', 'self.vy', 'self.rot', 'self.scale'].filter(p => matchesSearch(p)).map(p => (
+                      <TouchableOpacity key={p} style={[styles.pickerChip, { backgroundColor: '#111' }]} onPress={() => {
+                        if (handleActionSelect) handleActionSelect(p);
+                        else if ((global as any).handleActionSelect) (global as any).handleActionSelect(p);
+                        setActionPickerVisible(false);
+                        setSearchQuery('');
+                      }}>
+                        <Text style={[styles.pickerChipText, { color: theme.colors.warning }]}>{p.toUpperCase()}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
+
+              {currentProject?.variables?.global && Object.keys(currentProject.variables.global).filter(v => matchesSearch(v)).length > 0 && (
                 <>
                   <View style={styles.divider} />
                   <Text style={styles.subSectionTitleCompact}>Global Variables</Text>
                   <View style={styles.pickerRowSmall}>
-                    {Object.keys(currentProject.variables.global).map(v => (
+                    {Object.keys(currentProject.variables.global).filter(v => matchesSearch(v)).map(v => (
                       <TouchableOpacity key={v} style={styles.pickerChipSecondary} onPress={() => {
                         if (handleActionSelect) handleActionSelect(v);
                         else if ((global as any).handleActionSelect) (global as any).handleActionSelect(v);
                         setActionPickerVisible(false);
+                        setSearchQuery('');
                       }}>
                         <Text style={[styles.pickerChipTextSmall, { color: theme.colors.secondary }]}>{v.toUpperCase()}</Text>
                       </TouchableOpacity>
