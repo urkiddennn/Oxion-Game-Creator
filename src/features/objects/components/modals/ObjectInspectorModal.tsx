@@ -86,22 +86,23 @@ const VariableRow = ({
 };
 
 const CollisionPreview = ({ obj, renderSpritePreview, currentProject }: { obj: any, renderSpritePreview: any, currentProject: any }) => {
+  const sprite = (currentProject?.sprites || []).find((s: any) => s.id === obj.appearance.spriteId);
+  const isGrid = !!sprite?.grid?.enabled;
+  const fw = isGrid ? (sprite?.grid?.frameWidth || sprite?.width || 32) : (sprite?.width || obj.width || 32);
+  const fh = isGrid ? (sprite?.grid?.frameHeight || sprite?.height || 32) : (sprite?.height || obj.height || 32);
+
+  const objW = fw;
+  const objH = fh;
+
   const col = obj.physics?.collision || {
     type: 'rectangle',
-    width: obj.width || 32,
-    height: obj.height || 32,
+    width: obj.width || objW || 32,
+    height: obj.height || objH || 32,
     offsetX: 0,
     offsetY: 0
   };
 
-  const sprite = (currentProject?.sprites || []).find((s: any) => s.id === obj.appearance.spriteId);
-  const isGrid = !!sprite?.grid?.enabled;
-  const fw = isGrid ? (sprite?.grid?.frameWidth || sprite?.width || 32) : (obj.width || 32);
-  const fh = isGrid ? (sprite?.grid?.frameHeight || sprite?.height || 32) : (obj.height || 32);
-
   const baseSize = 64;
-  const objW = fw;
-  const objH = fh;
   const scale = baseSize / Math.max(objW, objH, 1);
 
   const shapeWidth = (col.type === 'circle' ? (col.radius || objW / 2) * 2 : (col.width ?? objW));
@@ -116,9 +117,9 @@ const CollisionPreview = ({ obj, renderSpritePreview, currentProject }: { obj: a
   const top = (displayH / 2) - (shapeHeight * scale / 2) + (col.offsetY || 0) * scale;
 
   return (
-    <View style={{ width: baseSize, height: baseSize, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000', borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#333' }}>
-      <View style={{ width: displayW, height: displayH, backgroundColor: 'rgba(255,255,255,0.02)', borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.1)' }}>
-        {renderSpritePreview(obj.appearance.spriteId, Math.max(displayW, displayH))}
+    <View style={{ width: baseSize, height: baseSize, justifyContent: 'center', alignItems: 'center', overflow: 'hidden', borderColor: '#333' }}>
+      <View style={{ width: displayW, height: displayH, backgroundColor: 'transparent' }}>
+        {renderSpritePreview(obj.appearance.spriteId, Math.max(displayW + 8, displayH + 8))}
         <View
           pointerEvents="none"
           style={{
@@ -127,8 +128,8 @@ const CollisionPreview = ({ obj, renderSpritePreview, currentProject }: { obj: a
             borderColor: '#00D1FF',
             backgroundColor: 'rgba(0, 209, 255, 0.25)',
             borderRadius: col.type === 'circle' ? 999 : 2,
-            width: shapeWidth * scale,
-            height: shapeHeight * scale,
+            width: shapeWidth * scale + 8,
+            height: shapeHeight * scale + 8,
             left: left,
             top: top,
           }}
@@ -141,8 +142,8 @@ const CollisionPreview = ({ obj, renderSpritePreview, currentProject }: { obj: a
             height: 4,
             borderRadius: 2,
             backgroundColor: '#FFF',
-            left: left + (shapeWidth * scale / 2) - 2,
-            top: top + (shapeHeight * scale / 2) - 2,
+            left: left + (shapeWidth * scale / 2) + 2,
+            top: top + (shapeHeight * scale / 2) + 2,
           }}
         />
       </View>
@@ -445,12 +446,24 @@ export default function ObjectInspectorModal({
     } else if (pickingSecondaryIndex === -1) {
       updateField('appearance.spriteId', spriteId);
 
-      // Auto-update dimensions if they are at default 32x32
+      // Auto-update dimensions and collision to match sprite
       const sprite = allSprites.find((s: any) => s.id === spriteId);
-      if (sprite && safeObject.width === 32 && safeObject.height === 32) {
+      if (sprite) {
+        const isGrid = !!sprite.grid?.enabled;
+        const sw = isGrid ? (sprite.grid.frameWidth || sprite.width) : sprite.width;
+        const sh = isGrid ? (sprite.grid.frameHeight || sprite.height) : sprite.height;
+
         updateObject(safeObject.id, {
-          width: sprite.width || 32,
-          height: sprite.height || 32
+          width: sw || 32,
+          height: sh || 32,
+          physics: {
+            ...safeObject.physics,
+            collision: {
+              ...(safeObject.physics.collision || { type: 'rectangle', offsetX: 0, offsetY: 0 }),
+              width: sw || 32,
+              height: sh || 32
+            }
+          }
         });
       }
     } else {
@@ -718,7 +731,7 @@ export default function ObjectInspectorModal({
                     onToggle={() => toggleSection('physics')}
                   >
                     {safeObject.physics.enabled && (
-                      <View style={{ marginBottom: 12, alignItems: 'center' }}>
+                      <View style={{ marginBottom: 0, alignItems: 'center' }}>
                         <CollisionPreview obj={safeObject} renderSpritePreview={renderSpritePreview} currentProject={currentProject} />
                       </View>
                     )}
@@ -732,13 +745,37 @@ export default function ObjectInspectorModal({
                             <InputGroup
                               label="W"
                               value={(safeObject.width || 32).toString()}
-                              onChange={(v: string) => updateField('width', parseInt(v) || 0)}
+                              onChange={(v: string) => {
+                                const val = parseInt(v) || 0;
+                                updateObject(safeObject.id, {
+                                  width: val,
+                                  physics: {
+                                    ...safeObject.physics,
+                                    collision: {
+                                      ...(safeObject.physics.collision || { type: 'rectangle', offsetX: 0, offsetY: 0 }),
+                                      width: val
+                                    }
+                                  }
+                                });
+                              }}
                               keyboardType="numeric"
                             />
                             <InputGroup
                               label="H"
                               value={(safeObject.height || 32).toString()}
-                              onChange={(v: string) => updateField('height', parseInt(v) || 0)}
+                              onChange={(v: string) => {
+                                const val = parseInt(v) || 0;
+                                updateObject(safeObject.id, {
+                                  height: val,
+                                  physics: {
+                                    ...safeObject.physics,
+                                    collision: {
+                                      ...(safeObject.physics.collision || { type: 'rectangle', offsetX: 0, offsetY: 0 }),
+                                      height: val
+                                    }
+                                  }
+                                });
+                              }}
                               keyboardType="numeric"
                             />
                           </View>
@@ -1092,7 +1129,7 @@ export default function ObjectInspectorModal({
 
               {/* CENTER COLUMN: Logic and Actions */}
               <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.01)' }}>
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 40, paddingTop: 8 }}>
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 4, paddingBottom: 40, paddingTop: 8 }}>
                   <Section
                     title="Logic & Actions"
                     icon={<Cpu size={14} color="#60A5FA" />}
@@ -1123,7 +1160,7 @@ export default function ObjectInspectorModal({
                       {safeObject.logic.listeners.map((listener: any, index: number) => {
                         const isCollapsed = collapsedListeners[index];
                         return (
-                          <View key={index} style={{ backgroundColor: '#1E2228', borderWidth: 1, borderColor: '#333', borderRadius: 4, marginBottom: 12, overflow: 'hidden' }}>
+                          <View key={index} style={{ backgroundColor: '#1E2228', borderWidth: 1, borderColor: '#333', borderRadius: 4, marginBottom: 3, overflow: 'hidden' }}>
                             {/* WHEN: The Trigger */}
                             <View style={{ backgroundColor: '#16191E', borderBottomWidth: isCollapsed ? 0 : 1, borderBottomColor: '#222', flexDirection: 'row', alignItems: 'center' }}>
                               <TouchableOpacity
@@ -1518,12 +1555,10 @@ export default function ObjectInspectorModal({
                 <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40, padding: 8 }}>
                   {/* Sprite Preview Section */}
                   <View style={styles.previewHeader}>
-                    <View style={styles.previewBadge}>
-                      <Text style={styles.previewBadgeText}>{safeObject.behavior.toUpperCase()}</Text>
-                    </View>
-                    <View style={{ width: 100, height: 100, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111', borderRadius: 50, borderWidth: 1, borderColor: '#222', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 10 }}>
-                      <CollisionPreview obj={safeObject} renderSpritePreview={renderSpritePreview} currentProject={currentProject} />
-                    </View>
+
+
+                    <CollisionPreview obj={safeObject} renderSpritePreview={renderSpritePreview} currentProject={currentProject} />
+
                     <Text style={[styles.inspectorTitle, { marginTop: 12, fontSize: 16 }]}>{safeObject.name.toUpperCase()}</Text>
                     <Text style={{ color: theme.colors.textMuted, fontSize: 9, marginTop: 2 }}>ID: {safeObject.id.slice(0, 8)}...</Text>
                   </View>

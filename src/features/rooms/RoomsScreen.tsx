@@ -728,7 +728,7 @@ export default function RoomsScreen() {
             </View>
 
             <View style={styles.sidebarSection}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.sectionHeader}
                 onPress={() => toggleSection('layers')}
                 activeOpacity={0.7}
@@ -953,12 +953,12 @@ export default function RoomsScreen() {
                         onPress={() => setColorPickerVisible(true)}
                       />
                       <View style={{ flex: 1 }}>
-                      <HexColorInput
-                        value={currentRoom?.settings?.backgroundColor || '#2E333D'}
-                        onChange={(c) => currentRoom && updateRoom(currentRoom.id, {
-                          settings: { ...(currentRoom.settings || {}), backgroundColor: c }
-                        })}
-                      />
+                        <HexColorInput
+                          value={currentRoom?.settings?.backgroundColor || '#2E333D'}
+                          onChange={(c) => currentRoom && updateRoom(currentRoom.id, {
+                            settings: { ...(currentRoom.settings || {}), backgroundColor: c }
+                          })}
+                        />
                       </View>
                     </View>
                   </View>

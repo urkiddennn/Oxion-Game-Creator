@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.5.7] - 2026-05-04
+### Fixed
+- **Visual Scaling Parity (Editor vs Play)**: Synchronized the Room Editor with the physics scale property. Object instances in the room editor now correctly reflect their scaled size, ensuring what you see in the editor perfectly matches the gameplay.
+- **Aspect Ratio Parity**: Fully reverted stretching logic to ensure sprites preserve their native aspect ratios across the entire engine.
+- **Visual-Physics Alignment**: Fixed a critical alignment bug in the GamePlayer where sprites were shifted relative to their physics bodies. Corrected the transformation sequence to use center-relative offsets, ensuring that collision hitboxes perfectly match the visual position of the sprite at all scales and rotations.
+- **Inspector UI Cleanup**: Removed the redundant sprite container border in the Object Inspector preview and synchronized the collision hitbox's default dimensions with the sprite's native frame size (fw/fh), resolving an issue where 16x8 sprites would erroneously show a 32x32 collision box.
+- **Circle Collision Preview**: Fixed a bug in the Object Inspector's Collision Preview where circular hitboxes would appear as ellipses if the object had non-uniform dimensions. Both preview dimensions now correctly reference the object's width to match the uniform circular collision of the physics engine.
+- **Inspector Parity**: Standardized the Collision Preview base dimensions to use the object's actual width/height instead of the sprite's frame size, preventing preview mismatches for sliced sprites.
+
+## [1.5.8] - 2026-05-04
+### Fixed
+- **Ghost Collision Fix**: Resolved a major coordinate transformation error in the GamePlayer. Visual sprites now perfectly align with their Matter.js physics bodies by accounting for center-origin transforms, preventing "early" collisions and sprite-overlap issues.
+
+## [1.5.6] - 2026-05-04
+### Fixed
+- **Pivot Alignment (1:1 Parity)**: Resolved the pivot point discrepancy where objects appeared misaligned (bottom-left) during gameplay. Objects now correctly rotate and scale around their center in parity with the editor.
+- **Physics Scale Correction**: Synchronized the visual sprite rendering with the physics engine scale property. Objects now accurately reflect their collision boundaries even when scaled.
+- **Debug Visuals**: Fixed the debug collision box and pivot indicator positioning to account for parent scaling, providing accurate visual feedback during development.
+
+## [1.5.5] - 2026-05-04
+### Fixed
+- **Collision Parity**: Standardized collision boundaries across the engine. Physical collision shapes now perfectly align with sprite dimensions (e.g., 16x8 sprites now default to 16x8 hitboxes).
+- **Physics Scaling**: Removed a legacy `* 2` multiplier in `GamePlayer.tsx` that was causing physics bodies to be twice the intended size.
+- **Smart Synchronization**: Updated the Object Inspector and Sprite Picker to automatically sync an object's width, height, and collision box whenever a new sprite is selected. Manual dimension changes now also propagate to the collision shape by default.
+
 ## [1.5.4] - 2026-05-03
 ### Fixed
 - **Input Stabilization**: Resolved a critical "can't erase" bug across all numeric input fields. Users can now fully clear and re-enter values without the fields automatically snapping back to previous or default values.

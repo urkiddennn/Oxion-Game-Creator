@@ -111,8 +111,26 @@ export default function ObjectModals({
                         return;
                       }
                       const appearance = selectedObject.appearance || { spriteId: null, animationSpeed: 100 };
-                      updateObject(selectedObject.id, { appearance: { ...appearance, spriteId: sprite.id } });
-                      setSelectedObject({ ...selectedObject, appearance: { ...appearance, spriteId: sprite.id } });
+                      const isGrid = !!sprite.grid?.enabled;
+                      const sw = isGrid ? (sprite.grid.frameWidth || sprite.width) : sprite.width;
+                      const sh = isGrid ? (sprite.grid.frameHeight || sprite.height) : sprite.height;
+                      
+                      const updates: any = {
+                        appearance: { ...appearance, spriteId: sprite.id },
+                        width: sw || 32,
+                        height: sh || 32,
+                        physics: {
+                          ...(selectedObject.physics || {}),
+                          collision: {
+                            ...(selectedObject.physics?.collision || { type: 'rectangle', offsetX: 0, offsetY: 0 }),
+                            width: sw || 32,
+                            height: sh || 32
+                          }
+                        }
+                      };
+                      
+                      updateObject(selectedObject.id, updates);
+                      setSelectedObject({ ...selectedObject, ...updates });
                       setSpritePickerVisible(false);
                     }}
                   >

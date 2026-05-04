@@ -62,8 +62,8 @@ export const PixelSprite = React.memo(({
       col = frameIndex % cols;
     }
 
-    const displayWidth = originalSize ? fw : size;
-    const displayHeight = originalSize ? fh : size;
+    const displayWidth = originalSize ? fw : (fw > fh ? size : (fw / fh) * size);
+    const displayHeight = originalSize ? fh : (fh > fw ? size : (fh / fw) * size);
     const scale = displayWidth / fw;
 
     return (

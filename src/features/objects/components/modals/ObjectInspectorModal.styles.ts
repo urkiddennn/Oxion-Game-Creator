@@ -129,8 +129,8 @@ export const styles = StyleSheet.create({
     backgroundColor: '#0A0C10',
     borderBottomWidth: 1,
     borderBottomColor: '#222',
-    marginBottom: 16,
-    borderRadius: 8,
+
+
   },
   previewBadge: {
     position: 'absolute',

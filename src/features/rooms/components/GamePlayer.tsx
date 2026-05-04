@@ -506,8 +506,8 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
   const offsetX = col?.offsetX || 0;
   const offsetY = col?.offsetY || 0;
   const scale = obj?.physics?.scale || 1;
-  const colW = (col?.type === 'circle' ? (col.radius || width / 2) * 2 : (col?.width || width)) * scale * 2;
-  const colH = (col?.type === 'circle' ? (col.radius || width / 2) * 2 : (col?.height || height)) * scale * 2;
+  const colW = (col?.type === 'circle' ? (col.radius || width / 2) * 2 : (col?.width || width));
+  const colH = (col?.type === 'circle' ? (col.radius || width / 2) * 2 : (col?.height || height));
 
   const animatedStyle = useAnimatedStyle(() => {
     if (!sv || !sv.x || !sv.y) return { display: 'none' as const };
@@ -520,25 +520,19 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
       ty += cameraY.value;
     }
 
-    const offsetXScaled = offsetX * scale;
-    const offsetYScaled = offsetY * scale;
-
-    // Physics center relative to sprite top-left
-    const px = offsetXScaled + colW / 2;
-    const py = offsetYScaled + colH / 2;
-
     return {
       transform: [
-        { translateX: tx + px },
-        { translateY: ty + py },
+        { translateX: tx },
+        { translateY: ty },
         { rotate: `${sv.rot.value}rad` },
-        { scaleX: sv.flipX ? sv.flipX.value : 1 },
-        { translateX: -px },
-        { translateY: -py }
+        { scaleX: (sv.flipX ? sv.flipX.value : 1) * scale },
+        { scaleY: scale },
+        { translateX: -offsetX },
+        { translateY: -offsetY }
       ],
       display: isVisible.value ? 'flex' : 'none',
       borderColor: debug ? (sv.isColliding?.value ? '#ff0000' : '#00ff00') : 'transparent',
-      zIndex: ySort ? Math.floor(ty + height + (ySortAmount || 0) + (obj?.appearance?.ySortOffset || 0)) : undefined,
+      zIndex: ySort ? Math.floor(ty + height * scale + (ySortAmount || 0) + (obj?.appearance?.ySortOffset || 0)) : undefined,
     };
   });
 
@@ -733,8 +727,8 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
               borderRadius: obj?.physics?.collision?.type === 'circle' ? 9999 : 2,
               width: colW,
               height: colH,
-              left: (width / 2) - (colW / 2) + (offsetX * scale),
-              top: (height / 2) - (colH / 2) + (offsetY * scale),
+              left: (width / 2) - (colW / 2) + offsetX,
+              top: (height / 2) - (colH / 2) + offsetY,
             },
             debugBoxStyle
           ]}
@@ -748,8 +742,8 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
             height: 4,
             borderRadius: 2,
             backgroundColor: '#FFF',
-            left: (offsetX * scale) + (colW / 2) - 2,
-            top: (offsetY * scale) + (colH / 2) - 2,
+            left: offsetX + (colW / 2) - 2,
+            top: offsetY + (colH / 2) - 2,
             zIndex: 10000,
           }}
         />
@@ -1697,8 +1691,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       const offsetX = (col?.offsetX || 0) * scale;
       const offsetY = (col?.offsetY || 0) * scale;
       
-      const colW = (col?.type === 'circle' ? (col.radius || width / 2) * 2 : (col?.width || width)) * scale * 2;
-      const colH = (col?.type === 'circle' ? (col.radius || width / 2) * 2 : (col?.height || height)) * scale * 2;
+      const colW = (col?.type === 'circle' ? (col.radius || width / 2) * 2 : (col?.width || width)) * scale;
+      const colH = (col?.type === 'circle' ? (col.radius || width / 2) * 2 : (col?.height || height)) * scale;
 
       // x, y is sprite center.
       // With center-relative offsets, body center is just x + scaled offsets.
@@ -1829,9 +1823,10 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         }
       });
 
+      const scale = pObj.physics?.scale || 1;
       const sv = {
-        x: makeMutable(x - width / 2),
-        y: makeMutable(y - height / 2),
+        x: makeMutable(x - (width / 2 + (pObj.physics?.collision?.offsetX || 0)) * scale),
+        y: makeMutable(y - (height / 2 + (pObj.physics?.collision?.offsetY || 0)) * scale),
         rot: makeMutable(0),
         isColliding: makeMutable(0),
         animState: makeMutable(0),
@@ -2325,12 +2320,12 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         } else {
           const info = (d.body as any).gameInfo;
           const col = info?.obj?.physics?.collision;
-          const scale = info?.obj?.physics?.scale || 1;
-          const offsetX = (col?.offsetX || 0) * scale;
-          const offsetY = (col?.offsetY || 0) * scale;
+          const scale = d.gameObject?.physics?.scale || 1;
+          const offsetX = (col?.offsetX || 0);
+          const offsetY = (col?.offsetY || 0);
 
-          d.sv.x.value = d.body.position.x - d.width / 2 - offsetX;
-          d.sv.y.value = d.body.position.y - d.height / 2 - offsetY;
+          d.sv.x.value = d.body.position.x - (d.width / 2 + offsetX) * scale;
+          d.sv.y.value = d.body.position.y - (d.height / 2 + offsetY) * scale;
           d.sv.rot.value = d.body.angle;
 
           // Logic Culling for Dynamic Elements (don't run scripts if far away)
@@ -2509,10 +2504,11 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         const colW = col?.type === 'circle' ? (col.radius || info.width / 2) * 2 : (col?.width || info.width);
         const colH = col?.type === 'circle' ? (col.radius || info.width / 2) * 2 : (col?.height || info.height);
         
+        const scale = info.obj?.physics?.scale || 1;
         const sv = instanceSharedValues[i];
         if (sv && sv.x && sv.y) {
-          sv.x.value = body.position.x - info.width / 2 - offsetX;
-          sv.y.value = body.position.y - info.height / 2 - offsetY;
+          sv.x.value = body.position.x - (info.width / 2 + offsetX) * scale;
+          sv.y.value = body.position.y - (info.height / 2 + offsetY) * scale;
           sv.rot.value = body.angle;
           (body as any).lastX = body.position.x;
           (body as any).lastY = body.position.y;
