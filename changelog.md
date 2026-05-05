@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.8.0] - 2026-05-05
+### Fixed
+- **Engine Stability**: Fixed `ReferenceError: Property 'cameraInitialized' doesn't exist` in the `GamePlayer` camera follow loop.
+
 ## [1.6.9] - 2026-05-05
 ### Fixed
 - **Layer Management**: Fixed a bug where inactive layers could not be selected in the sidebar.

@@ -2637,6 +2637,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
 
     let bodiesUpdateCounter = 0;
+    let cameraInitialized = false;
     const update = () => {
       if (!isActiveRef.current) return;
       if (!isPlayingRef.current) { frameId = requestAnimationFrame(update); return; }
