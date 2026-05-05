@@ -4,6 +4,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { useProjectStore } from '../store/useProjectStore';
 import LaunchpadScreen from '../features/launchpad/LaunchpadScreen';
 import DashboardNavigator from './DashboardNavigator';
+import GUIBuilder from '../features/gui/GUIBuilder';
 
 const Stack = createStackNavigator();
 
@@ -24,6 +25,7 @@ export default function RootNavigator() {
         ) : (
           <Stack.Screen name="Dashboard" component={DashboardNavigator} />
         )}
+        <Stack.Screen name="GUIBuilder" component={GUIBuilder} />
       </Stack.Navigator>
     </NavigationContainer>
   );

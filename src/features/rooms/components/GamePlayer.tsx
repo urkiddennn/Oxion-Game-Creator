@@ -230,33 +230,64 @@ const pixelsToBmp = (pixels: string[][], spriteId: string, displayWidth?: number
   return base64;
 };
 
-const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spriteId, isRemote, onFetch, variables, nonce, localVariables, obj, debug, animations, sprites, override, globalFrameTimer, cameraX, cameraY, cameraZoom, gameWidth, gameHeight, ySort, ySortAmount }: {
+// --- Isolated Dynamic Text Component to prevent global re-renders ---
+const DynamicTextNode = React.memo(({ content, variables, localVariables, lowerMap, style }: any) => {
+  const resolveTextLocal = (text: string) => {
+    if (!text) return '';
+    if (!lowerMap) return text;
+
+    // Direct variable match
+    const trimmed = text.trim().toLowerCase();
+    if (lowerMap[trimmed] && variables) return String(variables[lowerMap[trimmed]]);
+
+    // Template match {var}
+    return text.replace(/\{([\w\s]+)\}/g, (match, varName) => {
+      const name = varName.trim().toLowerCase();
+      const globalKey = lowerMap[name];
+      if (globalKey !== undefined && variables) return variables[globalKey].toString();
+      // Try local
+      if (localVariables?.[name] !== undefined) return localVariables[name].toString();
+      return '0';
+    });
+  };
+
+  return <Text style={style}>{resolveTextLocal(content)}</Text>;
+});
+
+const PhysicsBodyInner = ({
+  sprite, spriteId, sv, width, height, name, variables, nonce, localVariables, varKeysMap,
+  obj, sprites, override, onTap, globalFrameTimer, cameraX, cameraY, cameraZoom,
+  gameWidth, gameHeight, onFetch, isRemote, ySort, ySortAmount, layerIndex, forceNoHUD,
+  liveOverride, debug
+}: {
   sprite: any,
-  sv: any,
-  width?: number,
-  height?: number,
-  nonce?: number,
-  onTap?: () => void,
-  name?: string,
   spriteId?: string,
-  isRemote?: boolean,
-  onFetch?: (id: string, type?: 'sprite' | 'animation') => void,
-  variables: Record<string, number>,
+  sv: any,
+  width: number,
+  height: number,
+  name?: string,
+  variables?: Record<string, number>,
+  nonce?: number,
   localVariables?: Record<string, number>,
-  obj: any,
-  debug?: boolean,
-  animations?: any[],
+  varKeysMap?: Record<string, string>,
+  obj: GameObject,
   sprites?: any[],
   override?: { spriteId?: string, animName?: string },
+  onTap?: () => void,
   globalFrameTimer: SharedValue<number>,
   cameraX: SharedValue<number>,
   cameraY: SharedValue<number>,
   cameraZoom: SharedValue<number>,
   gameWidth: number,
   gameHeight: number,
+  onFetch?: (id: string, type: 'sprite' | 'animation') => void | Promise<void>,
+  isRemote?: boolean,
   ySort?: boolean,
   ySortAmount?: number,
-  layerIndex?: number
+  layerIndex?: number,
+  forceNoHUD?: boolean,
+  liveOverride?: { health?: any, sprite_repeater?: any, progress_bar?: any },
+  debug?: boolean
 }) => {
   const [imgDimensions, setImgDimensions] = useState({ w: 0, h: 0 });
   const [currentDimId, setCurrentDimId] = useState<string | null>(null);
@@ -292,11 +323,11 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
     return animLoop.value ? frame : Math.min(frame, animFrameCount.value - 1);
   });
 
-  const isHUD = obj?.isHUD === true;
+  const isHUD = !forceNoHUD && obj?.isHUD === true;
 
   const isVisible = useDerivedValue(() => {
     'worklet';
-    if (isHUD) return true;
+    if (isHUD || forceNoHUD) return true;
 
     const camX = cameraX.value;
     const camY = cameraY.value;
@@ -443,7 +474,7 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
   useEffect(() => {
     if (isRemote && onFetch) {
       if (!sprite && spriteId) {
-        onFetch(spriteId, obj?.appearance?.type || 'sprite');
+        onFetch(spriteId, (obj?.appearance?.type as 'sprite' | 'animation') || 'sprite');
       }
       // Also fetch repeater sprites if needed
       if (obj?.behavior === 'sprite_repeater' && obj?.sprite_repeater) {
@@ -458,57 +489,23 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
     }
   }, [sprite, spriteId, isRemote, obj?.behavior, obj?.sprite_repeater, sprites?.length]);
 
-  const lastResolvedText = useRef<{ content: string, vars: string, result: string }>({ content: '', vars: '', result: '' });
-  const varKeysCache = useRef<{ keys: string[], lowerMap: Record<string, string> }>({ keys: [], lowerMap: {} });
-
-  const resolveText = (content: string) => {
-    if (!content) return '';
-
-    const contentTrimmed = content.trim().toLowerCase();
-
-    // Optimization: Cache lowercase keys for faster lookup
-    const currentVarKeys = Object.keys(variables);
-    if (varKeysCache.current.keys.length !== currentVarKeys.length) {
-      const lowerMap: Record<string, string> = {};
-      currentVarKeys.forEach(k => { lowerMap[k.toLowerCase()] = k; });
-      varKeysCache.current = { keys: currentVarKeys, lowerMap };
-    }
-    const { lowerMap } = varKeysCache.current;
-
-    // 1. Direct variable match fallback
-    const globalDirectKey = lowerMap[contentTrimmed];
-    if (globalDirectKey) return String(variables[globalDirectKey]);
-
-    // 2. Template match
-    const relevantVars = content.match(/\{([\w\s]+)\}/g) || [];
-    const varValues = relevantVars.map(v => {
-      const name = v.slice(1, -1).trim().toLowerCase();
-      const globalKey = lowerMap[name];
-      const val = globalKey ? variables[globalKey] : '0';
-      return `${name}:${val}`;
-    }).join('|');
-
-    if (lastResolvedText.current.content === content && lastResolvedText.current.vars === varValues) {
-      return lastResolvedText.current.result;
-    }
-
-    const result = content.replace(/\{([\w\s]+)\}/g, (match, varName) => {
-      const trimmedName = varName.trim().toLowerCase();
-      const foundGlobal = lowerMap[trimmedName];
-      if (foundGlobal !== undefined) return variables[foundGlobal].toString();
-      return '0';
-    });
-
-    lastResolvedText.current = { content, vars: varValues, result };
-    return result;
-  };
-
   const col = obj?.physics?.collision;
   const offsetX = col?.offsetX || 0;
   const offsetY = col?.offsetY || 0;
   const scale = obj?.physics?.scale || 1;
   const colW = (col?.type === 'circle' ? (col.radius || width / 2) * 2 : (col?.width || width));
   const colH = (col?.type === 'circle' ? (col.radius || width / 2) * 2 : (col?.height || height));
+
+  const ySortOffset = obj?.appearance?.ySortOffset || 0;
+  const colWVal = colW;
+  const colHVal = colH;
+  const scaleVal = scale;
+  const offsetXVal = offsetX;
+  const offsetYVal = offsetY;
+  const layerIndexVal = layerIndex || 0;
+  const ySortEnabled = ySort;
+  const ySortAmt = ySortAmount || 0;
+  const heightVal = height;
 
   const animatedStyle = useAnimatedStyle(() => {
     if (!sv || !sv.x || !sv.y) return { display: 'none' as const };
@@ -526,14 +523,14 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
         { translateX: tx },
         { translateY: ty },
         { rotate: `${sv.rot.value}rad` },
-        { scaleX: (sv.flipX ? sv.flipX.value : 1) * scale },
-        { scaleY: scale },
-        { translateX: -offsetX },
-        { translateY: -offsetY }
+        { scaleX: (sv.flipX ? sv.flipX.value : 1) * scaleVal },
+        { scaleY: scaleVal },
+        { translateX: -offsetXVal },
+        { translateY: -offsetYVal }
       ],
       display: isVisible.value ? 'flex' : 'none',
       borderColor: debug ? (sv.isColliding?.value ? '#ff0000' : '#00ff00') : 'transparent',
-      zIndex: ((layerIndex || 0) * 10000) + (ySort ? Math.floor(ty + height * scale + (ySortAmount || 0) + (obj?.appearance?.ySortOffset || 0)) : 0),
+      zIndex: (layerIndexVal * 10000) + (ySortEnabled ? Math.floor(ty + heightVal * scaleVal + ySortAmt + ySortOffset) : 0),
     };
   });
 
@@ -569,19 +566,29 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
   }, [currentSprite?.id, currentSprite?.uri, width, height]);
 
   let content: React.ReactNode = null;
-  if (obj?.behavior === 'progress_bar' && obj?.progress_bar) {
-    const pb = obj.progress_bar;
-    let val = pb.currentValue;
-    if (pb.linkedVariable) {
-      const globalKey = varKeysCache.current.lowerMap?.[pb.linkedVariable.trim().toLowerCase()];
-      if (globalKey) {
-        val = Number(variables[globalKey]) || 0;
+  const livePb = liveOverride?.progress_bar || obj?.progress_bar;
+  if (obj?.behavior === 'progress_bar' && livePb) {
+    const pb = livePb;
+    const pbValue = sv?.pbValue;
+
+    const pbMin = pb.minValue;
+    const pbMax = pb.maxValue;
+    const pbDir = pb.direction;
+
+    const fillStyle = useAnimatedStyle(() => {
+      if (!pbValue) return { width: 0, height: 0 };
+      const val = Math.max(pbMin, Math.min(pbMax, pbValue.value));
+      const ratio = pbMax > pbMin ? (val - pbMin) / (pbMax - pbMin) : 0;
+
+      if (pbDir === 'horizontal') {
+        return { width: `${ratio * 100}%`, height: '100%' };
+      } else if (pbDir === 'vertical') {
+        return { height: `${ratio * 100}%`, width: '100%', position: 'absolute', bottom: 0 };
+      } else if (pbDir === 'radial') {
+        return { width: '100%', height: '100%', transform: [{ scale: ratio }], borderRadius: 999 };
       }
-    }
-    val = Math.max(pb.minValue, Math.min(pb.maxValue, val));
-    const ratio = pb.maxValue > pb.minValue ? (val - pb.minValue) / (pb.maxValue - pb.minValue) : 0;
-    const isHorizontal = pb.direction === 'horizontal';
-    const isVertical = pb.direction === 'vertical';
+      return { width: 0, height: 0 };
+    });
 
     content = (
       <View style={{
@@ -596,49 +603,54 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
         {bmpUri && (
           <Image source={{ uri: bmpUri }} style={{ width: '100%', height: '100%', position: 'absolute' }} resizeMode="stretch" resizeMethod="scale" />
         )}
-        {pb.direction === 'radial' ? (
-          <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: `${ratio * 100}%`, backgroundColor: pb.fillColor }} />
-        ) : (
-          <View style={{
-            height: isHorizontal ? '100%' : `${ratio * 100}%`,
-            width: isHorizontal ? `${ratio * 100}%` : '100%',
-            backgroundColor: pb.fillColor,
-            position: 'absolute',
-            bottom: isVertical ? 0 : undefined,
-            left: isHorizontal ? 0 : undefined
-          }} />
-        )}
+        <Animated.View style={[{
+          backgroundColor: pb.fillColor || '#4facfe',
+          position: 'absolute',
+          bottom: 0,
+          left: 0
+        }, fillStyle]} />
       </View>
     );
-  } else if (obj?.behavior === 'sprite_repeater' && obj?.sprite_repeater) {
-    const sr = obj.sprite_repeater;
+  } else if (obj?.behavior === 'sprite_repeater' && (liveOverride?.sprite_repeater || obj?.sprite_repeater)) {
+    const sr = liveOverride?.sprite_repeater || obj?.sprite_repeater;
     let count = sr.currentCount;
     if (sr.linkedVariable) {
-      const globalKey = varKeysCache.current.lowerMap?.[sr.linkedVariable.trim().toLowerCase()];
-      if (globalKey) {
+      const globalKey = varKeysMap?.[sr.linkedVariable.trim().toLowerCase()];
+      if (globalKey && variables) {
         count = Number(variables[globalKey]) || 0;
       }
     }
     const icons = [];
+    // Treat the object's width/height as the size for ONE icon, then repeat it
+    const fillIconW = width;
+    const fillIconH = height;
+
     for (let i = 0; i < sr.maxCount; i++) {
       const isActive = i < count;
       const spriteId = isActive ? sr.activeSpriteId : sr.inactiveSpriteId;
       const sprite = (sprites || []).find(s => s.id === spriteId);
-      const uri = sprite ? (sprite.type === 'imported' ? sprite.uri : pixelsToBmp(sprite.pixels || [], sprite.id, sr.iconSize, sr.iconSize)) : null;
+
+      const uri = sprite ? (sprite.type === 'imported' ? sprite.uri : pixelsToBmp(sprite.pixels || [], sprite.id, Math.round(fillIconW), Math.round(fillIconH))) : null;
 
       icons.push(
-        <View key={i} style={{ width: sr.iconSize, height: sr.iconSize, backgroundColor: !uri ? 'rgba(255,255,255,0.1)' : 'transparent', borderRadius: 2 }}>
+        <View key={i} style={{ width: fillIconW, height: fillIconH, backgroundColor: !uri ? 'rgba(255,255,255,0.1)' : 'transparent', borderRadius: 2, justifyContent: 'center', alignItems: 'center' }}>
           {uri && <Image source={{ uri }} style={{ width: '100%', height: '100%' }} resizeMode="contain" resizeMethod="scale" />}
         </View>
       );
     }
+
+    const totalW = sr.layout === 'horizontal' ? (fillIconW * sr.maxCount + sr.spacing * (sr.maxCount - 1)) : fillIconW;
+    const totalH = sr.layout === 'vertical' ? (fillIconH * sr.maxCount + sr.spacing * (sr.maxCount - 1)) : fillIconH;
+
     content = (
       <View style={{
         flexDirection: sr.layout === 'horizontal' ? 'row' : 'column',
         gap: sr.spacing,
-        flexWrap: sr.layout === 'horizontal' ? 'wrap' : 'nowrap',
-        width: sr.layout === 'horizontal' ? width : sr.iconSize,
-        height: sr.layout === 'vertical' ? height : sr.iconSize
+        flexWrap: 'nowrap',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: totalW,
+        height: totalH
       }}>
         {icons}
       </View>
@@ -690,20 +702,22 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
   } else if (obj?.text) {
     content = (
       <View style={{ width, height, justifyContent: 'center', alignItems: obj.text.textAlign === 'center' ? 'center' : obj.text.textAlign === 'right' ? 'flex-end' : 'flex-start' }}>
-        <Text
-          key={`text-${nonce}`}
+        <DynamicTextNode
+          content={obj.text.content}
+          variables={variables}
+          localVariables={localVariables}
+          lowerMap={varKeysMap}
           style={{
             color: obj.text.color || '#FFF',
             fontSize: obj.text.fontSize || 16,
             fontFamily: obj.text.fontFamily === 'pixel' ? 'Pixel' : undefined,
             textAlign: obj.text.textAlign
-          }}>
-          {resolveText(obj.text.content)}
-        </Text>
+          }}
+        />
       </View>
     );
   } else {
-    content = (
+    content = obj?.isHUD ? null : (
       <View style={{ width, height, backgroundColor: '#333', borderRadius: 4, borderWidth: 1, borderColor: '#555', justifyContent: 'center', alignItems: 'center' }}>
         <Text style={{ color: '#666', fontSize: 8 }}>?</Text>
       </View>
@@ -736,7 +750,7 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
         />
       )}
       {debug && (
-        <View 
+        <View
           style={{
             position: 'absolute',
             width: 4,
@@ -753,34 +767,145 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
   );
 };
 
-const PhysicsBody = React.memo(PhysicsBodyBase, (prev, next) => {
-  // Always re-render if the object itself changes (e.g. replaced by another instance)
+const PhysicsBody = React.memo(PhysicsBodyInner, (prev, next) => {
+  // 1. Check if it's a new object or structure
   if (prev.obj?.id !== next.obj?.id) return false;
+  if (prev.nonce !== next.nonce) return false;
+  if (prev.spriteId !== next.spriteId) return false;
 
-  // If it's a text object, progress bar, or sprite repeater, we MUST re-render when variables (nonce) change
-  if (next.obj?.text || next.obj?.progress_bar || next.obj?.sprite_repeater) {
-    return prev.nonce === next.nonce &&
-      prev.spriteId === next.spriteId &&
-      prev.width === next.width &&
-      prev.height === next.height &&
-      prev.debug === next.debug &&
-      prev.gameWidth === next.gameWidth &&
-      prev.gameHeight === next.gameHeight &&
-      prev.override === next.override &&
-      prev.ySort === next.ySort &&
-      prev.ySortAmount === next.ySortAmount;
-  }
+  // 2. Deep check SV values to handle mock objects in GUIRenderer
+  if (prev.sv && next.sv) {
+    if (prev.sv.x.value !== next.sv.x.value) return false;
+    if (prev.sv.y.value !== next.sv.y.value) return false;
+    if (prev.sv.rot.value !== next.sv.rot.value) return false;
+    if (prev.sv.flipX?.value !== next.sv.flipX?.value) return false;
+  } else if (prev.sv !== next.sv) return false;
 
-  // For regular sprites, IGNORE nonce. Only re-render if visual properties or physics change.
-  return prev.spriteId === next.spriteId &&
-    prev.width === next.width &&
-    prev.height === next.height &&
-    prev.debug === next.debug &&
-    prev.gameWidth === next.gameWidth &&
-    prev.gameHeight === next.gameHeight &&
-    prev.override === next.override &&
-    prev.ySort === next.ySort &&
-    JSON.stringify(prev.obj?.physics) === JSON.stringify(next.obj?.physics);
+  // 3. Static props
+  if (prev.width !== next.width || prev.height !== next.height) return false;
+  if (prev.name !== next.name) return false;
+  if (prev.forceNoHUD !== next.forceNoHUD) return false;
+  if (prev.ySort !== next.ySort || prev.ySortAmount !== next.ySortAmount) return false;
+
+  // 4. Variables - check if reference changed (throttled at 30fps)
+  if (prev.variables !== next.variables) return false;
+  if (prev.localVariables !== next.localVariables) return false;
+
+  // 5. Live logic state overrides - check values deep because refs may be mutated
+  if (prev.liveOverride?.progress_bar?.currentValue !== next.liveOverride?.progress_bar?.currentValue) return false;
+  if (prev.liveOverride?.sprite_repeater?.currentCount !== next.liveOverride?.sprite_repeater?.currentCount) return false;
+  if (prev.liveOverride?.health?.current !== next.liveOverride?.health?.current) return false;
+  if (prev.liveOverride !== next.liveOverride) return false;
+
+  // 6. Debug mode
+  if (prev.debug !== next.debug) return false;
+
+  return true;
+});
+
+const GUIRenderer = React.memo(({
+  nodes, objectMap, spriteMap, allSprites, parentX = 0, parentY = 0,
+  variables, localVariables, varKeysMap, nonce, globalFrameTimer,
+  cameraX, cameraY, cameraZoom, gameWidth, gameHeight, handleFetchAsset, restartKey,
+  debug
+}: any) => {
+  return (
+    <>
+      {nodes.map((node: any) => {
+        const obj = objectMap.get(node.objectId);
+        if (!obj) return null;
+
+        const absoluteX = parentX + (node.x || 0);
+        const absoluteY = parentY + (node.y || 0);
+
+        // We create a static sv for GUI nodes
+        const sv = {
+          x: { value: absoluteX },
+          y: { value: absoluteY },
+          rot: { value: 0 },
+          isColliding: { value: 0 },
+          flipX: { value: 1 },
+          pbValue: { value: obj.progress_bar?.currentValue || 0 }
+        };
+
+        return (
+          <React.Fragment key={node.id}>
+            <PhysicsBody
+              sprite={spriteMap.get(obj.appearance?.spriteId || '')}
+              spriteId={obj.appearance?.spriteId}
+              sv={sv}
+              width={node.width || obj.width || 32}
+              height={node.height || obj.height || 32}
+              name={node.name || obj.name}
+              variables={(obj.text || obj.behavior === 'sprite_repeater' || obj.behavior === 'progress_bar') ? variables : undefined}
+              nonce={nonce}
+              localVariables={(obj.text || obj.behavior === 'sprite_repeater' || obj.behavior === 'progress_bar') ? localVariables?.[node.id] : undefined}
+              varKeysMap={varKeysMap}
+              obj={obj}
+              liveOverride={{
+                health: node._logicState?.health,
+                sprite_repeater: node._logicState?.sprite_repeater,
+                progress_bar: node._logicState?.progress_bar
+              }}
+              forceNoHUD={true} // Explicitly disable HUD compensation in screen-space overlay
+              sprites={allSprites}
+              onFetch={handleFetchAsset}
+              onTap={() => {
+                DeviceEventEmitter.emit('builtin_tap', { targetId: node.id });
+                if (obj.logic?.triggers?.onTap) {
+                  DeviceEventEmitter.emit(obj.logic.triggers.onTap);
+                }
+              }}
+              globalFrameTimer={globalFrameTimer}
+              cameraX={cameraX}
+              cameraY={cameraY}
+              cameraZoom={cameraZoom}
+              gameWidth={gameWidth}
+              gameHeight={gameHeight}
+              debug={debug}
+            />
+            {node.children && node.children.length > 0 && (
+              <GUIRenderer
+                nodes={node.children}
+                objectMap={objectMap}
+                spriteMap={spriteMap}
+                allSprites={allSprites}
+                parentX={absoluteX}
+                parentY={absoluteY}
+                variables={variables}
+                localVariables={localVariables}
+                varKeysMap={varKeysMap}
+                nonce={nonce}
+                globalFrameTimer={globalFrameTimer}
+                cameraX={cameraX}
+                cameraY={cameraY}
+                cameraZoom={cameraZoom}
+                gameWidth={gameWidth}
+                gameHeight={gameHeight}
+                handleFetchAsset={handleFetchAsset}
+                restartKey={restartKey}
+                debug={debug}
+              />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </>
+  );
+}, (prev, next) => {
+  // If variables changed, we only re-render if the nonce changed (batched)
+  // or if the nodes themselves changed.
+  if (prev.nonce !== next.nonce) return false;
+  if (prev.nodes !== next.nodes) return false;
+  if (prev.parentX !== next.parentX || prev.parentY !== next.parentY) return false;
+  if (prev.restartKey !== next.restartKey) return false;
+
+  // Only re-render tree if variables changed AND we are not in a high-freq loop
+  // Actually, PhysicsBody handles variable changes, so we can be very conservative here.
+  if (prev.variables !== next.variables) return false;
+  if (prev.debug !== next.debug) return false;
+
+  return true;
 });
 
 const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
@@ -862,6 +987,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
   const storeProject = useProjectStore(s => s.activeProject);
   const activeRoomId = useProjectStore(s => s.activeRoomId);
   const fetchRemoteAsset = useProjectStore(s => s.fetchRemoteAsset);
+  const streamedSprites = useProjectStore(s => s.streamedSprites);
+  const addStreamedSprite = useProjectStore(s => s.addStreamedSprite);
   const currentProject = projectOverride || storeProject;
   const [roomOverride, setRoomOverride] = useState<string | null>(null);
 
@@ -898,10 +1025,10 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
   const initialCamPos = useMemo(() => {
     const cam = currentRoom?.settings?.camera;
     if (!cam?.enabled) return { x: 0, y: 0 };
-    
+
     const targetId = cam.targetId || cam.targetObjectId;
     let targetInst = currentRoom.instances?.find(i => i.id === targetId || i.objectId === targetId);
-    
+
     // Fallback to finding a player object if no specific target is set or found
     if (!targetInst) {
       targetInst = currentRoom.instances?.find(i => {
@@ -966,12 +1093,25 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     };
   });
 
+  const guiScalerStyle = useAnimatedStyle(() => {
+    // HUD overlay uses the base room scale but typically skips camera zoom
+    const offX = (roomWidth * scale - roomWidth) / 2;
+    const offY = (roomHeight * scale - roomHeight) / 2;
+    return {
+      transform: [
+        { translateX: offX },
+        { translateY: offY },
+        { scale: scale },
+      ]
+    };
+  });
+
   const [dynamicElements, setDynamicElements] = useState<{
-    gameObject: any; id: string; sprite: any; sv: any; width: number; height: number; name: string
+    gameObject: any; id: string; sprite: any; sv: any; width: number; height: number; name: string; layerIndex: number; isRoomInstance?: boolean;
   }[]>([]);
+  const [guiInstances, setGuiInstances] = useState<any[]>([]);
 
   // Streaming state
-  const [streamedSprites, setStreamedSprites] = useState<Map<string, any>>(new Map());
   const [streamedAnimations, setStreamedAnimations] = useState<Map<string, any>>(new Map());
 
   const handleFetchAsset = useCallback(async (id: string, type: 'sprite' | 'animation' = 'sprite') => {
@@ -986,12 +1126,12 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           data.frames.forEach((fId: string) => handleFetchAsset(fId, 'sprite'));
         }
       } else {
-        setStreamedSprites(prev => new Map(prev).set(id, data));
+        addStreamedSprite(id, data);
       }
     } catch (err) {
       console.warn('Failed to stream asset:', id, err);
     }
-  }, [fetchRemoteAsset, streamedSprites, streamedAnimations]);
+  }, [fetchRemoteAsset, streamedSprites, streamedAnimations, addStreamedSprite]);
 
   // Combined sprite map for local + streamed
   const spriteMap = useMemo(() => {
@@ -1022,6 +1162,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       isColliding: makeMutable(0),
       animState: makeMutable(0), // 0: idle, 1: move, 2: jump, 3: hit, 4: dead
       flipX: makeMutable(1),
+      pbValue: makeMutable(0),
     }));
   }, [currentRoom?.id, currentRoom?.instances, restartKey]);
 
@@ -1029,6 +1170,21 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
   const variablesRef = useRef<Record<string, number>>(currentProject?.variables?.global || { score: 0 });
   const [localVariables, setLocalVariables] = useState<Record<string, Record<string, number>>>({});
   const localVariablesRef = useRef<Record<string, Record<string, number>>>({});
+  const varKeysCache = useRef<{ keys: string[], lowerMap: Record<string, string> }>({ keys: [], lowerMap: {} });
+
+  // Keep varKeysCache in sync for fast lookups
+  useEffect(() => {
+    const currentVarKeys = Object.keys(variables);
+    if (varKeysCache.current.keys.length !== currentVarKeys.length) {
+      const lowerMap: Record<string, string> = {};
+      currentVarKeys.forEach(k => { lowerMap[k.toLowerCase()] = k; });
+      varKeysCache.current = { keys: currentVarKeys, lowerMap };
+    }
+  }, [variables]);
+
+  // Performance Optimization: Frame-based lookup indices
+  const nameLookupRef = useRef<Map<string, Matter.Body>>(new Map());
+  const behaviorLookupRef = useRef<Map<string, Matter.Body[]>>(new Map());
 
   const inputLeft = useRef(0);
   const inputRight = useRef(0);
@@ -1055,7 +1211,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
   // Throttle React state updates to max 15/sec to avoid re-render storms
   const pendingVarFlush = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const updateGlobalVar = useCallback((name: string, amount: number | string, isSet: boolean = false) => {
+  const updateGlobalVar = useCallback((name: string, amount: number | string, isSet: boolean = false, persist: boolean = true) => {
     const now = Date.now();
     const cooldownKey = `global_${name}`;
     if (!isSet && varCooldowns.current[cooldownKey] && now - varCooldowns.current[cooldownKey] < 50) return;
@@ -1222,16 +1378,20 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     const playerBodies: { body: Matter.Body; obj: GameObject; sv?: any; isPlayer?: boolean; jumpedThisPress?: boolean; onGround?: boolean }[] = [];
     const emitters: { body: Matter.Body; obj: GameObject; lastSpawn: number }[] = [];
     const dynamicRef: {
-      name: any; id: string; gameObject: any; body: Matter.Body; sv: any; expires?: number; sprite: any; width: number; height: number
+      name: any; id: string; gameObject: any; body: Matter.Body; sv: any; expires?: number; sprite: any; width: number; height: number; layerIndex: number; isRoomInstance?: boolean;
     }[] = [];
+    const guiRef: any[] = [];
     const svMap = new Map<string, any>();
     const subscriptions: any[] = [];
     liveObjectsRef.current.clear();
     // Cached once per frame — avoids repeated O(n) Matter.Composite.allBodies() allocations
     let cachedBodies: Matter.Body[] = [];
 
-    const resolveValue = (valStr: string, currentBody: Matter.Body, currentObj?: GameObject): number => {
+    const resolveValue = (valStr: string, currentBody: Matter.Body | null, currentObj?: GameObject): number => {
       if (!valStr) return 0;
+
+      // LogicState awareness: Extract real GameObject if we received a logic state superset
+      const actualObj: GameObject | undefined = (currentObj as any)?.obj || currentObj;
 
       // Handle simple math: a+b, a-b
       const mathMatch = valStr.match(/^(.+?)\s*([\+\-])\s*(.+)$/);
@@ -1242,7 +1402,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       }
 
       const num = parseFloat(valStr);
-      if (!isNaN(num) && !valStr.includes('.') && !valStr.includes('_')) return num; // Simple number
+      // Allow simple numbers and floats, but skip if it looks like a property (e.g. "player.x") or variable with underscores
+      if (!isNaN(num) && !valStr.includes('.') && !valStr.includes('_')) return num;
+      if (!isNaN(num) && /^-?\d+(\.\d+)?$/.test(valStr)) return num; 
 
       // Handle property access: player.x, this.y, enemy.vx
       if (valStr.includes('.')) {
@@ -1251,6 +1413,14 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
         if (target === 'this' || target === 'self') {
           targetBody = currentBody;
+          
+          // Special case for GUI elements with no physical body
+          if (!targetBody && actualObj) {
+            if (prop === 'current_count' && actualObj.sprite_repeater) return actualObj.sprite_repeater.currentCount;
+            if (prop === 'max_count' && actualObj.sprite_repeater) return actualObj.sprite_repeater.maxCount;
+            if (prop === 'value' && actualObj.progress_bar) return actualObj.progress_bar.currentValue;
+            if (prop === 'health' && actualObj.health) return actualObj.health.current;
+          }
         } else if (target === 'tap') {
           if (prop === 'x') return variablesRef.current.tap_x || 0;
           if (prop === 'y') return variablesRef.current.tap_y || 0;
@@ -1262,11 +1432,11 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           if (prop === 'magnitude') return joystickData.current.magnitude;
           return 0;
         } else {
-          // Find first body matching behavior or name — use per-frame cache
-          targetBody = cachedBodies.find(b => {
-            const info = (b as any).gameInfo;
-            return info?.obj?.behavior === target || info?.obj?.name === target;
-          }) || null;
+          // Optimized lookup using pre-calculated lowercase keys
+          const targetKey = target.toLowerCase();
+          targetBody = nameLookupRef.current.get(targetKey) ||
+            behaviorLookupRef.current.get(targetKey)?.[0] ||
+            null;
         }
 
         if (targetBody) {
@@ -1296,9 +1466,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       if (variablesRef.current[valStr] !== undefined) return variablesRef.current[valStr];
 
       // Check local variables
-      const bodyId = (currentBody as any).label;
-      if (localVariablesRef.current[bodyId]?.[valStr] !== undefined) return localVariablesRef.current[bodyId][valStr];
-      if (currentObj?.variables?.local?.[valStr] !== undefined) return currentObj.variables.local[valStr];
+      const bodyId = currentBody ? (currentBody as any).label : (currentObj as any)?._guiNodeId;
+      if (bodyId && localVariablesRef.current[bodyId]?.[valStr] !== undefined) return localVariablesRef.current[bodyId][valStr];
+      if (actualObj?.variables?.local?.[valStr] !== undefined) return actualObj.variables.local[valStr];
 
       return num || 0;
     };
@@ -1374,11 +1544,11 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         }
 
         const finalVal = (prop === 'value' && op === '-=') ? `-${val}` : val;
-        
+
         if (lowerTarget !== 'global' && lowerTarget !== 'self' && lowerTarget !== 'this') {
           return { cmd: lowerTarget, parts: [lowerTarget, op === '=' ? 'set' : 'add', prop, finalVal] };
         }
-        
+
         return { cmd, parts: [cmd, prop, finalVal] };
       }
 
@@ -1399,7 +1569,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       return { cmd, parts: p };
     };
 
-    const executeAction = (actionData: string | { cmd: string, parts: string[] }, body: Matter.Body, obj?: GameObject, source: string = 'unknown', otherBody?: Matter.Body) => {
+    const executeAction = (actionData: string | { cmd: string, parts: string[] }, body: Matter.Body | null, obj?: GameObject, source: string = 'unknown', otherBody?: Matter.Body | null) => {
       if (!isPlayingRef.current) return;
 
       const isParsedData = typeof actionData !== 'string';
@@ -1422,16 +1592,15 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       ];
 
       if (!knownCommands.includes(cmd)) {
-        const targetName = cmd.toLowerCase();
-        const targets = cachedBodies.filter(b => {
-          const info = (b as any).gameInfo;
-          return info?.obj?.name?.toLowerCase() === targetName || info?.obj?.behavior?.toLowerCase() === targetName;
-        });
+        const targetKey = cmd.toLowerCase();
+        const targetBodyFromMap = nameLookupRef.current.get(targetKey);
+        const targetBodiesFromMap = behaviorLookupRef.current.get(targetKey);
 
-        if (targets.length > 0) {
+        if (targetBodyFromMap || targetBodiesFromMap) {
           const actualCmd = parts[1];
           const actualParts = parts.slice(1);
           if (actualCmd) {
+            const targets = targetBodyFromMap ? [targetBodyFromMap] : (targetBodiesFromMap || []);
             targets.forEach(t => {
               executeAction({ cmd: actualCmd, parts: actualParts }, t, (t as any).gameInfo?.obj, `${source}:Target:${cmd}`, otherBody);
             });
@@ -1461,59 +1630,107 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       }
 
       if (cmd === 'jump') {
-        const jmp = obj?.physics?.jumpStrength !== undefined ? obj.physics.jumpStrength : 12;
-        Matter.Body.setVelocity(body, { x: body.velocity.x, y: -jmp });
+        if (body) {
+          const jmp = obj?.physics?.jumpStrength !== undefined ? obj.physics.jumpStrength : 12;
+          Matter.Body.setVelocity(body, { x: body.velocity.x, y: -jmp });
+        }
       } else if (cmd === 'damage' || cmd === 'heal') {
-        const amount = resolveValue(parts[1], body, obj);
-        const info = (body as any).gameInfo;
+        // Resolve amount: try variable first, then literal number
+        let amount = resolveValue(parts[1], body, obj);
+        if (amount === undefined) {
+          const parsed = Number(parts[1]);
+          amount = isNaN(parsed) ? 0 : parsed;
+        }
+        const info = body ? (body as any).gameInfo : (obj as any);
         const sign = cmd === 'damage' ? -1 : 1;
 
-        // Apply to health if exists
-        if (info?.obj?.health) {
-          const old = info.obj.health.current;
-          info.obj.health.current = Math.max(0, Math.min(info.obj.health.max, info.obj.health.current + (amount * sign)));
-          if (sign < 0 && info.obj.sounds?.hit) playSoundEffect(info.obj.sounds.hit);
-          if (info.obj.health.current <= 0 && old > 0 && info.obj.sounds?.dead) playSoundEffect(info.obj.sounds.dead);
+        // 1. Update health (if present)
+        let health = info?.health || info?.obj?.health;
+        if (health) {
+          const old = health.current;
+          const newVal = Math.max(0, Math.min(health.max, health.current + (amount * sign)));
+          
+          const newHealth = { ...health, current: newVal };
+          if (info.health) info.health = newHealth;
+          if (info.obj?.health) info.obj.health = newHealth;
+
+          // Also update linked variable if exists
+          if (newHealth.linkedVariable) {
+            updateGlobalVar(newHealth.linkedVariable, newVal, true);
+          }
+
+          const sounds = info?.obj?.sounds;
+          if (sign < 0 && sounds?.hit) playSoundEffect(sounds.hit);
+          if (newHealth.current <= 0 && old > 0 && sounds?.dead) playSoundEffect(sounds.dead);
           setNonce(n => n + 1);
         }
-        // Apply to sprite repeater if exists
-        if (info?.obj?.sprite_repeater) {
-          const sr = info.obj.sprite_repeater;
-          if (sign < 0) sr.currentCount = Math.max(0, sr.currentCount - amount);
-          else sr.currentCount = Math.min(sr.maxCount, sr.currentCount + amount);
+
+        // 2. Update sprite_repeater – check BOTH info.sprite_repeater (GUI) and info.obj.sprite_repeater
+        let sr = info?.sprite_repeater || info?.obj?.sprite_repeater;
+        if (sr) {
+          let nextCount = sr.currentCount;
+          if (sign < 0) nextCount = Math.max(0, nextCount - amount);
+          else nextCount = Math.min(sr.maxCount, nextCount + amount);
+
+          const newSr = { ...sr, currentCount: nextCount };
+          if (info.sprite_repeater) info.sprite_repeater = newSr;
+          if (info.obj?.sprite_repeater) info.obj.sprite_repeater = newSr;
+
+          if (newSr.linkedVariable) {
+            updateGlobalVar(newSr.linkedVariable, newSr.currentCount, true);
+          }
+          setNonce(n => n + 1);
+        }
+
+        // 3. Update progress_bar – check BOTH info.progress_bar and info.obj.progress_bar
+        let pb = info?.progress_bar || info?.obj?.progress_bar;
+        if (pb) {
+          const delta = amount * sign;
+          const nextVal = Math.max(pb.minValue, Math.min(pb.maxValue, pb.currentValue + delta));
+          
+          const newPb = { ...pb, currentValue: nextVal };
+          if (info.progress_bar) info.progress_bar = newPb;
+          if (info.obj?.progress_bar) info.obj.progress_bar = newPb;
+
+          if (newPb.linkedVariable) {
+            updateGlobalVar(newPb.linkedVariable, newPb.currentValue, true);
+          }
+          if (info?.sv?.pbValue) info.sv.pbValue.value = newPb.currentValue;
           setNonce(n => n + 1);
         }
       } else if (cmd === 'move_left') {
-        Matter.Body.setVelocity(body, { x: -(obj?.physics?.moveSpeed || 5) * 0.8, y: body.velocity.y });
+        if (body) Matter.Body.setVelocity(body, { x: -(obj?.physics?.moveSpeed || 5) * 0.8, y: body.velocity.y });
       } else if (cmd === 'move_right') {
-        Matter.Body.setVelocity(body, { x: (obj?.physics?.moveSpeed || 5) * 0.8, y: body.velocity.y });
+        if (body) Matter.Body.setVelocity(body, { x: (obj?.physics?.moveSpeed || 5) * 0.8, y: body.velocity.y });
       } else if (cmd === 'stop_x') {
-        Matter.Body.setVelocity(body, { x: 0, y: body.velocity.y });
+        if (body) Matter.Body.setVelocity(body, { x: 0, y: body.velocity.y });
       } else if (cmd === 'set_vx') {
-        Matter.Body.setVelocity(body, { x: resolveValue(parts[1], body, obj), y: body.velocity.y });
+        if (body) Matter.Body.setVelocity(body, { x: resolveValue(parts[1], body, obj), y: body.velocity.y });
       } else if (cmd === 'set_vy') {
-        Matter.Body.setVelocity(body, { x: body.velocity.x, y: resolveValue(parts[1], body, obj) });
+        if (body) Matter.Body.setVelocity(body, { x: body.velocity.x, y: resolveValue(parts[1], body, obj) });
       } else if (cmd === 'set_x') {
-        Matter.Body.setPosition(body, { x: resolveValue(parts[1], body, obj), y: body.position.y });
+        if (body) Matter.Body.setPosition(body, { x: resolveValue(parts[1], body, obj), y: body.position.y });
       } else if (cmd === 'set_y') {
-        Matter.Body.setPosition(body, { x: body.position.x, y: resolveValue(parts[1], body, obj) });
+        if (body) Matter.Body.setPosition(body, { x: body.position.x, y: resolveValue(parts[1], body, obj) });
       } else if (cmd === 'add_x') {
-        Matter.Body.setPosition(body, { x: body.position.x + resolveValue(parts[1], body, obj), y: body.position.y });
+        if (body) Matter.Body.setPosition(body, { x: body.position.x + resolveValue(parts[1], body, obj), y: body.position.y });
       } else if (cmd === 'add_y') {
-        Matter.Body.setPosition(body, { x: body.position.x, y: body.position.y + resolveValue(parts[1], body, obj) });
+        if (body) Matter.Body.setPosition(body, { x: body.position.x, y: body.position.y + resolveValue(parts[1], body, obj) });
       } else if (cmd === 'set_angle') {
-        Matter.Body.setAngle(body, resolveValue(parts[1], body, obj) * Math.PI / 180);
+        if (body) Matter.Body.setAngle(body, resolveValue(parts[1], body, obj) * Math.PI / 180);
       } else if (cmd === 'add_angle') {
-        Matter.Body.setAngle(body, body.angle + (resolveValue(parts[1], body, obj) * Math.PI / 180));
+        if (body) Matter.Body.setAngle(body, body.angle + (resolveValue(parts[1], body, obj) * Math.PI / 180));
       } else if (cmd === 'point_towards') {
-        const target = parts[1];
-        const targetBody = cachedBodies.find(b => {
-          const info = (b as any).gameInfo;
-          return info?.obj?.behavior === target || info?.obj?.name === target;
-        });
-        if (targetBody) {
-          const ang = Math.atan2(targetBody.position.y - body.position.y, targetBody.position.x - body.position.x);
-          Matter.Body.setAngle(body, ang);
+        if (body) {
+          const target = parts[1];
+          const targetBody = cachedBodies.find(b => {
+            const info = (b as any).gameInfo;
+            return info?.obj?.behavior === target || info?.obj?.name === target;
+          });
+          if (targetBody) {
+            const ang = Math.atan2(targetBody.position.y - body.position.y, targetBody.position.x - body.position.x);
+            Matter.Body.setAngle(body, ang);
+          }
         }
       } else if (cmd === 'var_add') {
         const name = parts[1];
@@ -1526,64 +1743,83 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       } else if (cmd === 'lvar_add') {
         const name = parts[1];
         const amount = resolveValue(parts[2], body, obj);
-        updateLocalVar(body.label, name, amount, obj?.variables?.local);
+        const lId = body ? body.label : (obj as any)?._guiNodeId;
+        if (lId) updateLocalVar(lId, name, amount, obj?.variables?.local);
       } else if (cmd === 'lvar_set') {
         const name = parts[1];
         const val = resolveValue(parts[2], body, obj);
-        updateLocalVar(body.label, name, val, obj?.variables?.local, true);
+        const lId = body ? body.label : (obj as any)?._guiNodeId;
+        if (lId) updateLocalVar(lId, name, val, obj?.variables?.local, true);
       } else if (cmd === 'set_value' || cmd === 'tween_to' || cmd === 'add_value') {
         const val = resolveValue(parts[1], body, obj);
-        const info = (body as any).gameInfo;
-        if (info?.obj?.progress_bar) {
+        const info = body ? (body as any).gameInfo : (obj as any);
+        let pb = info?.progress_bar || info?.obj?.progress_bar;
+        if (pb) {
+          let nextVal = pb.currentValue;
           if (cmd === 'set_value') {
-            info.obj.progress_bar.currentValue = val;
+            nextVal = val;
             info.targetValue = undefined; // Cancel any active tween
           } else if (cmd === 'add_value') {
-            info.obj.progress_bar.currentValue += val;
+            nextVal += val;
             info.targetValue = undefined;
           } else {
             // tween_to:target:duration
             const duration = parts[2] ? resolveValue(parts[2], body, obj) : 500;
             info.targetValue = val;
-            const diff = val - info.obj.progress_bar.currentValue;
+            const diff = val - pb.currentValue;
             // Calculate increment per frame (assuming 60fps)
             info.tweenRate = diff / (duration / 16.6);
+            nextVal = pb.currentValue; // Value stays same until tweened
           }
+
+          const newPb = { ...pb, currentValue: nextVal };
+          if (info.progress_bar) info.progress_bar = newPb;
+          if (info.obj?.progress_bar) info.obj.progress_bar = newPb;
+
+          if (newPb.linkedVariable) {
+            updateGlobalVar(newPb.linkedVariable, newPb.currentValue, true);
+          }
+          if (info?.sv?.pbValue) info.sv.pbValue.value = newPb.currentValue;
           setNonce(n => n + 1);
         }
       } else if (cmd === 'bind_to_variable') {
         const varName = parts[1];
-        const info = (body as any).gameInfo;
-        if (info?.obj?.progress_bar) {
-          info.obj.progress_bar.linkedVariable = varName;
+        const info = body ? (body as any).gameInfo : (obj as any);
+        let pb = info?.progress_bar || info?.obj?.progress_bar;
+        if (pb) {
+          const newPb = { ...pb, linkedVariable: varName };
+          if (info.progress_bar) info.progress_bar = newPb;
+          if (info.obj?.progress_bar) info.obj.progress_bar = newPb;
           setNonce(n => n + 1);
         }
-      } else if (cmd === 'set_health') {
+      } else if (cmd === 'set_health' || cmd === 'add_health') {
         const val = resolveValue(parts[1], body, obj);
-        const info = (body as any).gameInfo;
-        if (info?.obj?.health) {
-          const old = info.obj.health.current;
-          info.obj.health.current = Math.max(0, Math.min(info.obj.health.max, val));
-          if (info.obj.health.current < old && info.obj.sounds?.hit) playSoundEffect(info.obj.sounds.hit);
-          if (info.obj.health.current <= 0 && old > 0 && info.obj.sounds?.dead) playSoundEffect(info.obj.sounds.dead);
-          setNonce(n => n + 1); // Trigger re-render to show health change
-        }
-      } else if (cmd === 'add_health') {
-        const val = resolveValue(parts[1], body, obj);
-        const info = (body as any).gameInfo;
-        if (info?.obj?.health) {
-          const old = info.obj.health.current;
-          info.obj.health.current = Math.max(0, Math.min(info.obj.health.max, info.obj.health.current + val));
-          if (info.obj.health.current < old && info.obj.sounds?.hit) playSoundEffect(info.obj.sounds.hit);
-          if (info.obj.health.current <= 0 && old > 0 && info.obj.sounds?.dead) playSoundEffect(info.obj.sounds.dead);
+        const info = body ? (body as any).gameInfo : (obj as any);
+        let health = info?.health || info?.obj?.health;
+        if (health) {
+          const old = health.current;
+          let nextVal = health.current;
+          if (cmd === 'set_health') nextVal = Math.max(0, Math.min(health.max, val));
+          else nextVal = Math.max(0, Math.min(health.max, health.current + val));
+
+          const newHealth = { ...health, current: nextVal };
+          if (info.health) info.health = newHealth;
+          if (info.obj?.health) info.obj.health = newHealth;
+
+          if (newHealth.current < old && info?.obj?.sounds?.hit) playSoundEffect(info.obj.sounds.hit);
+          if (newHealth.current <= 0 && old > 0 && info?.obj?.sounds?.dead) playSoundEffect(info.obj.sounds.dead);
+
           setNonce(n => n + 1);
         }
       } else if (cmd === 'set_count') {
         const amount = resolveValue(parts[1], body, obj);
-        const info = (body as any).gameInfo;
-        if (info?.obj?.sprite_repeater) {
-          const sr = info.obj.sprite_repeater;
-          sr.currentCount = Math.max(0, Math.min(sr.maxCount, amount));
+        const info = body ? (body as any).gameInfo : (obj as any);
+        let sr = info?.sprite_repeater || info?.obj?.sprite_repeater;
+        if (sr) {
+          const nextCount = Math.max(0, Math.min(sr.maxCount, amount));
+          const newSr = { ...sr, currentCount: nextCount };
+          if (info.sprite_repeater) info.sprite_repeater = newSr;
+          if (info.obj?.sprite_repeater) info.obj.sprite_repeater = newSr;
           setNonce(n => n + 1);
         }
       } else if (cmd === 'restart_room') {
@@ -1605,15 +1841,18 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           setRoomOverride(room.id);
           setRestartKey(k => k + 1);
         }
+      } else if (cmd === 'log' || cmd === 'console_log') {
+        const val = resolveValue(parts[1], body, obj);
+        console.log(`[Oxion Log] [${obj?.name || 'Object'}]:`, val);
       } else if (cmd === 'create_instance') {
         const targetId = parts[1];
-        let targetX = body.position.x;
-        let targetY = body.position.y;
+        let targetX = body ? body.position.x : (cameraX.value + gameWidth / 2);
+        let targetY = body ? body.position.y : (cameraY.value + gameHeight / 2);
         if (parts.length >= 4) {
           targetX += resolveValue(parts[2], body, obj);
           targetY += resolveValue(parts[3], body, obj);
         }
-        spawnInstance(targetId, targetX, targetY, false, {}, (body as any).gameInfo?.layerIndex);
+        spawnInstance(targetId, targetX, targetY, false, {}, body ? (body as any).gameInfo?.layerIndex : 0);
       } else if (cmd === 'animation' || cmd === 'set_animation') {
         const animStr = parts[1];
         let targetSpriteId: string | undefined;
@@ -1657,7 +1896,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       }
     };
 
-    const checkCondition = (conditionStr: string, body: Matter.Body, obj?: GameObject) => {
+    const checkCondition = (conditionStr: string, body: Matter.Body | null, obj?: GameObject) => {
       if (!conditionStr) return true;
       const lhsRaw = conditionStr.split(/[><=!+]/)[0].trim();
       const op = conditionStr.match(/[><=!]+/)?.[0] || '==';
@@ -1671,7 +1910,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       return false;
     };
 
-    const executeListenerLogic = (listener: any, body: Matter.Body, obj: GameObject, source: string) => {
+    const executeListenerLogic = (listener: any, body: Matter.Body | null, obj: GameObject, source: string) => {
       // 1. Legacy support
       if (listener.parsedAction) {
         executeAction(listener.parsedAction, body, obj, source);
@@ -1755,7 +1994,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       const tapSub = DeviceEventEmitter.addListener('builtin_tap', (data: any) => {
         // For object-specific taps, check targetId
         if (data?.targetId && String(data.targetId) !== String(body.label)) return;
-        
+
         // Legacy scripts
         const info = (body as any).gameInfo;
         if (info?.scripts) {
@@ -1789,10 +2028,10 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     const createBodyForObject = (x: number, y: number, width: number, height: number, obj: GameObject, options: any) => {
       const col = obj.physics?.collision;
       const scale = obj.physics?.scale || 1;
-      
+
       const offsetX = (col?.offsetX || 0) * scale;
       const offsetY = (col?.offsetY || 0) * scale;
-      
+
       const colW = (col?.type === 'circle' ? (col.radius || width / 2) * 2 : (col?.width || width)) * scale;
       const colH = (col?.type === 'circle' ? (col.radius || width / 2) * 2 : (col?.height || height)) * scale;
 
@@ -1903,10 +2142,22 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         }
       });
 
-      const instObj = pObj.progress_bar ? {
-        ...pObj,
-        progress_bar: { ...pObj.progress_bar }
-      } : pObj;
+      const instObj: GameObject = { ...pObj };
+      if (pObj.health) instObj.health = { ...pObj.health };
+      if (pObj.progress_bar) instObj.progress_bar = { ...pObj.progress_bar };
+      if (pObj.sprite_repeater) instObj.sprite_repeater = { ...pObj.sprite_repeater };
+
+      if (pObj.gui_hierarchy) {
+        const cloneNodes = (nodes: any[]): any[] => nodes.map(n => ({
+          ...n,
+          children: n.children ? cloneNodes(n.children) : undefined
+        }));
+        instObj.gui_hierarchy = {
+          ...pObj.gui_hierarchy,
+          root: cloneNodes(pObj.gui_hierarchy.root || [])
+        };
+      }
+      
       liveObjectsRef.current.set(spawnId, instObj);
 
       (body as any).gameInfo = {
@@ -1957,7 +2208,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     // Sort instances by layer order
     const layers = currentRoom?.layers || [{ id: 'default', name: 'Layer 1', visible: true, locked: false }];
     const layerOrderMap = new Map(layers.map((l, i) => [l.id, i]));
-    
+
     const sortedInstances = [...(currentRoom?.instances || [])].sort((a, b) => {
       const orderA = layerOrderMap.get(a.layerId || layers[0].id) ?? 0;
       const orderB = layerOrderMap.get(b.layerId || layers[0].id) ?? 0;
@@ -2026,7 +2277,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             parts: p,
             actionPart: '',
             timerMs,
-            lastTrigger: Date.now(),
+            lastRun: performance.now(),
+            triggerCount: 0,
             listenerData: {
               ...l,
               parsedImmediate,
@@ -2041,6 +2293,50 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
       const pObj = objectMap.get(inst.objectId);
       if (!pObj) return;
+
+      // GUI containers go to a separate list to avoid heavy re-renders in dynamicElements
+      if (pObj.behavior === 'gui_container') {
+        const sv = instanceSharedValues[index];
+        if (sv) {
+          sv.x.value = inst.x;
+          sv.y.value = inst.y;
+          sv.rot.value = (inst.angle || 0) * Math.PI / 180;
+          sv.isColliding.value = 0;
+          if (sv.flipX) sv.flipX.value = 1;
+          svMap.set(inst.id, sv);
+        }
+
+        const instObj: GameObject = { ...pObj };
+        if (pObj.health) instObj.health = { ...pObj.health };
+        if (pObj.progress_bar) instObj.progress_bar = { ...pObj.progress_bar };
+        if (pObj.sprite_repeater) instObj.sprite_repeater = { ...pObj.sprite_repeater };
+        
+        if (pObj.gui_hierarchy) {
+          const cloneNodes = (nodes: any[]): any[] => nodes.map(n => ({
+            ...n,
+            children: n.children ? cloneNodes(n.children) : undefined
+          }));
+          instObj.gui_hierarchy = {
+            ...pObj.gui_hierarchy,
+            root: cloneNodes(pObj.gui_hierarchy.root || [])
+          };
+        }
+
+        guiRef.push({
+          id: inst.id,
+          gameObject: instObj,
+          sv: sv || instanceSharedValues[index],
+          layerIndex: layerIndex >= 0 ? layerIndex : 0,
+          _logicState: {
+            obj: instObj,
+            scripts: parsedScripts,
+            health: instObj.health,
+            progress_bar: instObj.progress_bar,
+            sprite_repeater: instObj.sprite_repeater
+          }
+        });
+        return;
+      }
 
       const sprite = spriteMap.get(pObj.appearance?.spriteId || '');
       const isGrid = !!sprite?.grid?.enabled;
@@ -2063,9 +2359,21 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         label: inst.id // Room objects use instance ID
       });
 
-      let instObj = { ...obj };
+      const instObj: GameObject = { ...obj };
+      if (obj.health) instObj.health = { ...obj.health };
       if (obj.progress_bar) instObj.progress_bar = { ...obj.progress_bar };
       if (obj.sprite_repeater) instObj.sprite_repeater = { ...obj.sprite_repeater };
+      
+      if (obj.gui_hierarchy) {
+        const cloneNodes = (nodes: any[]): any[] => nodes.map(n => ({
+          ...n,
+          children: n.children ? cloneNodes(n.children) : undefined
+        }));
+        instObj.gui_hierarchy = {
+          ...obj.gui_hierarchy,
+          root: cloneNodes(obj.gui_hierarchy.root || [])
+        };
+      }
       liveObjectsRef.current.set(inst.id, instObj);
 
       (body as any).gameInfo = {
@@ -2074,20 +2382,23 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         scripts: parsedScripts,
         constantVx: obj.logic?.constantVelocityX,
         obj: instObj,
+        nameLower: obj.name?.toLowerCase(),
+        behaviorLower: obj.behavior?.toLowerCase(),
         spawnTime: roomStartTime,
-        layerIndex: layerIndex >= 0 ? layerIndex : 0
+        layerIndex: layerIndex >= 0 ? layerIndex : 0,
+        pbValue: makeMutable(obj.progress_bar?.currentValue || 0)
       };
 
       // Run 'on_start' scripts deferred so the engine/React state is settled
       const _onStartScripts = parsedScripts.filter((s: any) => s.cmd === 'on_start');
       if (_onStartScripts.length > 0) {
         const _body = body;
-        const _obj = obj;
+        const _instObj = instObj;
         setTimeout(() => {
           if (!isActiveRef.current) return;
           _onStartScripts.forEach((script: any) => {
-            if (script.listenerData) executeListenerLogic(script.listenerData, _body, _obj, 'StartTrigger');
-            else if (script.actionPart) executeAction(script.actionPart, _body, _obj, 'StartTrigger');
+            if (script.listenerData) executeListenerLogic(script.listenerData, _body, _instObj, 'StartTrigger');
+            else if (script.actionPart) executeAction(script.actionPart, _body, _instObj, 'StartTrigger');
           });
         }, 100);
       }
@@ -2099,7 +2410,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         sv.rot.value = (inst.angle || 0) * Math.PI / 180;
         sv.isColliding.value = 0;
         if (sv.flipX) sv.flipX.value = 1;
+        if (sv.pbValue) sv.pbValue.value = instObj.progress_bar?.currentValue || 0;
         svMap.set(inst.id, sv);
+        if ((body as any).gameInfo) (body as any).gameInfo.sv = sv;
       }
 
       newBodies.push(body);
@@ -2120,11 +2433,15 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         width,
         height,
         name: instObj.name,
-        layerIndex: layerIndex >= 0 ? layerIndex : 0
+        layerIndex: layerIndex >= 0 ? layerIndex : 0,
+        isRoomInstance: true
       });
 
       attachListeners(body, obj);
     });
+
+    setDynamicElements([]); // Clear any leftover spawned elements
+    setGuiInstances(guiRef);
 
     Matter.World.add(engine.world, newBodies);
 
@@ -2301,6 +2618,27 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       Matter.Engine.update(engine, 1000 / 60);
       physicsFrameCounter++;
 
+      // Build performance lookup indices for scripts/logic (Optimized memory reuse)
+      nameLookupRef.current.clear();
+      // Reuse existing arrays in behaviorLookupRef to minimize GC
+      behaviorLookupRef.current.forEach(arr => arr.length = 0);
+
+      for (let i = 0; i < cachedBodies.length; i++) {
+        const b = cachedBodies[i];
+        const info = (b as any).gameInfo;
+        if (!info?.obj) continue;
+
+        if (info.nameLower) nameLookupRef.current.set(info.nameLower, b);
+        if (info.behaviorLower) {
+          let arr = behaviorLookupRef.current.get(info.behaviorLower);
+          if (!arr) {
+            arr = [];
+            behaviorLookupRef.current.set(info.behaviorLower, arr);
+          }
+          arr.push(b);
+        }
+      }
+
       // Note: on_tick scripts are processed directly in the body loop below.
       // DeviceEventEmitter.emit('on_tick') was removed — no listener is attached
       // (attachListeners skips on_tick), so emitting it was pure overhead.
@@ -2414,10 +2752,12 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         const s = e.obj.emitter;
         if (!s?.enabled || !s.particleObjectId) return;
 
-        // Logic Culling for Emitters
+        // Logic Culling for Emitters (Optimized distance check)
         const isHUD = e.obj.isHUD === true;
-        const distSq = Math.pow(e.body.position.x - (cameraRef.current.x + gameWidth / 2), 2) + Math.pow(e.body.position.y - (cameraRef.current.y + gameHeight / 2), 2);
-        if (!isHUD && distSq > Math.pow(Math.max(gameWidth, gameHeight) * 1.5, 2)) return;
+        const dx = e.body.position.x - (cameraRef.current.x + gameWidth / 2);
+        const dy = e.body.position.y - (cameraRef.current.y + gameHeight / 2);
+        const distSq = dx * dx + dy * dy;
+        if (!isHUD && distSq > (Math.max(gameWidth, gameHeight) * 1.5) ** 2) return;
 
         if (now - e.lastSpawn > 1000 / (s.rate || 5)) {
           e.lastSpawn = now;
@@ -2427,213 +2767,158 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       });
 
 
-      // Update Dynamic Elements & Cleanup
       let dynamicChanged = false;
+
+      // 1. Cleanup expired dynamic elements (bullets, etc)
       for (let i = dynamicRef.length - 1; i >= 0; i--) {
         const d = dynamicRef[i];
-
-        // Apply custom gravity scale if needed
-        const gScale = (d.body as any).gravityScale;
-        if (gScale !== undefined && gScale !== 1) {
-          Matter.Body.applyForce(d.body, d.body.position, {
-            x: 0,
-            y: d.body.mass * (engine.gravity.y * engine.gravity.scale) * (gScale - 1)
-          });
-        }
-
         if (d.expires && now > d.expires) {
-          Matter.World.remove(engine.world, d.body);
+          if (d.body) Matter.World.remove(engine.world, d.body);
           dynamicRef.splice(i, 1);
           dynamicChanged = true;
-        } else {
-          const info = (d.body as any).gameInfo;
-          const col = info?.obj?.physics?.collision;
-          const scale = d.gameObject?.physics?.scale || 1;
-          const offsetX = (col?.offsetX || 0);
-          const offsetY = (col?.offsetY || 0);
-
-          d.sv.x.value = d.body.position.x - (d.width / 2 + offsetX) * scale;
-          d.sv.y.value = d.body.position.y - (d.height / 2 + offsetY) * scale;
-          d.sv.rot.value = d.body.angle;
-
-          // Logic Culling for Dynamic Elements (don't run scripts if far away)
-          const isHUD = info?.obj?.isHUD === true;
-
-          const distSq = Math.pow(d.body.position.x - (cameraX.value + gameWidth / 2), 2) + Math.pow(d.body.position.y - (cameraY.value + gameHeight / 2), 2);
-          const isFar = distSq > Math.pow(Math.max(gameWidth, gameHeight) * 2, 2);
-
-          // Run scripts for dynamic elements (only if not too far)
-          if (info?.scripts && (!isFar || isHUD)) {
-            if (info.obj?.progress_bar) {
-              const pb = info.obj.progress_bar;
-
-              // Handle active tween
-              if (info.targetValue !== undefined && info.tweenRate !== undefined) {
-                pb.currentValue += info.tweenRate;
-                // Check if we reached/passed target
-                if ((info.tweenRate > 0 && pb.currentValue >= info.targetValue) ||
-                  (info.tweenRate < 0 && pb.currentValue <= info.targetValue)) {
-                  pb.currentValue = info.targetValue;
-                  info.targetValue = undefined;
-                }
-              }
-
-              let val = pb.currentValue;
-              if (pb.linkedVariable) {
-                val = resolveValue(pb.linkedVariable, d.body, info.obj);
-                pb.currentValue = val; // Sync back for event checks
-              }
-              const isEmpty = val <= pb.minValue;
-              const isFull = val >= pb.maxValue;
-              if (isEmpty && !info.wasEmpty) {
-                info.wasEmpty = true;
-                for (let s = 0; s < info.scripts.length; s++) {
-                  if (info.scripts[s].cmd === 'on_empty') {
-                    if (info.scripts[s].listenerData) executeListenerLogic(info.scripts[s].listenerData, d.body, info.obj, 'EmptyLoop');
-                  }
-                }
-              } else if (!isEmpty) info.wasEmpty = false;
-              if (isFull && !info.wasFull) {
-                info.wasFull = true;
-                for (let s = 0; s < info.scripts.length; s++) {
-                  if (info.scripts[s].cmd === 'on_full') {
-                    if (info.scripts[s].listenerData) executeListenerLogic(info.scripts[s].listenerData, d.body, info.obj, 'FullLoop');
-                  }
-                }
-              } else if (!isFull) info.wasFull = false;
-            }
-
-            for (let s = 0; s < info.scripts.length; s++) {
-              const script = info.scripts[s];
-              if (script.cmd === 'on_tick') {
-                if (script.listenerData) executeListenerLogic(script.listenerData, d.body, info.obj, 'DynTick');
-                else if (script.actionPart) executeAction(script.actionPart, d.body, info.obj, 'DynTick');
-              } else if (script.cmd === 'on_timer' && script.timerMs > 0) {
-                if (now - script.lastTrigger >= script.timerMs) {
-                  script.lastTrigger = now;
-                  if (script.listenerData) executeListenerLogic(script.listenerData, d.body, info.obj, 'DynTimer');
-                  else if (script.actionPart) executeAction(script.actionPart, d.body, info.obj, 'DynTimer');
-                }
-              }
-            }
-          }
         }
       }
-      const bodyCount = newBodies.length;
+
+      const bodyCount = cachedBodies.length;
       const camX = cameraRef.current.x;
       const camY = cameraRef.current.y;
       const logicCullRange = Math.max(gameWidth, gameHeight) * 1.5;
 
+      const runScriptLogic = (body: Matter.Body | null, info: any) => {
+        if (!info || !info.scripts || info.scripts.length === 0) return;
+
+        // Progress Bar Special Logic
+        if (info.obj?.progress_bar) {
+          const pb = info.obj.progress_bar;
+          if (info.targetValue !== undefined && info.tweenRate !== undefined) {
+            pb.currentValue += info.tweenRate;
+            if (info.sv?.pbValue) info.sv.pbValue.value = pb.currentValue;
+            else setNonce(n => n + 1); // HUD update
+
+            if ((info.tweenRate > 0 && pb.currentValue >= info.targetValue) ||
+              (info.tweenRate < 0 && pb.currentValue <= info.targetValue)) {
+              pb.currentValue = info.targetValue;
+              if (info.sv?.pbValue) info.sv.pbValue.value = pb.currentValue;
+              else setNonce(n => n + 1); // HUD final sync
+              info.targetValue = undefined;
+            }
+          }
+
+          let val = pb.currentValue;
+          if (pb.linkedVariable) {
+            val = resolveValue(pb.linkedVariable, body, info.obj);
+            // sync progress bar value with linked variable and force UI refresh
+            pb.currentValue = val;
+            if (info.sv?.pbValue) info.sv.pbValue.value = val;
+            setNonce(n => n + 1);
+          }
+          const isEmpty = val <= pb.minValue;
+          const isFull = val >= pb.maxValue;
+          if (isEmpty && !info.wasEmpty) {
+            info.wasEmpty = true;
+            info.scripts.filter((s: any) => s.cmd === 'on_empty').forEach((s: any) => {
+              if (s.listenerData) executeListenerLogic(s.listenerData, body, info.obj, 'EmptyLoop');
+              s.triggerCount = (s.triggerCount || 0) + 1;
+              s.lastAction = 'on_empty';
+            });
+          } else if (!isEmpty) info.wasEmpty = false;
+
+          if (isFull && !info.wasFull) {
+            info.wasFull = true;
+            info.scripts.filter((s: any) => s.cmd === 'on_full').forEach((s: any) => {
+              if (s.listenerData) executeListenerLogic(s.listenerData, body, info.obj, 'FullLoop');
+              s.triggerCount = (s.triggerCount || 0) + 1;
+              s.lastAction = 'on_full';
+            });
+          } else if (!isFull) info.wasFull = false;
+        }
+
+        // Sprite Repeater Special Logic
+        if (info.obj?.sprite_repeater) {
+          const sr = info.obj.sprite_repeater;
+          let count = sr.currentCount;
+          if (sr.linkedVariable) {
+            count = Number(resolveValue(sr.linkedVariable, body, info.obj)) || 0;
+            if (count !== sr.currentCount) {
+              sr.currentCount = count;
+              setNonce(n => n + 1);
+            }
+          }
+          if (info.lastCount === undefined) info.lastCount = count;
+          if (count < info.lastCount) {
+            info.scripts.filter((s: any) => s.cmd === 'on_life_lost').forEach((s: any) => {
+              if (s.listenerData) executeListenerLogic(s.listenerData, body, info, 'LifeLost');
+              s.triggerCount = (s.triggerCount || 0) + 1;
+              s.lastAction = 'on_life_lost';
+            });
+          }
+          if (count <= 0 && info.lastCount > 0) {
+            info.scripts.filter((s: any) => s.cmd === 'on_zero_lives').forEach((s: any) => {
+              if (s.listenerData) executeListenerLogic(s.listenerData, body, info, 'ZeroLives');
+              s.triggerCount = (s.triggerCount || 0) + 1;
+              s.lastAction = 'on_zero_lives';
+            });
+          }
+          info.lastCount = count;
+        }
+
+        // General Triggers (Tick & Timer)
+        info.scripts.forEach((script: any) => {
+          if (script.cmd === 'on_tick') {
+            if (script.listenerData) executeListenerLogic(script.listenerData, body, info, 'TickLoop');
+            else if (script.actionPart) executeAction(script.actionPart, body, info, 'TickLoop');
+            script.triggerCount = (script.triggerCount || 0) + 1;
+            script.lastAction = script.actionPart || 'Listener';
+          } else if (script.cmd === 'on_timer' && script.timerMs > 0) {
+            if (!script.lastRun) script.lastRun = now;
+            if (now - script.lastRun > script.timerMs) {
+              if (script.listenerData) executeListenerLogic(script.listenerData, body, info, 'TimerLoop');
+              else if (script.actionPart) executeAction(script.actionPart, body, info, 'TimerLoop');
+              script.lastRun = now;
+              script.triggerCount = (script.triggerCount || 0) + 1;
+              script.lastAction = script.actionPart || 'Listener';
+            }
+          }
+        });
+      };
+
+      // A. Process World Body Logic
       for (let i = 0; i < bodyCount; i++) {
-        const body = newBodies[i];
+        const body = cachedBodies[i];
         const info = (body as any).gameInfo;
         if (!info) continue;
 
-        // --- Logic Culling ---
-        // Skip logic/scripts if too far from camera
+        // Apply custom gravity scale
+        const gScale = (body as any).gravityScale;
+        if (gScale !== undefined && gScale !== 1) {
+          Matter.Body.applyForce(body, body.position, {
+            x: 0,
+            y: body.mass * (engine.gravity.y * engine.gravity.scale) * (gScale - 1)
+          });
+        }
+
+        // Culling Check
         const dx = body.position.x - (camX + gameWidth / 2);
         const dy = body.position.y - (camY + gameHeight / 2);
         const isTarget = cameraTargetBodyRef.current === body;
         const isHUD = info.obj?.isHUD === true;
+        if (!isTarget && !isHUD && (Math.abs(dx) > logicCullRange || Math.abs(dy) > logicCullRange)) continue;
 
-        if (!isTarget && !isHUD && (Math.abs(dx) > logicCullRange || Math.abs(dy) > logicCullRange)) {
-          continue;
-        }
-
-        // 1. Always run scripts for this body
-        if (info.scripts && info.scripts.length > 0) {
-          if (info.obj?.progress_bar) {
-            const pb = info.obj.progress_bar;
-
-            // Handle active tween
-            if (info.targetValue !== undefined && info.tweenRate !== undefined) {
-              pb.currentValue += info.tweenRate;
-              if ((info.tweenRate > 0 && pb.currentValue >= info.targetValue) ||
-                (info.tweenRate < 0 && pb.currentValue <= info.targetValue)) {
-                pb.currentValue = info.targetValue;
-                info.targetValue = undefined;
-              }
-              setNonce(n => n + 1); // Trigger re-render during tween
-            }
-
-            let val = pb.currentValue;
-            if (pb.linkedVariable) val = resolveValue(pb.linkedVariable, body, info.obj);
-            const isEmpty = val <= pb.minValue;
-            const isFull = val >= pb.maxValue;
-            if (isEmpty && !info.wasEmpty) {
-              info.wasEmpty = true;
-              for (let s = 0; s < info.scripts.length; s++) {
-                if (info.scripts[s].cmd === 'on_empty') {
-                  if (info.scripts[s].listenerData) executeListenerLogic(info.scripts[s].listenerData, body, info.obj, 'EmptyLoop');
-                }
-              }
-            } else if (!isEmpty) info.wasEmpty = false;
-            if (isFull && !info.wasFull) {
-              info.wasFull = true;
-              for (let s = 0; s < info.scripts.length; s++) {
-                if (info.scripts[s].cmd === 'on_full') {
-                  if (info.scripts[s].listenerData) executeListenerLogic(info.scripts[s].listenerData, body, info.obj, 'FullLoop');
-                }
-              }
-            } else if (!isFull) info.wasFull = false;
-          }
-
-          if (info.obj?.sprite_repeater) {
-            const sr = info.obj.sprite_repeater;
-            let count = sr.currentCount;
-            if (sr.linkedVariable) count = Number(resolveValue(sr.linkedVariable, body, info.obj)) || 0;
-
-            if (info.lastCount === undefined) info.lastCount = count;
-
-            if (count < info.lastCount) {
-              // Life lost
-              for (let s = 0; s < info.scripts.length; s++) {
-                if (info.scripts[s].cmd === 'on_life_lost') {
-                  if (info.scripts[s].listenerData) executeListenerLogic(info.scripts[s].listenerData, body, info.obj, 'LifeLost');
-                }
-              }
-            }
-            if (count <= 0 && info.lastCount > 0) {
-              // Zero lives
-              for (let s = 0; s < info.scripts.length; s++) {
-                if (info.scripts[s].cmd === 'on_zero_lives') {
-                  if (info.scripts[s].listenerData) executeListenerLogic(info.scripts[s].listenerData, body, info.obj, 'ZeroLives');
-                }
-              }
-            }
-            info.lastCount = count;
-          }
-
-          for (let s = 0; s < info.scripts.length; s++) {
-            const script = info.scripts[s];
-            if (script.cmd === 'on_tick') {
-              if (script.listenerData) executeListenerLogic(script.listenerData, body, info.obj, 'TickLoop');
-              else if (script.actionPart) executeAction(script.actionPart, body, info.obj, 'TickLoop');
-            } else if (script.cmd === 'on_timer' && script.timerMs > 0) {
-              if (now - script.lastTrigger >= script.timerMs) {
-                script.lastTrigger = now;
-                if (script.listenerData) executeListenerLogic(script.listenerData, body, info.obj, 'TimerLoop');
-                else if (script.actionPart) executeAction(script.actionPart, body, info.obj, 'TimerLoop');
-              }
-            }
-          }
-        }
+        runScriptLogic(body, info);
 
         if (info.constantVx !== undefined) {
           Matter.Body.setVelocity(body, { x: info.constantVx, y: body.velocity.y });
         }
 
-        // 2. Position Sync Optimization
+        // Position Sync Optimization: Only update SV if body moved
         if (body.isStatic && body.position.x === (body as any).lastX && body.position.y === (body as any).lastY) continue;
 
         const col = info.obj?.physics?.collision;
         const offsetX = col?.offsetX || 0;
         const offsetY = col?.offsetY || 0;
-        const colW = col?.type === 'circle' ? (col.radius || info.width / 2) * 2 : (col?.width || info.width);
-        const colH = col?.type === 'circle' ? (col.radius || info.width / 2) * 2 : (col?.height || info.height);
-        
         const scale = info.obj?.physics?.scale || 1;
-        const sv = instanceSharedValues[i];
+        const sv = info.sv || svMap.get(body.label);
+
         if (sv && sv.x && sv.y) {
           sv.x.value = body.position.x - (info.width / 2 + offsetX) * scale;
           sv.y.value = body.position.y - (info.height / 2 + offsetY) * scale;
@@ -2643,11 +2928,101 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         }
       }
 
+      // B. Process GUI Logic (Hierarchical)
+      const processGuiLogicRecursive = (nodes: any[]) => {
+        nodes.forEach(node => {
+          const obj = objectMap.get(node.objectId);
+          if (obj?.logic?.scripts || obj?.logic?.listeners) {
+            // Lazy-init logic state for GUI nodes if needed
+            if (!node._logicState) {
+              const scripts: any[] = [...(obj.logic.scripts || [])].map(s => {
+                const doSplit = s.split(/ DO | do /);
+                let actionPart = '';
+                let cmd = '';
+                let timerMs = 1000;
+                let p: string[] = [];
+
+                if (doSplit.length > 1) {
+                  p = doSplit[0].split(':');
+                  actionPart = doSplit[1].trim();
+                  cmd = p[0].trim();
+                  if (cmd === 'on_timer') timerMs = parseInt(p[1], 10) || 1000;
+                } else {
+                  p = s.split(':');
+                  cmd = p[0].trim();
+                  if (cmd === 'on_timer') {
+                    timerMs = parseInt(p[1], 10) || 1000;
+                    actionPart = p.slice(2).join(':').trim();
+                  } else {
+                    actionPart = p.slice(1).join(':').trim();
+                  }
+                }
+                return { cmd, timerMs, actionPart, lastRun: Date.now(), triggerCount: 0 };
+              });
+
+              // Also add Action Builder listeners
+              obj.logic?.listeners?.forEach((l: any) => {
+                if (l.eventId === 'on_tick' || l.eventId?.startsWith('on_timer')) {
+                  let cmd = l.eventId;
+                  let timerMs = 1000;
+                  if (l.eventId.startsWith('on_timer')) {
+                    cmd = 'on_timer';
+                    timerMs = parseInt(l.eventId.split(':')[1]) || 1000;
+                  }
+                  scripts.push({
+                    cmd,
+                    timerMs,
+                    lastRun: performance.now(),
+                    triggerCount: 0,
+                    listenerData: {
+                      ...l,
+                      parsedImmediate: l.immediateActions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean),
+                      parsedSubConditions: l.subConditions?.map((sc: any) => ({
+                        ...sc,
+                        parsedActions: sc.actions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean),
+                        parsedElseActions: sc.elseActions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean),
+                      }))
+                    }
+                  });
+                }
+              });
+
+              const liveObj: GameObject = { ...obj };
+              if (obj.health) liveObj.health = { ...obj.health };
+              if (obj.progress_bar) liveObj.progress_bar = { ...obj.progress_bar };
+              if (obj.sprite_repeater) liveObj.sprite_repeater = { ...obj.sprite_repeater };
+
+              node._logicState = {
+                obj: liveObj,
+                scripts: scripts.filter(Boolean),
+                health: liveObj.health,
+                sprite_repeater: liveObj.sprite_repeater,
+                progress_bar: liveObj.progress_bar
+              };
+            }
+            runScriptLogic(null, node._logicState);
+          }
+          if (node.children) processGuiLogicRecursive(node.children);
+        });
+      };
+
+      guiRef.forEach(inst => {
+        // Run logic on the container itself
+        if (inst._logicState) {
+          runScriptLogic(null, inst._logicState);
+        }
+        // Run logic on nested elements
+        if (inst.gameObject.gui_hierarchy?.root) {
+          processGuiLogicRecursive(inst.gameObject.gui_hierarchy.root);
+        }
+      });
+
       if (dynamicChanged || dynamicRef.length !== lastSyncedLength) {
         // Optimized: Only copy essential data for React state
         const elements = [];
         for (let i = 0; i < dynamicRef.length; i++) {
           const dx = dynamicRef[i];
+          if (dx.isRoomInstance) continue; // Skip room instances, rendered by staticElements
           elements.push({
             id: dx.id,
             gameObject: dx.gameObject,
@@ -2655,7 +3030,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             sv: dx.sv,
             width: dx.width,
             height: dx.height,
-            name: dx.name
+            name: String(dx.name || ''),
+            layerIndex: dx.layerIndex || 0
           });
         }
         setDynamicElements(elements);
@@ -2736,7 +3112,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       isActiveRef.current = false;
       cancelAnimationFrame(frameId);
       subscriptions.forEach(s => s?.remove());
-      Matter.Events.off(engine);
+      Matter.Events.off(engine, 'collisionStart');
+      Matter.Events.off(engine, 'collisionEnd');
       Matter.Engine.clear(engine);
       Matter.World.clear(engine.world, false);
       cameraTargetBodyRef.current = null;
@@ -2766,7 +3143,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         if (!instanceSharedValues[index]) return null;
 
         const liveObj = liveObjectsRef.current.get(inst.id) || objectMap.get(inst.objectId);
-        if (!liveObj) return null;
+        if (!liveObj || liveObj.behavior === 'gui_container') return null;
 
         // --- O(1) Sprite Lookup via Map ---
         const appearance = liveObj.appearance || { type: 'sprite', spriteId: null };
@@ -2800,8 +3177,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                 DeviceEventEmitter.emit(liveObj.logic.triggers.onTap!);
               }
             }}
-            variables={variables}
-            localVariables={localVariables[inst.id]}
+            variables={(liveObj?.text || liveObj?.behavior === 'sprite_repeater' || liveObj?.behavior === 'progress_bar') ? variables : undefined}
+            localVariables={(liveObj?.text || liveObj?.behavior === 'sprite_repeater' || liveObj?.behavior === 'progress_bar') ? localVariables[inst.id] : undefined}
+            varKeysMap={varKeysCache.current.lowerMap}
             obj={liveObj}
             override={instanceOverrides[inst.id]}
             debug={debug}
@@ -2817,7 +3195,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         );
       });
     });
-  }, [currentRoom, instanceSharedValues, objectMap, spriteMap, currentProject, handleFetchAsset, variables, localVariables, nonce, globalFrameTimer, cameraX, cameraY, gameWidth, gameHeight, allSprites]);
+  }, [currentRoom, instanceSharedValues, objectMap, spriteMap, currentProject, handleFetchAsset, nonce, globalFrameTimer, cameraX, cameraY, gameWidth, gameHeight, allSprites]);
 
 
   if (!visible) return null;
@@ -2859,7 +3237,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                       }}
                     />
                     {staticElements}
-                    {(dynamicElements || []).map(d => {
+                    {(dynamicElements || []).filter(d => d?.gameObject?.behavior !== 'gui_container').map(d => {
                       if (!d || !d.sv) return null;
                       return (
                         <PhysicsBody
@@ -2872,9 +3250,10 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                           width={d.width}
                           height={d.height}
                           name={d.name}
-                          variables={variables}
+                          variables={(d.gameObject.text || d.gameObject.behavior === 'sprite_repeater' || d.gameObject.behavior === 'progress_bar') ? variables : undefined}
                           nonce={nonce}
-                          localVariables={localVariables[d.id]}
+                          localVariables={(d.gameObject.text || d.gameObject.behavior === 'sprite_repeater' || d.gameObject.behavior === 'progress_bar') ? localVariables[d.id] : undefined}
+                          varKeysMap={varKeysCache.current.lowerMap}
                           obj={d.gameObject}
                           sprites={allSprites}
                           override={instanceOverrides[d.id]}
@@ -2893,112 +3272,150 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                           ySort={currentRoom?.settings?.ySort}
                           ySortAmount={currentRoom?.settings?.ySortAmount}
                           layerIndex={d.layerIndex}
+                          debug={debug}
                         />
                       );
                     })}
                   </Animated.View>
+
+                  {/* GUI Overlay Layer (Screen Space) */}
+                  <Animated.View
+                    style={[
+                      {
+                        ...StyleSheet.absoluteFillObject,
+                        zIndex: 999999
+                      },
+                      guiScalerStyle
+                    ]}
+                    pointerEvents="box-none"
+                  >
+                    {guiInstances.map(d => (
+                      <GUIRenderer
+                        key={`gui-${d.id}`}
+                        nodes={d.gameObject.gui_hierarchy?.root || []}
+                        objectMap={objectMap}
+                        spriteMap={spriteMap}
+                        allSprites={allSprites}
+                        parentX={d.sv.x.value}
+                        parentY={d.sv.y.value}
+                        variables={variables}
+                        localVariables={localVariables}
+                        varKeysMap={varKeysCache.current.lowerMap}
+                        nonce={nonce}
+                        globalFrameTimer={globalFrameTimer}
+                        cameraX={cameraX}
+                        cameraY={cameraY}
+                        cameraZoom={cameraZoom}
+                        gameWidth={gameWidth}
+                        gameHeight={gameHeight}
+                        handleFetchAsset={handleFetchAsset}
+                        restartKey={restartKey}
+                        debug={debug}
+                      />
+                    ))}
+                  </Animated.View>
                 </Animated.View>
               </View>
             </View>
+          </View>
 
-            <View style={styles.topOverlay}>
-              <TouchableOpacity onPress={onClose} style={styles.miniBtn}><X color="#fff" size={18} /></TouchableOpacity>
-              <View style={styles.topRight}>
-                {debug && !showDebugSidebar && (
-                  <ZoomIndicator
-                    zoom={cameraZoom}
-                    camX={cameraX}
-                    camY={cameraY}
-                    enabled={camEnabled}
-                    roomW={roomWidth}
-                    roomH={roomHeight}
-                    gameW={gameWidth}
-                    gameH={gameHeight}
-                    targetName={targetName}
-                  />
-                )}
-                {debug && <FPSCounter fps={fpsShared} />}
-                <TouchableOpacity onPress={() => setIsPlaying(!isPlaying)} style={styles.miniBtn}>{isPlaying ? <Pause color="#fff" size={14} /> : <PlayIcon color="#fff" size={14} />}</TouchableOpacity>
-                {debug && (
-                  <TouchableOpacity
-                    onPress={() => setShowDebugSidebar(!showDebugSidebar)}
-                    style={[styles.miniBtn, showDebugSidebar && { backgroundColor: '#4facfe' }]}
-                  >
-                    <Database color="#fff" size={14} />
-                  </TouchableOpacity>
-                )}
+          <View style={styles.topOverlay}>
+            <TouchableOpacity onPress={onClose} style={styles.miniBtn}><X color="#fff" size={18} /></TouchableOpacity>
+            <View style={styles.topRight}>
+              {debug && !showDebugSidebar && (
+                <ZoomIndicator
+                  zoom={cameraZoom}
+                  camX={cameraX}
+                  camY={cameraY}
+                  enabled={camEnabled}
+                  roomW={roomWidth}
+                  roomH={roomHeight}
+                  gameW={gameWidth}
+                  gameH={gameHeight}
+                  targetName={targetName}
+                />
+              )}
+              {debug && <FPSCounter fps={fpsShared} />}
+              <TouchableOpacity onPress={() => setIsPlaying(!isPlaying)} style={styles.miniBtn}>{isPlaying ? <Pause color="#fff" size={14} /> : <PlayIcon color="#fff" size={14} />}</TouchableOpacity>
+              {debug && (
                 <TouchableOpacity
-                  style={styles.miniBtn}
-                  onPress={() => {
-                    setRoomOverride(currentProject?.mainRoomId || null);
-                    setRestartKey(k => k + 1);
-                    setIsPlaying(true);
-                  }}
+                  onPress={() => setShowDebugSidebar(!showDebugSidebar)}
+                  style={[styles.miniBtn, showDebugSidebar && { backgroundColor: '#4facfe' }]}
                 >
-                  <RotateCcw color="#fff" size={14} />
+                  <Database color="#fff" size={14} />
                 </TouchableOpacity>
-              </View>
+              )}
+              <TouchableOpacity
+                style={styles.miniBtn}
+                onPress={() => {
+                  setRoomOverride(currentProject?.mainRoomId || null);
+                  setRestartKey(k => k + 1);
+                  setIsPlaying(true);
+                }}
+              >
+                <RotateCcw color="#fff" size={14} />
+              </TouchableOpacity>
             </View>
+          </View>
 
-            <View style={styles.floatingControls}>
-              <View style={styles.dpad} pointerEvents="box-none">
-                {currentRoom?.settings?.showControls?.joystick?.enabled ? (
-                  <VirtualJoystick
-                    settings={currentRoom.settings.showControls.joystick}
-                    onMove={handleJoystickMove}
-                    onRelease={handleJoystickRelease}
-                  />
-                ) : (
-                  <>
-                    {currentRoom?.settings?.showControls?.left !== false && (
-                      <Pressable
-                        style={({ pressed }) => [styles.floatingBtn, pressed && { opacity: 0.7 }]}
-                        onPressIn={() => { inputLeft.current = 1; }}
-                        onPressOut={() => { inputLeft.current = 0; }}
-                      >
-                        <ArrowLeft color="#fff" size={30} />
-                      </Pressable>
-                    )}
-                    {currentRoom?.settings?.showControls?.right !== false && (
-                      <Pressable
-                        style={({ pressed }) => [styles.floatingBtn, pressed && { opacity: 0.7 }]}
-                        onPressIn={() => { inputLeft.current = 0; inputRight.current = 1; }}
-                        onPressOut={() => { inputRight.current = 0; }}
-                      >
-                        <ArrowRight color="#fff" size={30} />
-                      </Pressable>
-                    )}
-                  </>
-                )}
-              </View>
-              <View style={styles.actions}>
-                {currentRoom?.settings?.showControls?.shoot !== false && (
-                  <Pressable
-                    style={({ pressed }) => [styles.floatingBtn, styles.shootBtn, { marginBottom: 10 }, pressed && { opacity: 0.7 }]}
-                    onPressIn={() => { inputShoot.current = 1; }}
-                    onPressOut={() => { inputShoot.current = 0; }}
-                  >
-                    <Bolt color="#fff" size={24} />
-                  </Pressable>
-                )}
-                {currentRoom?.settings?.showControls?.jump !== false && (
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.floatingBtn,
-                      styles.jumpBtn,
-                      pressed && { opacity: 0.7, transform: [{ scale: 0.95 }] },
-                      inputJump.current === 1 && { backgroundColor: 'rgba(79, 172, 254, 0.8)' }
-                    ]}
-                    onPressIn={() => {
-                      inputJump.current = 1;
-                      DeviceEventEmitter.emit('on_jump_press');
-                    }}
-                    onPressOut={() => { inputJump.current = 0; }}
-                  >
-                    <ChevronUp color="#fff" size={30} />
-                  </Pressable>
-                )}
-              </View>
+          <View style={styles.floatingControls}>
+            <View style={styles.dpad} pointerEvents="box-none">
+              {currentRoom?.settings?.showControls?.joystick?.enabled ? (
+                <VirtualJoystick
+                  settings={currentRoom.settings.showControls.joystick}
+                  onMove={handleJoystickMove}
+                  onRelease={handleJoystickRelease}
+                />
+              ) : (
+                <>
+                  {currentRoom?.settings?.showControls?.left !== false && (
+                    <Pressable
+                      style={({ pressed }) => [styles.floatingBtn, pressed && { opacity: 0.7 }]}
+                      onPressIn={() => { inputLeft.current = 1; }}
+                      onPressOut={() => { inputLeft.current = 0; }}
+                    >
+                      <ArrowLeft color="#fff" size={30} />
+                    </Pressable>
+                  )}
+                  {currentRoom?.settings?.showControls?.right !== false && (
+                    <Pressable
+                      style={({ pressed }) => [styles.floatingBtn, pressed && { opacity: 0.7 }]}
+                      onPressIn={() => { inputLeft.current = 0; inputRight.current = 1; }}
+                      onPressOut={() => { inputRight.current = 0; }}
+                    >
+                      <ArrowRight color="#fff" size={30} />
+                    </Pressable>
+                  )}
+                </>
+              )}
+            </View>
+            <View style={styles.actions}>
+              {currentRoom?.settings?.showControls?.shoot !== false && (
+                <Pressable
+                  style={({ pressed }) => [styles.floatingBtn, styles.shootBtn, { marginBottom: 10 }, pressed && { opacity: 0.7 }]}
+                  onPressIn={() => { inputShoot.current = 1; }}
+                  onPressOut={() => { inputShoot.current = 0; }}
+                >
+                  <Bolt color="#fff" size={24} />
+                </Pressable>
+              )}
+              {currentRoom?.settings?.showControls?.jump !== false && (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.floatingBtn,
+                    styles.jumpBtn,
+                    pressed && { opacity: 0.7, transform: [{ scale: 0.95 }] },
+                    inputJump.current === 1 && { backgroundColor: 'rgba(79, 172, 254, 0.8)' }
+                  ]}
+                  onPressIn={() => {
+                    inputJump.current = 1;
+                    DeviceEventEmitter.emit('on_jump_press');
+                  }}
+                  onPressOut={() => { inputJump.current = 0; }}
+                >
+                  <ChevronUp color="#fff" size={30} />
+                </Pressable>
+              )}
             </View>
           </View>
 
@@ -3029,6 +3446,39 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                 <Text style={[styles.debugLabel, { marginTop: 15 }]}>ROOM INFO</Text>
                 <Text style={styles.debugValue}>{currentRoom?.name || 'Untitled'}</Text>
                 <Text style={styles.debugValue}>{roomWidth}x{roomHeight} px</Text>
+
+                <Text style={[styles.debugLabel, { marginTop: 20 }]}>HUD & GUI LOGIC</Text>
+                {guiInstances.length === 0 && <Text style={[styles.debugValue, { opacity: 0.5 }]}>No GUI Active</Text>}
+                {guiInstances.map((inst: any) => {
+                  const obj = inst.gameObject;
+                  let stat = '';
+                  if (obj.health) stat = `HP: ${Math.round(obj.health.current)}/${obj.health.max}`;
+                  else if (obj.sprite_repeater) stat = `Icons: ${obj.sprite_repeater.currentCount}/${obj.sprite_repeater.maxCount}`;
+                  else if (obj.progress_bar) stat = `Bar: ${Math.round(obj.progress_bar.currentValue)}%`;
+                  if (!stat) return null;
+                  return (
+                    <View key={inst.id} style={{ marginBottom: 8, borderBottomWidth: 1, borderBottomColor: '#333', pb: 4 }}>
+                      <Text style={[styles.debugVarName, { color: '#aaa' }]}>{obj.name || 'UI_Element'}</Text>
+                      <Text style={[styles.debugVarVal, { color: '#4facfe' }]}>{stat}</Text>
+                      {inst._logicState?.scripts?.map((s: any, si: number) => (
+                        <View key={si} style={{ marginLeft: 6, marginTop: 2 }}>
+                          <Text style={{ color: '#888', fontSize: 8 }}>
+                            {s.cmd}: fires:{s.triggerCount || 0}
+                          </Text>
+                          {s.lastAction && (
+                            <Text style={{ color: '#666', fontSize: 7 }}>Last: {s.lastAction}</Text>
+                          )}
+                        </View>
+                      ))}
+                    </View>
+                  );
+                })}
+                {dynamicElements.filter(d => d.gameObject.behavior === 'player').map((p, idx) => (
+                  <View key={`pb-${idx}`} style={{ marginBottom: 4 }}>
+                    <Text style={[styles.debugVarName, { color: '#aaa' }]}>Player Health</Text>
+                    <Text style={[styles.debugVarVal, { color: '#ff4f4f' }]}>{Math.round(p.gameObject.health?.current || 0)} HP</Text>
+                  </View>
+                ))}
 
                 <Text style={styles.debugLabel}>INSTANCES</Text>
                 <Text style={styles.debugValue}>Static: {(currentRoom?.instances || []).length}</Text>
@@ -3066,5 +3516,6 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         </View>
       </GestureHandlerRootView>
     </Modal>
+
   );
 }

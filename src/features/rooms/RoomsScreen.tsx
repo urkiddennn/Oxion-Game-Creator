@@ -125,6 +125,10 @@ const DraggableInstance = ({ inst, obj, scale, gridSize, onDragEnd, onRotateEnd,
               left: 0
             }} />
           </View>
+        ) : obj?.behavior === 'gui_container' ? (
+          <View style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 209, 255, 0.2)', borderWidth: 1, borderColor: '#00D1FF', borderStyle: 'dashed' }}>
+            <Layout color="#00D1FF" size={24} />
+          </View>
         ) : (
           <PixelSprite
             sprite={sprite}

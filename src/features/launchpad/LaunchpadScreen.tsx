@@ -124,7 +124,7 @@ export default function LaunchpadScreen() {
             <View style={styles.sidebarLinks}>
               <TouchableOpacity
                 style={styles.sidebarLinkButton}
-                onPress={() => Linking.openURL('https://paypal.me/yourprofile')}
+                onPress={() => Linking.openURL('https://paypal.me/Urkidden')}
               >
                 <Heart size={14} color="#FFF" />
                 <Text style={styles.sidebarLinkText}>Donate</Text>

@@ -17,6 +17,7 @@ export const BEHAVIORS = [
   { id: 'text', label: 'Text Object', icon: Layout, color: '#FFFFFF' },
   { id: 'progress_bar', label: 'Progress Bar', icon: Activity, color: '#10B981' },
   { id: 'sprite_repeater', label: 'Sprite Repeater', icon: Heart, color: '#F43F5E' },
+  { id: 'gui_container', label: 'GUI Container', icon: Layout, color: '#10B981' },
 ];
 
 interface ObjectCreatorModalProps {

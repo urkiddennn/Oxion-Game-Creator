@@ -56,6 +56,18 @@ export interface AnimationAsset {
   loop: boolean;
 }
 
+export interface GUINode {
+  id: string;
+  name: string;
+  objectId: string; // The GameObject it represents
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  visible: boolean;
+  children: GUINode[]; // Recursive tree structure!
+}
+
 export interface GameObject {
   id: string;
   name: string;
@@ -202,6 +214,9 @@ export interface GameObject {
     iconSize: number;
     linkedVariable?: string;
   };
+  gui_hierarchy?: {
+    root: GUINode[];
+  };
 }
 export interface RoomLayer {
   id: string;
@@ -316,6 +331,13 @@ interface ProjectState {
   deleteLocalVariable: (objectId: string, key: string) => void;
   promoteVariableToGlobal: (objectId: string, key: string) => void;
   deleteGlobalVariable: (key: string) => void;
+  updateGUIHierarchy: (objectId: string, root: GUINode[]) => void;
+  setGlobalVariable: (key: string, value: any) => void;
+  addGlobalVariable: (key: string, amount: number) => void;
+  setLocalVariable: (objectId: string, key: string, value: any) => void;
+  addLocalVariable: (objectId: string, key: string, amount: number) => void;
+  streamedSprites: Map<string, any>;
+  addStreamedSprite: (id: string, sprite: any) => void;
   exportToWeb: () => Promise<{ success: boolean, error?: string }>;
 }
 
@@ -334,7 +356,13 @@ export const useProjectStore = create<ProjectState>()(
       selectedProject: null,
       activeProject: null,
       activeRoomId: null,
+      streamedSprites: new Map(),
       setActiveRoomId: (id) => set({ activeRoomId: id }),
+      addStreamedSprite: (id, sprite) => set((state) => {
+        const next = new Map(state.streamedSprites);
+        next.set(id, sprite);
+        return { streamedSprites: next };
+      }),
       createNewProject: (name, template) => set((state) => {
         let finalName = name;
         let counter = 1;
@@ -581,6 +609,21 @@ export const useProjectStore = create<ProjectState>()(
           ...state.activeProject,
           objects: (state.activeProject.objects || []).map(obj =>
             obj.id === id ? { ...obj, ...updates } : obj
+          )
+        };
+        FileSystemManager.saveProjectJson(updated.id, updated);
+        return {
+          activeProject: updated,
+          selectedProject: state.selectedProject?.name === updated.name ? updated : state.selectedProject,
+          projects: state.projects.map(p => p.name === updated.name ? updated : p)
+        };
+      }),
+      updateGUIHierarchy: (objectId, root) => set((state) => {
+        if (!state.activeProject) return state;
+        const updated = {
+          ...state.activeProject,
+          objects: (state.activeProject.objects || []).map(obj =>
+            obj.id === objectId ? { ...obj, gui_hierarchy: { root } } : obj
           )
         };
         FileSystemManager.saveProjectJson(updated.id, updated);
@@ -1159,10 +1202,11 @@ export const useProjectStore = create<ProjectState>()(
             return { ...obj, variables: { ...obj.variables, local: newLocal } };
           })
         };
+        FileSystemManager.saveProjectJson(updated.id, updated);
         return {
           activeProject: updated,
-          selectedProject: state.selectedProject?.name === updated.name ? updated : state.selectedProject,
-          projects: state.projects.map(p => p.name === updated.name ? updated : p)
+          selectedProject: state.selectedProject?.id === updated.id ? updated : state.selectedProject,
+          projects: state.projects.map(p => p.id === updated.id ? updated : p)
         };
       }),
       promoteVariableToGlobal: (objectId, key) => set((state) => {
@@ -1183,11 +1227,12 @@ export const useProjectStore = create<ProjectState>()(
             return { ...o, variables: { ...o.variables, local: newLocal } };
           })
         };
+        FileSystemManager.saveProjectJson(updated.id, updated);
 
         return {
           activeProject: updated,
-          selectedProject: state.selectedProject?.name === updated.name ? updated : state.selectedProject,
-          projects: state.projects.map(p => p.name === updated.name ? updated : p)
+          selectedProject: state.selectedProject?.id === updated.id ? updated : state.selectedProject,
+          projects: state.projects.map(p => p.id === updated.id ? updated : p)
         };
       }),
       deleteGlobalVariable: (key) => set((state) => {
@@ -1198,10 +1243,89 @@ export const useProjectStore = create<ProjectState>()(
           ...state.activeProject,
           variables: { ...state.activeProject.variables, global: newGlobal }
         };
+        FileSystemManager.saveProjectJson(updated.id, updated);
         return {
           activeProject: updated,
-          selectedProject: state.selectedProject?.name === updated.name ? updated : state.selectedProject,
-          projects: state.projects.map(p => p.name === updated.name ? updated : p)
+          selectedProject: state.selectedProject?.id === updated.id ? updated : state.selectedProject,
+          projects: state.projects.map(p => p.id === updated.id ? updated : p)
+        };
+      }),
+      setGlobalVariable: (key, value) => set((state) => {
+        if (!state.activeProject) return state;
+        const updated = {
+          ...state.activeProject,
+          variables: {
+            ...state.activeProject.variables,
+            global: { ...state.activeProject.variables.global, [key]: value }
+          }
+        };
+        FileSystemManager.saveProjectJson(updated.id, updated);
+        return {
+          activeProject: updated,
+          selectedProject: state.selectedProject?.id === updated.id ? updated : state.selectedProject,
+          projects: state.projects.map(p => p.id === updated.id ? updated : p)
+        };
+      }),
+      addGlobalVariable: (key, amount) => set((state) => {
+        if (!state.activeProject) return state;
+        const current = state.activeProject.variables.global[key] || 0;
+        const updated = {
+          ...state.activeProject,
+          variables: {
+            ...state.activeProject.variables,
+            global: { ...state.activeProject.variables.global, [key]: Number(current) + amount }
+          }
+        };
+        FileSystemManager.saveProjectJson(updated.id, updated);
+        return {
+          activeProject: updated,
+          selectedProject: state.selectedProject?.id === updated.id ? updated : state.selectedProject,
+          projects: state.projects.map(p => p.id === updated.id ? updated : p)
+        };
+      }),
+      setLocalVariable: (objectId, key, value) => set((state) => {
+        if (!state.activeProject) return state;
+        const updated = {
+          ...state.activeProject,
+          objects: (state.activeProject.objects || []).map(obj => {
+            if (obj.id !== objectId) return obj;
+            return {
+              ...obj,
+              variables: {
+                ...obj.variables,
+                local: { ...obj.variables.local, [key]: value }
+              }
+            };
+          })
+        };
+        FileSystemManager.saveProjectJson(updated.id, updated);
+        return {
+          activeProject: updated,
+          selectedProject: state.selectedProject?.id === updated.id ? updated : state.selectedProject,
+          projects: state.projects.map(p => p.id === updated.id ? updated : p)
+        };
+      }),
+      addLocalVariable: (objectId, key, amount) => set((state) => {
+        if (!state.activeProject) return state;
+        const updated = {
+          ...state.activeProject,
+          objects: (state.activeProject.objects || []).map(obj => {
+            if (obj.id !== objectId) return obj;
+            const current = obj.variables.local[key] || 0;
+            return {
+              ...obj,
+              variables: {
+                ...obj.variables,
+                local: { ...obj.variables.local, [key]: Number(current) + amount }
+              }
+            };
+          })
+        };
+        FileSystemManager.saveProjectJson(updated.id, updated);
+        return {
+          activeProject: updated,
+          selectedProject: state.selectedProject?.id === updated.id ? updated : state.selectedProject,
+          projects: state.projects.map(p => p.id === updated.id ? updated : p)
         };
       }),
       exportToWeb: async () => {
@@ -1281,6 +1405,10 @@ export const useProjectStore = create<ProjectState>()(
     {
       name: 'oxion-project-storage',
       storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => {
+        const { streamedSprites, ...rest } = state;
+        return rest;
+      },
     }
   )
 );

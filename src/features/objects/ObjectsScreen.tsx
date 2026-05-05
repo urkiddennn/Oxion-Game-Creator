@@ -18,6 +18,7 @@ const BEHAVIORS = [
   { id: 'popup', label: 'Pop-up Text', icon: Layout, color: '#94A3B8' },
   { id: 'text', label: 'Text Object', icon: Layout, color: '#FFFFFF' },
   { id: 'progress_bar', label: 'Progress Bar', icon: Activity, color: '#10B981' },
+  { id: 'gui_container', label: 'GUI Container', icon: Layout, color: '#10B981' },
 ];
 
 
@@ -129,6 +130,9 @@ export default function ObjectsScreen() {
         spacing: 4,
         iconSize: 24,
         linkedVariable: ''
+      } : undefined,
+      gui_hierarchy: behaviorId === 'gui_container' ? {
+        root: []
       } : undefined,
     };
     addObject(newObj);

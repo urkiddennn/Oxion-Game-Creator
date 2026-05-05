@@ -1,6 +1,7 @@
 import React, { JSX, useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, TextInput, Switch, Image, StyleSheet } from 'react-native';
-import { Info, Palette, Bolt, Share2, Settings, X, Plus, Trash2, Heart, Music, Target, Layers, Play, ArrowLeft, ArrowRight, Pause, ChevronUp, Zap, MousePointer2, HelpCircle, Layout, Globe, Activity, ChevronDown, ChevronRight, Database, Cpu, GitBranch, Code } from 'lucide-react-native';
+import { Info, Palette, Bolt, Share2, Settings, X, Plus, Trash2, Heart, Music, Target, Layers, Play, ArrowLeft, ArrowRight, Pause, ChevronUp, Zap, MousePointer2, HelpCircle, Layout, Globe, Activity, ChevronDown, ChevronRight, Database, Cpu, GitBranch, Code, Monitor } from 'lucide-react-native';
+import { useNavigation } from '@react-navigation/native';
 import { theme } from '../../../../theme';
 import { GameObject, useProjectStore } from '../../../../store/useProjectStore';
 import { styles } from './ObjectInspectorModal.styles';
@@ -32,6 +33,8 @@ interface ObjectInspectorModalProps {
   activePropertyIndex: number | null;
   setActivePropertyIndex: (index: number | null) => void;
 }
+
+
 
 const VariableRow = ({
   varKey,
@@ -225,6 +228,7 @@ export default function ObjectInspectorModal({
   activeSubIndex, setActiveSubIndex,
   activePropertyIndex, setActivePropertyIndex
 }: ObjectInspectorModalProps) {
+  const navigation = useNavigation();
   const [activeActionIndex, setActiveActionIndex] = useState<number | null>(null);
   const [isAddingSubForIndex, setIsAddingSubForIndex] = useState<number | null>(null);
 
@@ -1572,6 +1576,30 @@ export default function ObjectInspectorModal({
                     <PropertyRow label="Name">
                       <InputGroup label="Name" value={safeObject.name} onChange={(v: string) => updateField('name', v)} />
                     </PropertyRow>
+
+                    {safeObject.behavior === 'gui_container' && (
+                      <TouchableOpacity 
+                        style={{
+                          backgroundColor: theme.colors.primary,
+                          padding: 12,
+                          borderRadius: 8,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 10,
+                          marginTop: 12,
+                          marginBottom: 10
+                        }}
+                        onPress={() => {
+                          onClose();
+                          // @ts-ignore
+                          navigation.navigate('GUIBuilder', { guiObjectId: safeObject.id });
+                        }}
+                      >
+                        <Monitor size={18} color="#000" />
+                        <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 12 }}>EDIT GUI LAYOUT</Text>
+                      </TouchableOpacity>
+                    )}
 
                     {(safeObject.behavior === 'player' || safeObject.behavior === 'enemy') && (
                       <PropertyRow label="Max Health">
