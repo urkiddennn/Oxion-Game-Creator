@@ -300,7 +300,8 @@ export default function RoomsScreen() {
     if (currentRoom && currentRoom.layers?.length) {
       // If activeLayerId is null or doesn't exist in current room, pick the first one
       if (!activeLayerId || !currentRoom.layers.find(l => l.id === activeLayerId)) {
-        setActiveLayerId(currentRoom.layers[0].id);
+        // Find the last layer (top-most) to be the default active one
+        setActiveLayerId(currentRoom.layers[currentRoom.layers.length - 1].id);
       }
     }
   }, [activeRoomId, currentRoom?.layers?.length]);
@@ -793,14 +794,6 @@ export default function RoomsScreen() {
                                   layer.name
                                 );
                               } else {
-                                if (selectedInstanceId) {
-                                  // If an object is selected, move it to this layer
-                                  updateRoom(currentRoom.id, {
-                                    instances: currentRoom.instances.map(i =>
-                                      i.id === selectedInstanceId ? { ...i, layerId: layer.id } : i
-                                    )
-                                  });
-                                }
                                 setActiveLayerId(layer.id);
                               }
                             }}
@@ -825,6 +818,35 @@ export default function RoomsScreen() {
                           </TouchableOpacity>
 
                           <View style={styles.layerActions}>
+                            {selectedInstanceId && !isActive && (
+                              <TouchableOpacity 
+                                onPress={() => {
+                                  updateRoom(currentRoom.id, {
+                                    instances: currentRoom.instances.map(i =>
+                                      i.id === selectedInstanceId ? { ...i, layerId: layer.id } : i
+                                    )
+                                  });
+                                }}
+                                style={{ marginRight: 4 }}
+                                tooltip="Move selected object to this layer"
+                              >
+                                <ArrowUpToLine color={theme.colors.primary} size={14} />
+                              </TouchableOpacity>
+                            )}
+                            <TouchableOpacity 
+                              onPress={() => reorderLayer(currentRoom.id, layer.id, 'forward')}
+                              disabled={revIdx === 0}
+                              style={{ opacity: revIdx === 0 ? 0.3 : 1 }}
+                            >
+                              <ChevronUp color={theme.colors.text} size={14} />
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                              onPress={() => reorderLayer(currentRoom.id, layer.id, 'backward')}
+                              disabled={revIdx === currentRoom.layers.length - 1}
+                              style={{ opacity: revIdx === currentRoom.layers.length - 1 ? 0.3 : 1 }}
+                            >
+                              <ChevronDown color={theme.colors.text} size={14} />
+                            </TouchableOpacity>
                             <TouchableOpacity onPress={() => updateLayer(currentRoom.id, layer.id, { visible: !layer.visible })}>
                               {layer.visible ? <Eye color={theme.colors.text} size={14} /> : <EyeOff color={theme.colors.textMuted} size={14} />}
                             </TouchableOpacity>

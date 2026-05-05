@@ -255,7 +255,8 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
   gameWidth: number,
   gameHeight: number,
   ySort?: boolean,
-  ySortAmount?: number
+  ySortAmount?: number,
+  layerIndex?: number
 }) => {
   const [imgDimensions, setImgDimensions] = useState({ w: 0, h: 0 });
   const [currentDimId, setCurrentDimId] = useState<string | null>(null);
@@ -532,7 +533,7 @@ const PhysicsBodyBase = ({ sprite, sv, width = 32, height = 32, onTap, name, spr
       ],
       display: isVisible.value ? 'flex' : 'none',
       borderColor: debug ? (sv.isColliding?.value ? '#ff0000' : '#00ff00') : 'transparent',
-      zIndex: ySort ? Math.floor(ty + height * scale + (ySortAmount || 0) + (obj?.appearance?.ySortOffset || 0)) : undefined,
+      zIndex: ((layerIndex || 0) * 10000) + (ySort ? Math.floor(ty + height * scale + (ySortAmount || 0) + (obj?.appearance?.ySortOffset || 0)) : 0),
     };
   });
 
@@ -1612,7 +1613,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           targetX += resolveValue(parts[2], body, obj);
           targetY += resolveValue(parts[3], body, obj);
         }
-        spawnInstance(targetId, targetX, targetY);
+        spawnInstance(targetId, targetX, targetY, false, {}, (body as any).gameInfo?.layerIndex);
       } else if (cmd === 'animation' || cmd === 'set_animation') {
         const animStr = parts[1];
         let targetSpriteId: string | undefined;
@@ -1811,7 +1812,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       }
     };
 
-    const spawnInstance = (objectId: string, x: number, y: number, isParticle = false, settings?: any) => {
+    const spawnInstance = (objectId: string, x: number, y: number, isParticle = false, settings?: any, layerIndex?: number) => {
       const pObj = objectMapRef.current.get(objectId);
       if (!pObj) return;
       const physics = pObj.physics || {};
@@ -1913,7 +1914,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         height,
         obj: instObj,
         scripts: parsedScripts,
-        spawnTime: Date.now()
+        spawnTime: Date.now(),
+        layerIndex: layerIndex ?? 0
       };
 
       // Run 'on_start' scripts immediately for spawned instance
@@ -1944,17 +1946,29 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         width,
         height,
         expires: isParticle ? Date.now() + (settings?.lifetime || 1000) : undefined,
-        name: pObj.name
+        name: pObj.name,
+        layerIndex: layerIndex ?? 0
       });
     };
 
     // Declare roomStartTime BEFORE the instances loop so spawnTime is set correctly
     const collisionCooldowns = new Map<string, number>();
 
-    (currentRoom?.instances || []).forEach((inst: any, index: number) => {
+    // Sort instances by layer order
+    const layers = currentRoom?.layers || [{ id: 'default', name: 'Layer 1', visible: true, locked: false }];
+    const layerOrderMap = new Map(layers.map((l, i) => [l.id, i]));
+    
+    const sortedInstances = [...(currentRoom?.instances || [])].sort((a, b) => {
+      const orderA = layerOrderMap.get(a.layerId || layers[0].id) ?? 0;
+      const orderB = layerOrderMap.get(b.layerId || layers[0].id) ?? 0;
+      return orderA - orderB;
+    });
+
+    sortedInstances.forEach((inst: any, index: number) => {
       if (!inst) return;
-      const layers = currentRoom.layers || [{ id: 'default', name: 'Layer 1', visible: true, locked: false }];
-      const layer = layers.find(l => l.id === (inst.layerId || layers[0].id));
+      const instLayerId = inst.layerId || (layers[0]?.id || 'default');
+      const layer = layers.find(l => l.id === instLayerId);
+      const layerIndex = layers.findIndex(l => l.id === instLayerId);
       if (layer && !layer.visible) return;
       const obj = objectMap.get(inst.objectId);
       if (!obj) return;
@@ -2060,7 +2074,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         scripts: parsedScripts,
         constantVx: obj.logic?.constantVelocityX,
         obj: instObj,
-        spawnTime: roomStartTime
+        spawnTime: roomStartTime,
+        layerIndex: layerIndex >= 0 ? layerIndex : 0
       };
 
       // Run 'on_start' scripts deferred so the engine/React state is settled
@@ -2096,6 +2111,17 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         jumpedThisPress: false
       });
       if (obj.behavior === 'emitter' || obj.behavior === 'particle') emitters.push({ body, obj, lastSpawn: 0 });
+      dynamicRef.push({
+        id: inst.id,
+        gameObject: instObj,
+        body,
+        sv,
+        sprite,
+        width,
+        height,
+        name: instObj.name,
+        layerIndex: layerIndex >= 0 ? layerIndex : 0
+      });
 
       attachListeners(body, obj);
     });
@@ -2395,7 +2421,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
         if (now - e.lastSpawn > 1000 / (s.rate || 5)) {
           e.lastSpawn = now;
-          spawnInstance(s.particleObjectId, e.body.position.x, e.body.position.y, true, { ...(s || {}), angle: e.body.angle * 180 / Math.PI });
+          const layerIndex = (e.body as any).gameInfo?.layerIndex ?? 0;
+          spawnInstance(s.particleObjectId, e.body.position.x, e.body.position.y, true, { ...(s || {}), angle: e.body.angle * 180 / Math.PI }, layerIndex);
         }
       });
 
@@ -2865,6 +2892,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                           gameHeight={gameHeight}
                           ySort={currentRoom?.settings?.ySort}
                           ySortAmount={currentRoom?.settings?.ySortAmount}
+                          layerIndex={d.layerIndex}
                         />
                       );
                     })}

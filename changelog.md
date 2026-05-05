@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.6.9] - 2026-05-05
+### Fixed
+- **Layer Management**: Fixed a bug where inactive layers could not be selected in the sidebar.
+- **Layer Management**: Separated layer selection from instance moving to prevent accidental layer changes.
+- **Layer Visibility**: Fixed issues where hiding one layer would hide objects on others.
+- **Layer Z-Ordering**: Implemented full layer support in the GamePlayer, ensuring objects on higher layers correctly render on top.
+- **Layer Interaction**: Objects no longer "pop" behind others when clicked if they are on a higher layer.
+### Added
+- **Layer Reordering**: Added Up/Down arrows in the Room Editor to reorder layers.
+- **Manual Instance Moving**: Added a "Move to Layer" button in the layer list when an instance is selected.
+
+## [1.6.8] - 2026-05-04
+### Added
+- **Expanded Documentation**: Added a dedicated "Learn" page and "Quick Start Guide".
+- **Documentation Navigation**: Integrated sidebars and card-based layouts for easier learning.
+
 ## [1.6.4] - 2026-05-04
 ### Fixed
 - **Dynamic Room Grid**: Resolved the "disappearing grid" bug when using small grid sizes (e.g., 8). The editor grid now dynamically calculates the number of lines required based on the room dimensions and current grid size, ensuring full coverage across the entire room workspace.
