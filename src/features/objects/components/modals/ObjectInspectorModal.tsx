@@ -269,6 +269,7 @@ export default function ObjectInspectorModal({
       'jump', 'move_left', 'move_right', 'stop_x', 'restart_room', 'go_to_room:',
       'set_value', 'add_value', 'tween_to', 'bind_to_variable', 'on_empty', 'on_full',
       'damage', 'heal', 'set_count', 'on_life_lost', 'on_zero_lives',
+      'save_game', 'load_game',
       'current_count', 'max_count', 'value', 'health',
       'start_sound:', 'stop_sound:', 'on_start_sound', 'on_start_sound:', 'on_stop_sound', 'on_stop_sound:',
       'on_start', 'on_tick', 'on_timer:', 'on_collision', 'on_tap',

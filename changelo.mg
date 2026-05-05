@@ -1,3 +1,8 @@
+## [1.8.0] - 2026-05-05
+### Added
+- **Global Save System**: Implemented `save_game` and `load_game` actions to persist player progress (variables and current room) across sessions using AsyncStorage.
+- **Engine Persistence**: Updated the game engine to handle state reconstruction from saved data, preventing automatic resets during load sequences.
+
 ## [1.7.9] - 2026-05-05
 ### Fixed
 - **Reanimated Worklet Synchronization**: Resolved a critical "Tried to modify key" error by isolating Worklets from the main logic objects.

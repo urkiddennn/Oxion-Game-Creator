@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, DeviceEventEmitter, TextInput, Image, Pressable, Modal, Dimensions, ScrollView, Alert } from 'react-native';
 import { Audio } from 'expo-av';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { styles } from './GamePlayer.styles';
 import Matter from 'matter-js';
 import { X, RotateCcw, Play as PlayIcon, Pause, ArrowLeft, ArrowRight, ChevronUp, Bolt, Database } from 'lucide-react-native';
@@ -1020,6 +1021,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
   const [nonce, setNonce] = useState(0);
   const varCooldowns = useRef<Record<string, number>>({});
   const lastRestartRef = useRef(0);
+  const pendingLoadRef = useRef<any>(null);
+  const lastLoadTimeRef = useRef(0);
+  const lastSaveTimeRef = useRef(0);
 
   // Calculate initial camera position based on target to avoid "jump" on first frame
   const initialCamPos = useMemo(() => {
@@ -1357,14 +1361,21 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     cameraRef.current = { x: initialCamPos.x, y: initialCamPos.y };
     setDynamicElements([]);
     setInstanceOverrides({});
-    setLocalVariables({});
-    localVariablesRef.current = {};
-    let cameraInitialized = false;
-
-    // Reset global variables to project defaults on every play session
-    const defaultGlobals = { ...(currentProject?.variables?.global || {}) };
-    variablesRef.current = defaultGlobals;
-    setVariables(defaultGlobals);
+    // Reset variables to defaults OR load from pending save
+    if (pendingLoadRef.current) {
+      const data = pendingLoadRef.current;
+      variablesRef.current = { ...data.globals };
+      setVariables({ ...data.globals });
+      localVariablesRef.current = { ...data.locals };
+      setLocalVariables({ ...data.locals });
+      pendingLoadRef.current = null;
+    } else {
+      const defaultGlobals = { ...(currentProject?.variables?.global || {}) };
+      variablesRef.current = defaultGlobals;
+      setVariables(defaultGlobals);
+      setLocalVariables({});
+      localVariablesRef.current = {};
+    }
     varCooldowns.current = {};
 
     const engine = Matter.Engine.create({
@@ -1588,7 +1599,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         'set_angle', 'add_angle', 'point_towards', 'var_add', 'var_set', 'lvar_add', 'lvar_set',
         'set_value', 'tween_to', 'add_value', 'bind_to_variable', 'set_health', 'add_health',
         'damage', 'heal', 'set_count', 'restart_room', 'go_to_room', 'create_instance',
-        'animation', 'set_animation', 'start_sound', 'stop_sound', 'target_other'
+        'animation', 'set_animation', 'start_sound', 'stop_sound', 'target_other',
+        'save_game', 'load_game'
       ];
 
       if (!knownCommands.includes(cmd)) {
@@ -1841,6 +1853,44 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           setRoomOverride(room.id);
           setRestartKey(k => k + 1);
         }
+      } else if (cmd === 'save_game') {
+        const now = Date.now();
+        if (now - lastSaveTimeRef.current < 2000) return; // 2s cooldown
+        lastSaveTimeRef.current = now;
+
+        const saveKey = `oxion_save_${currentProject?.id}`;
+        const saveData = {
+          globals: variablesRef.current,
+          locals: localVariablesRef.current,
+          roomId: currentRoom?.id
+        };
+        AsyncStorage.setItem(saveKey, JSON.stringify(saveData)).then(() => {
+          console.log('[Oxion] Game Saved to ' + saveKey);
+        }).catch(err => {
+          console.error('[Oxion] Save Error:', err);
+        });
+      } else if (cmd === 'load_game') {
+        if (pendingLoadRef.current) return; // Already loading
+        const now = Date.now();
+        if (now - lastLoadTimeRef.current < 2000) return; // 2s cooldown
+        lastLoadTimeRef.current = now;
+
+        const saveKey = `oxion_save_${currentProject?.id}`;
+        AsyncStorage.getItem(saveKey).then(json => {
+          if (json) {
+            const data = JSON.parse(json);
+            pendingLoadRef.current = data;
+            if (data.roomId) {
+              setRoomOverride(data.roomId);
+              setRestartKey(k => k + 1);
+            } else {
+              setRestartKey(k => k + 1);
+            }
+            console.log('[Oxion] Game Loaded from ' + saveKey);
+          }
+        }).catch(err => {
+          console.error('[Oxion] Load Error:', err);
+        });
       } else if (cmd === 'log' || cmd === 'console_log') {
         const val = resolveValue(parts[1], body, obj);
         console.log(`[Oxion Log] [${obj?.name || 'Object'}]:`, val);
@@ -1973,7 +2023,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     const attachListeners = (body: Matter.Body, obj: GameObject) => {
       obj.logic?.listeners?.forEach(l => {
         // Skip events handled elsewhere to prevent double-firing or handled by specialized loops
-        const skippedEvents = ['on_timer', 'on_tick', 'on_start', 'on_tap', 'builtin_tap', 'on_screen_tap'];
+        const skippedEvents = ['on_timer', 'on_tick', 'on_start', 'on_tap', 'when_self_tap', 'builtin_tap', 'on_screen_tap'];
         if (skippedEvents.some(se => l.eventId === se || l.eventId?.startsWith(se + ':'))) return;
 
         const sub = DeviceEventEmitter.addListener(l.eventId, (data: any) => {
@@ -2007,7 +2057,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         }
         // Visual logic listeners for on_tap and builtin_tap
         obj.logic?.listeners?.forEach((l: any) => {
-          if (l.eventId === 'on_tap' || l.eventId === 'builtin_tap') {
+          if (l.eventId === 'on_tap' || l.eventId === 'builtin_tap' || l.eventId === 'when_self_tap') {
             executeListenerLogic(l, body, obj, 'TapListener');
           }
         });

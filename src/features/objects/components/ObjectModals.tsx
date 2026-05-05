@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput } from 'react-native';
-import { X, Image as ImageIcon, Film, ArrowLeft, ArrowRight, Pause, ArrowUp, Layout, Zap, Settings, Activity, ChevronUp, MousePointer2, Bolt, Clock, GitBranch, Heart, Volume2, VolumeX, Search } from 'lucide-react-native';
+import { X, Image as ImageIcon, Film, ArrowLeft, ArrowRight, Pause, ArrowUp, Layout, Zap, Settings, Activity, ChevronUp, MousePointer2, Bolt, Clock, GitBranch, Heart, Volume2, VolumeX, Search, Database } from 'lucide-react-native';
 import ObjectCreatorModal from './modals/ObjectCreatorModal';
 import ObjectInspectorModal from './modals/ObjectInspectorModal';
 import { theme } from '../../../theme';
@@ -114,7 +114,7 @@ export default function ObjectModals({
                       const isGrid = !!sprite.grid?.enabled;
                       const sw = isGrid ? (sprite.grid.frameWidth || sprite.width) : sprite.width;
                       const sh = isGrid ? (sprite.grid.frameHeight || sprite.height) : sprite.height;
-                      
+
                       const updates: any = {
                         appearance: { ...appearance, spriteId: sprite.id },
                         width: sw || 32,
@@ -128,7 +128,7 @@ export default function ObjectModals({
                           }
                         }
                       };
-                      
+
                       updateObject(selectedObject.id, updates);
                       setSelectedObject({ ...selectedObject, ...updates });
                       setSpritePickerVisible(false);
@@ -337,6 +337,7 @@ export default function ObjectModals({
                       { id: 'on_jump_press', label: 'On Jump Button (Global)' },
                       { id: 'builtin_left', label: 'When Player Moves Left' },
                       { id: 'builtin_right', label: 'When Player Moves Right' },
+                      { id: 'when_self_tap', label: 'When THIS Object Tapped' },
                       { id: 'builtin_tap', label: 'When Screen Tapped' },
                       { id: 'on_screen_tap', label: 'On Screen Tap (Global)' },
                       { id: 'on_release', label: 'On Object Release' },
@@ -356,6 +357,7 @@ export default function ObjectModals({
                         {ev.id === 'builtin_left' && <ArrowLeft size={14} color={theme.colors.primary} />}
                         {ev.id === 'builtin_right' && <ArrowRight size={14} color={theme.colors.primary} />}
                         {ev.id === 'builtin_tap' && <MousePointer2 size={14} color={theme.colors.primary} />}
+                        {ev.id === 'when_self_tap' && <MousePointer2 size={14} color={theme.colors.success} />}
                         {ev.id === 'on_screen_tap' && <MousePointer2 size={14} color={theme.colors.secondary} />}
                         {ev.id === 'on_release' && <Pause size={14} color={theme.colors.error} />}
                         <Text style={styles.actionPresetText}>{ev.label}</Text>
@@ -900,6 +902,8 @@ export default function ObjectModals({
                       { id: 'tap_x', label: 'Tap X Position', icon: MousePointer2, color: theme.colors.warning },
                       { id: 'tap_y', label: 'Tap Y Position', icon: MousePointer2, color: theme.colors.warning },
                       { id: 'restart_room', label: 'Restart Room', icon: GitBranch, color: theme.colors.info },
+                      { id: 'save_game', label: 'Save Game Progress', icon: Database, color: theme.colors.success },
+                      { id: 'load_game', label: 'Load Game Progress', icon: Database, color: theme.colors.warning },
                     ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
                       <TouchableOpacity
                         key={act.id}
