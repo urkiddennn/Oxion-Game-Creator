@@ -207,9 +207,9 @@ export default function ObjectModals({
               flexDirection: 'row',
               alignItems: 'center',
               backgroundColor: 'rgba(255,255,255,0.05)',
-              borderRadius: 12,
-              paddingHorizontal: 12,
-              marginBottom: 20,
+              borderRadius: 2,
+              paddingHorizontal: 8,
+              marginBottom: 12,
               borderWidth: 1,
               borderColor: 'rgba(255,255,255,0.1)'
             }}>
@@ -646,9 +646,9 @@ export default function ObjectModals({
               flexDirection: 'row',
               alignItems: 'center',
               backgroundColor: 'rgba(255,255,255,0.05)',
-              borderRadius: 12,
-              paddingHorizontal: 12,
-              marginBottom: 20,
+              borderRadius: 2,
+              paddingHorizontal: 8,
+              marginBottom: 12,
               borderWidth: 1,
               borderColor: 'rgba(255,255,255,0.1)'
             }}>

@@ -904,7 +904,7 @@ export default function RoomsScreen() {
                           </View>
 
                           {obj?.behavior === 'text' && (
-                            <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', padding: 8, borderRadius: 8, borderLeftWidth: 2, borderLeftColor: theme.colors.primary }}>
+                            <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', padding: 6, borderRadius: 2, borderLeftWidth: 2, borderLeftColor: theme.colors.primary }}>
                               <Text style={{ color: theme.colors.textMuted, fontSize: 10, marginBottom: 4 }}>TEXT CONTENT</Text>
                               <Text style={{ color: '#fff', fontSize: 12, fontFamily: obj.text?.fontFamily === 'pixel' ? 'Pixel' : undefined }}>
                                 {obj.text?.content || '(Empty)'}
@@ -986,14 +986,14 @@ export default function RoomsScreen() {
                     <Text style={[styles.settingLabel, { marginBottom: 8 }]}>Background Color</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                       <TouchableOpacity
-                        style={{
-                          width: 44,
-                          height: 44,
-                          borderRadius: 8,
-                          backgroundColor: currentRoom?.settings?.backgroundColor || '#2E333D',
-                          borderWidth: 2,
-                          borderColor: 'rgba(255,255,255,0.1)'
-                        }}
+                          style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: 2,
+                            backgroundColor: currentRoom?.settings?.backgroundColor || '#2E333D',
+                            borderWidth: 1,
+                            borderColor: 'rgba(255,255,255,0.1)'
+                          }}
                         onPress={() => setColorPickerVisible(true)}
                       />
                       <View style={{ flex: 1 }}>
@@ -1155,7 +1155,7 @@ export default function RoomsScreen() {
                         </TouchableOpacity>
 
                         {btn === 'joystick' && isShowing && (
-                          <View style={{ marginTop: 8, padding: 8, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 4, gap: 8 }}>
+                          <View style={{ marginTop: 6, padding: 6, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 2, gap: 4 }}>
                             <RoomSettingInput
                               label="Dead Zone"
                               value={controls?.joystick?.dead_zone ?? 10}
@@ -1369,7 +1369,7 @@ const ColorPickerModal = ({ visible, onClose, color, onColorChange }: any) => {
             width: '100%',
             height: 44,
             backgroundColor: color,
-            borderRadius: 8,
+            borderRadius: 2,
             borderWidth: 1,
             borderColor: 'rgba(255,255,255,0.1)',
             justifyContent: 'center',
@@ -1393,7 +1393,7 @@ const ColorPickerModal = ({ visible, onClose, color, onColorChange }: any) => {
               marginTop: 20,
               backgroundColor: theme.colors.primary,
               paddingVertical: 14,
-              borderRadius: 8,
+              borderRadius: 2,
               width: '100%',
               alignItems: 'center',
               shadowColor: theme.colors.primary,

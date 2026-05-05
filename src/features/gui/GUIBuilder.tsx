@@ -516,7 +516,7 @@ const styles = StyleSheet.create({
   headerTitle: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
   headerSubtitle: { color: '#666', fontSize: 10 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 15 },
-  headerBtn: { width: 30, height: 30, justifyContent: 'center', alignItems: 'center', backgroundColor: '#2E333D', borderRadius: 4 },
+  headerBtn: { width: 30, height: 30, justifyContent: 'center', alignItems: 'center', backgroundColor: '#2E333D', borderRadius: 2 },
   vDivider: { width: 1, height: 20, backgroundColor: '#333', marginHorizontal: 8 },
   zoomText: { color: '#888', fontSize: 12, width: 40, textAlign: 'center' },
 
@@ -534,7 +534,7 @@ const styles = StyleSheet.create({
   canvasArea: { flex: 1, backgroundColor: '#050505', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
   canvasWrapper: { width: 2000, height: 2000, justifyContent: 'center', alignItems: 'center' },
   screenBounds: { backgroundColor: '#111', borderWidth: 1, borderColor: '#333' },
-  canvasOverlay: { position: 'absolute', bottom: 20, right: 20, backgroundColor: 'rgba(0,0,0,0.5)', padding: 8, borderRadius: 4 },
+  canvasOverlay: { position: 'absolute', bottom: 20, right: 20, backgroundColor: 'rgba(0,0,0,0.5)', padding: 6, borderRadius: 2 },
   canvasInfo: { color: '#666', fontSize: 10 },
   canvasElement: { borderWidth: 1, borderColor: 'transparent' },
   canvasElementActive: { borderColor: theme.colors.primary, backgroundColor: 'rgba(0, 209, 255, 0.1)' },
@@ -545,16 +545,16 @@ const styles = StyleSheet.create({
 
   propRow: { marginBottom: 15 },
   propLabel: { color: '#888', fontSize: 11, marginBottom: 8 },
-  inputWrapper: { backgroundColor: '#16191E', padding: 8, borderRadius: 4, borderWidth: 1, borderColor: '#333' },
+  inputWrapper: { backgroundColor: '#16191E', padding: 6, borderRadius: 2, borderWidth: 1, borderColor: '#333' },
   inputText: { color: '#FFF', fontSize: 12, padding: 0 },
-  numInput: { backgroundColor: '#16191E', padding: 4, borderRadius: 4, borderWidth: 1, borderColor: '#333', alignItems: 'center', height: 32, justifyContent: 'center' },
+  numInput: { backgroundColor: '#16191E', padding: 4, borderRadius: 2, borderWidth: 1, borderColor: '#333', alignItems: 'center', height: 28, justifyContent: 'center' },
   numInputText: { color: theme.colors.primary, fontSize: 12, fontWeight: 'bold', width: '100%', textAlign: 'center', padding: 0 },
   miniLabel: { color: '#444', fontSize: 9, marginBottom: 4 },
 
-  objSelect: { paddingHorizontal: 10, paddingVertical: 5, backgroundColor: '#1E2228', borderRadius: 4, marginRight: 6, borderWidth: 1, borderColor: '#333' },
+  objSelect: { paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#1E2228', borderRadius: 2, marginRight: 6, borderWidth: 1, borderColor: '#333' },
   objSelectActive: { backgroundColor: theme.colors.primary },
   objSelectText: { color: '#888', fontSize: 10 },
 
-  actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: theme.colors.primary, padding: 10, borderRadius: 4 },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: theme.colors.primary, padding: 8, borderRadius: 2 },
   actionBtnText: { color: '#000', fontSize: 10, fontWeight: 'bold' }
 });

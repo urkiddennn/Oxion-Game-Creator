@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { theme } from '../theme';
+import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useProjectStore } from '../store/useProjectStore';
 import LaunchpadScreen from '../features/launchpad/LaunchpadScreen';
@@ -18,7 +19,16 @@ export default function RootNavigator() {
   }, []);
 
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={{
+      ...DarkTheme,
+      colors: {
+        ...DarkTheme.colors,
+        background: theme.colors.background,
+        card: '#16191E',
+        text: theme.colors.text,
+        border: theme.colors.border,
+      }
+    }}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!activeProject ? (
           <Stack.Screen name="Launchpad" component={LaunchpadScreen} />

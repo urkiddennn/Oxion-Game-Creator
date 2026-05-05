@@ -21,17 +21,17 @@ export const styles = StyleSheet.create({
     marginTop: 8,
   },
   spriteGrid: {
-    padding: 8,
+    padding: 4,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 4,
+    gap: 2,
   },
   spriteCard: {
     width: '9.5%', // Approx 10 per row
     aspectRatio: 1,
     backgroundColor: '#1E2228',
-    borderRadius: 4,
-    padding: 2,
+    borderRadius: 1,
+    padding: 1,
     borderWidth: 1,
     borderColor: theme.colors.border,
     alignItems: 'center',
@@ -41,7 +41,7 @@ export const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 1,
     backgroundColor: '#16191E',
-    borderRadius: 2,
+    borderRadius: 1,
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
@@ -71,7 +71,7 @@ export const styles = StyleSheet.create({
     right: 30,
     width: 48,
     height: 48,
-    borderRadius: 8,
+    borderRadius: 4,
     backgroundColor: theme.colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
@@ -90,7 +90,7 @@ export const styles = StyleSheet.create({
   menuContainer: {
     width: 250,
     backgroundColor: '#16191E',
-    borderRadius: 4,
+    borderRadius: 2,
     borderWidth: 1,
     borderColor: theme.colors.border,
     padding: 4,
@@ -107,14 +107,14 @@ export const styles = StyleSheet.create({
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    gap: 12,
+    padding: 10,
+    gap: 8,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border + '40',
   },
   menuText: {
     color: theme.colors.text,
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '600',
   },
   detailsContent: {
@@ -126,8 +126,8 @@ export const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   detailsHeader: {
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -150,7 +150,7 @@ export const styles = StyleSheet.create({
     borderRightWidth: 1,
     borderRightColor: '#222',
     backgroundColor: '#0D0F12',
-    padding: 8,
+    padding: 4,
   },
   slicerMain: {
     flex: 1,
@@ -161,7 +161,7 @@ export const styles = StyleSheet.create({
     padding: 8,
   },
   sidebarSection: {
-    marginBottom: 12,
+    marginBottom: 8,
   },
   sectionTitle: {
     color: '#555',

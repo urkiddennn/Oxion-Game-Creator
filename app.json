@@ -5,6 +5,7 @@
     "version": "1.7.0",
     "orientation": "landscape",
     "icon": "./assets/oxion.png",
+    "backgroundColor": "#0F1115",
     "userInterfaceStyle": "dark",
     "jsEngine": "hermes",
     "androidStatusBar": {
