@@ -1174,6 +1174,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
   const variablesRef = useRef<Record<string, number>>(currentProject?.variables?.global || { score: 0 });
   const [localVariables, setLocalVariables] = useState<Record<string, Record<string, number>>>({});
   const localVariablesRef = useRef<Record<string, Record<string, number>>>({});
+  const variablesDirtyRef = useRef<boolean>(false);
   const varKeysCache = useRef<{ keys: string[], lowerMap: Record<string, string> }>({ keys: [], lowerMap: {} });
 
   // Keep varKeysCache in sync for fast lookups
@@ -1225,13 +1226,18 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     const numAmount = Number(amount) || 0;
     const newVal = isSet ? numAmount : currentVal + numAmount;
     variablesRef.current = { ...variablesRef.current, [name]: newVal };
+    variablesDirtyRef.current = true;
 
     // Throttled UI flush: batch updates, max 30 renders/sec
     if (!pendingVarFlush.current) {
       pendingVarFlush.current = setTimeout(() => {
         pendingVarFlush.current = null;
-        setVariables({ ...variablesRef.current });
-        setNonce(n => n + 1);
+        if (variablesDirtyRef.current) {
+          setVariables({ ...variablesRef.current });
+          setLocalVariables({ ...localVariablesRef.current });
+          setNonce(n => n + 1);
+          variablesDirtyRef.current = false;
+        }
       }, 33); // ~30fps UI refresh
     }
   }, []);
@@ -1250,13 +1256,18 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       ...localVariablesRef.current,
       [bodyId]: { ...current, [name]: newVal }
     };
+    variablesDirtyRef.current = true;
 
     // Throttled flush — same as global
     if (!pendingVarFlush.current) {
       pendingVarFlush.current = setTimeout(() => {
         pendingVarFlush.current = null;
-        setLocalVariables({ ...localVariablesRef.current });
-        setNonce(n => n + 1);
+        if (variablesDirtyRef.current) {
+          setVariables({ ...variablesRef.current });
+          setLocalVariables({ ...localVariablesRef.current });
+          setNonce(n => n + 1);
+          variablesDirtyRef.current = false;
+        }
       }, 33);
     }
   }, []);
@@ -1272,6 +1283,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       joystick_angle: Number(data.angle.toFixed(1)),
       joystick_magnitude: Number(data.magnitude.toFixed(2))
     };
+    variablesDirtyRef.current = true;
 
     // Auto-map horizontal movement
     if (data.x < -0.3) {
@@ -1309,6 +1321,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       joystick_angle: 0,
       joystick_magnitude: 0
     };
+    variablesDirtyRef.current = true;
     inputLeft.current = 0;
     inputRight.current = 0;
     inputUp.current = 0;
@@ -1328,8 +1341,12 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
   useEffect(() => {
     if (!visible || !isPlaying) return;
     const interval = setInterval(() => {
-      setVariables({ ...variablesRef.current });
-      setLocalVariables({ ...localVariablesRef.current });
+      if (variablesDirtyRef.current) {
+        setVariables({ ...variablesRef.current });
+        setLocalVariables({ ...localVariablesRef.current });
+        setNonce(n => n + 1);
+        variablesDirtyRef.current = false;
+      }
     }, 500); // Throttled to 500ms
     return () => clearInterval(interval);
   }, [visible, isPlaying]);
@@ -2160,6 +2177,20 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         };
       }) || [];
 
+      // Pre-parse ALL other Visual Logic Editor listeners
+      pObj.logic?.listeners?.forEach((l: any) => {
+        if (!l.parsedImmediate && l.immediateActions) {
+          l.parsedImmediate = l.immediateActions.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean);
+        }
+        if (!l.parsedSubConditions && l.subConditions) {
+          l.parsedSubConditions = l.subConditions.map((sc: any) => ({
+            ...sc,
+            parsedActions: sc.actions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean),
+            parsedElseActions: sc.elseActions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean),
+          }));
+        }
+      });
+
       pObj.logic?.listeners?.forEach((l: any) => {
         if (l.eventId?.startsWith('on_timer') || l.eventId === 'on_tick' || l.eventId === 'on_start' || l.eventId === 'on_empty' || l.eventId === 'on_full' || l.eventId === 'on_life_lost' || l.eventId === 'on_zero_lives') {
           const cmd = l.eventId.startsWith('on_timer') ? 'on_timer' : l.eventId;
@@ -2169,25 +2200,13 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             timerMs = parseInt(p[1], 10) || 1000;
           }
 
-          // Pre-parse all actions in the listener
-          const parsedImmediate = l.immediateActions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean);
-          const parsedSubConditions = l.subConditions?.map((sc: any) => ({
-            ...sc,
-            parsedActions: sc.actions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean),
-            parsedElseActions: sc.elseActions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean),
-          }));
-
           parsedScripts.push({
             cmd,
             parts: p,
             actionPart: '',
             timerMs,
             lastTrigger: Date.now(),
-            listenerData: {
-              ...l,
-              parsedImmediate,
-              parsedSubConditions
-            }
+            listenerData: l
           });
         }
       });
@@ -2291,7 +2310,12 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           p = s.split(':');
           cmd = p[0].trim();
           if (cmd === 'on_timer') timerMs = parseInt(p[1], 10) || 1000;
-          actionPart = p.slice(cmd === 'on_timer' ? 2 : 1).join(':').trim();
+          
+          if (cmd === 'collision' && p.length > 2) {
+            actionPart = p.slice(2).join(':').trim();
+          } else {
+            actionPart = p.slice(cmd === 'on_timer' ? 2 : 1).join(':').trim();
+          }
         }
 
         return {
@@ -2304,6 +2328,20 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         };
       }) || [];
 
+      // Pre-parse ALL other Visual Logic Editor listeners
+      obj.logic?.listeners?.forEach((l: any) => {
+        if (!l.parsedImmediate && l.immediateActions) {
+          l.parsedImmediate = l.immediateActions.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean);
+        }
+        if (!l.parsedSubConditions && l.subConditions) {
+          l.parsedSubConditions = l.subConditions.map((sc: any) => ({
+            ...sc,
+            parsedActions: sc.actions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean),
+            parsedElseActions: sc.elseActions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean),
+          }));
+        }
+      });
+
       // Process Visual Logic Editor listeners
       obj.logic?.listeners?.forEach(l => {
         if (l.eventId?.startsWith('on_timer') || l.eventId === 'on_tick' || l.eventId === 'on_start' || l.eventId === 'on_empty' || l.eventId === 'on_full' || l.eventId === 'on_life_lost' || l.eventId === 'on_zero_lives') {
@@ -2315,13 +2353,6 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             timerMs = parseInt(p[1], 10) || 1000;
           }
 
-          const parsedImmediate = l.immediateActions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean);
-          const parsedSubConditions = l.subConditions?.map((sc: any) => ({
-            ...sc,
-            parsedActions: sc.actions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean),
-            parsedElseActions: sc.elseActions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean),
-          }));
-
           parsedScripts.push({
             cmd,
             parts: p,
@@ -2329,11 +2360,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             timerMs,
             lastRun: performance.now(),
             triggerCount: 0,
-            listenerData: {
-              ...l,
-              parsedImmediate,
-              parsedSubConditions
-            }
+            listenerData: l
           });
         }
       });
@@ -2534,29 +2561,32 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         if (!objA || !objB) return;
 
         const runCollisionLogic = (targetBody: Matter.Body, targetObj: GameObject, otherObj: GameObject, otherBody: Matter.Body) => {
-          const scripts = targetObj.logic?.scripts || [];
+          const info = (targetBody as any).gameInfo;
+          const parsedScripts = info?.scripts || [];
 
-          for (const s of scripts) {
-            if (
-              s.startsWith(`collision:${otherObj.name}:`) ||
-              (otherObj.behavior && s.startsWith(`collision:${otherObj.behavior}:`)) ||
-              s === `collision:${otherObj.name}` ||
-              (otherObj.behavior && s === `collision:${otherObj.behavior}`)
-            ) {
-              const action = s.split(' DO ')[1] || s.split(':').slice(2).join(':');
-              if (action) {
+          const otherNameLower = otherObj.name?.toLowerCase();
+          const otherBehaviorLower = otherObj.behavior?.toLowerCase();
+
+          for (let i = 0; i < parsedScripts.length; i++) {
+            const s = parsedScripts[i];
+            
+            // Check if it's a collision script
+            const isColMatch = s.cmd === 'collision' && (
+              s.parts[1]?.toLowerCase() === otherNameLower || 
+              (otherBehaviorLower && s.parts[1]?.toLowerCase() === otherBehaviorLower)
+            );
+            
+            const isGenericCol = s.cmd === 'on_collision' && (
+              otherNameLower === 'player' || 
+              otherBehaviorLower === 'player' || 
+              isPlayer(otherObj)
+            );
+
+            if (isColMatch || isGenericCol) {
+              if (s.actionPart) {
                 collisionQueue.push(() =>
-                  executeAction(action, targetBody, targetObj, `Collision:${otherObj.name}`, otherBody)
+                  executeAction(s.actionPart, targetBody, targetObj, `Collision:${otherObj.name}`, otherBody)
                 );
-              }
-            } else if (s.startsWith('on_collision:')) {
-              if (otherObj.name === 'Player' || otherObj.behavior === 'player' || isPlayer(otherObj)) {
-                const action = s.split(' DO ')[1] || s.split(':').slice(1).join(':');
-                if (action) {
-                  collisionQueue.push(() =>
-                    executeAction(action, targetBody, targetObj, `Collision:PlayerGuard`, otherBody)
-                  );
-                }
               }
             }
           }
@@ -3184,13 +3214,28 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     if (!currentRoom || !currentRoom.instances) return null;
     const layers = currentRoom.layers || [{ id: 'default', name: 'Layer 1', visible: true, locked: false }];
 
+    // Group instances by layer in a single O(N) pass to avoid L * N iterations
+    const instancesByLayer = new Map<string, any[]>();
+    const defaultLayerId = layers[0]?.id || 'default';
+    
+    (currentRoom.instances || []).forEach((inst: any, index: number) => {
+      if (!inst) return;
+      const targetLayerId = inst.layerId || defaultLayerId;
+      let list = instancesByLayer.get(targetLayerId);
+      if (!list) {
+        list = [];
+        instancesByLayer.set(targetLayerId, list);
+      }
+      list.push({ inst, index });
+    });
+
     return layers.map((layer: RoomLayer) => {
-      // Skip invisible layers entirely — no iteration needed
+      // Skip invisible layers entirely
       if (!layer.visible) return null;
 
-      return (currentRoom.instances || []).map((inst: any, index: number) => {
-        const targetLayerId = inst.layerId || (layers[0]?.id || 'default');
-        if (!inst || targetLayerId !== layer.id) return null;
+      const layerInstances = instancesByLayer.get(layer.id) || [];
+
+      return layerInstances.map(({ inst, index }) => {
         if (!instanceSharedValues[index]) return null;
 
         const liveObj = liveObjectsRef.current.get(inst.id) || objectMap.get(inst.objectId);
@@ -3206,8 +3251,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         const width = isGrid ? fw : (liveObj.width || inst.width || fw || 32);
         const height = isGrid ? fh : (liveObj.height || inst.height || fh || 32);
 
-        // NOTE: Per-instance viewport culling is done inside animatedStyle (UI thread worklet)
-        // so we never mount/unmount components — just set display:none on the UI thread.
+        // Targeted variables and nonce culling: static walls/blocks don't receive variables or nonce,
+        // preventing them from re-rendering in React when scores or timers change.
+        const needsVariables = !!(liveObj?.text || liveObj?.behavior === 'sprite_repeater' || liveObj?.behavior === 'progress_bar');
 
         return (
           <PhysicsBody
@@ -3221,15 +3267,15 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             width={width}
             height={height}
             name={liveObj?.name}
-            nonce={nonce}
+            nonce={needsVariables ? nonce : undefined}
             onTap={() => {
               DeviceEventEmitter.emit('builtin_tap', { targetId: inst.id });
               if (liveObj?.logic?.triggers?.onTap) {
                 DeviceEventEmitter.emit(liveObj.logic.triggers.onTap!);
               }
             }}
-            variables={(liveObj?.text || liveObj?.behavior === 'sprite_repeater' || liveObj?.behavior === 'progress_bar') ? variables : undefined}
-            localVariables={(liveObj?.text || liveObj?.behavior === 'sprite_repeater' || liveObj?.behavior === 'progress_bar') ? localVariables[inst.id] : undefined}
+            variables={needsVariables ? variables : undefined}
+            localVariables={needsVariables ? localVariables[inst.id] : undefined}
             varKeysMap={varKeysCache.current.lowerMap}
             obj={liveObj}
             override={instanceOverrides[inst.id]}
@@ -3302,7 +3348,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                           height={d.height}
                           name={d.name}
                           variables={(d.gameObject.text || d.gameObject.behavior === 'sprite_repeater' || d.gameObject.behavior === 'progress_bar') ? variables : undefined}
-                          nonce={nonce}
+                          nonce={(d.gameObject.text || d.gameObject.behavior === 'sprite_repeater' || d.gameObject.behavior === 'progress_bar') ? nonce : undefined}
                           localVariables={(d.gameObject.text || d.gameObject.behavior === 'sprite_repeater' || d.gameObject.behavior === 'progress_bar') ? localVariables[d.id] : undefined}
                           varKeysMap={varKeysCache.current.lowerMap}
                           obj={d.gameObject}

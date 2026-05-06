@@ -1,5 +1,21 @@
 # Changelog - Oxion Game Creator
 
+## [1.8.7] - 2026-05-06
+### Added
+- **Gameplay Performance Optimizations**:
+  - Pre-parsed collision script matching to bypass string overhead.
+  - State refresh gating (`variablesDirtyRef`) to prevent redundant background re-renders.
+  - O(N) layered rendering instance grouping (reduced complexity from O(L*N) to O(N+L)).
+  - Targeted nonce and variable propagation to keep static walls/blocks from re-rendering in React on score/timer updates.
+
+## [1.8.6] - 2026-05-06
+### Fixed
+- Fixed startup/import crash of `expo-navigation-bar` on iOS and Web platforms by switching to dynamic, platform-conditional loading on Android only.
+
+## [1.8.5] - 2026-05-06
+### Fixed
+- Fixed package compatibility warning by updating `expo-navigation-bar` to `~5.0.10` as expected by the Expo SDK version.
+
 ## [1.8.4] - 2026-05-05
 ### Updated
 - Redesigned Logic & Action Builder with a modern code-style layout.

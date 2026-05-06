@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.8.7] - 2026-05-06
+### Added
+- **Gameplay Performance Optimizations**:
+  - **Pre-parsed Collision Checking**: Replaced on-the-fly regex string matching during collisions with a pre-parsed system.
+  - **State Refresh Gating**: Introduced a `variablesDirtyRef` gate to prevent redundant React state flushes and battery drain while idle.
+  - **O(N) Render Layer Grouping**: Grouped room rendering instances by layers in linear time, reducing room render complexity from O(L * N) to O(N + L).
+  - **Selective Nonce Propagation**: Culls React re-renders on static objects (walls/blocks) when scores, variables, or frame-rates change.
+
+## [1.8.6] - 2026-05-06
+### Fixed
+- **Multi-Platform Compatibility**: Resolved build/startup crash on non-Android platforms (iOS/Web) by switching the `expo-navigation-bar` import to a platform-conditional dynamic `require` inside the Android runtime branch.
+
+## [1.8.5] - 2026-05-06
+### Fixed
+- **Package Compatibility**: Updated `expo-navigation-bar` to `~5.0.10` to resolve compatibility warnings and ensure expected behavior for the installed Expo version.
+
 ## [1.8.0] - 2026-05-05
 ### Fixed
 - **Engine Stability**: Fixed `ReferenceError: Property 'cameraInitialized' doesn't exist` in the `GamePlayer` camera follow loop.

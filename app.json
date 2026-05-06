@@ -2,7 +2,7 @@
   "expo": {
     "name": "Oxion2d",
     "slug": "oxion-game-creator",
-    "version": "1.7.0",
+    "version": "1.8.7",
     "orientation": "landscape",
     "icon": "./assets/oxion.png",
     "backgroundColor": "#0F1115",
