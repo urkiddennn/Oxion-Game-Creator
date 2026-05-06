@@ -292,7 +292,25 @@ const PhysicsBodyInner = ({
 }) => {
   const [imgDimensions, setImgDimensions] = useState({ w: 0, h: 0 });
   const [currentDimId, setCurrentDimId] = useState<string | null>(null);
-  const [localAnimState, setLocalAnimState] = useState(sv?.animState?.value ?? 0);
+  const [localAnimState, setLocalAnimState] = useState(() => {
+    if (!sv?.animState) return 0;
+    // Safely check if it's a real Reanimated shared value
+    if (sv.animState._isReanimatedSharedValue === true) {
+      return 0; // Default to 0 (idle) during render, will sync in useAnimatedReaction / useEffect
+    }
+    // If it's a static/mock object (e.g. from GUIRenderer), it's safe to read immediately
+    return sv.animState.value ?? 0;
+  });
+
+  // Sync initial value of shared value safely inside useEffect after render to prevent warning
+  useEffect(() => {
+    if (sv?.animState && sv.animState._isReanimatedSharedValue === true) {
+      const currentVal = sv.animState.value;
+      if (currentVal !== localAnimState) {
+        setLocalAnimState(currentVal);
+      }
+    }
+  }, [sv?.animState]);
 
   // Sync high-level animation state (idle, move, etc.) to trigger re-render
   // This is much less frequent than frame changes (60fps vs ~2-5 changes per second)
@@ -774,12 +792,27 @@ const PhysicsBody = React.memo(PhysicsBodyInner, (prev, next) => {
   if (prev.nonce !== next.nonce) return false;
   if (prev.spriteId !== next.spriteId) return false;
 
-  // 2. Deep check SV values to handle mock objects in GUIRenderer
+  // 2. Deep check SV values to handle mock objects in GUIRenderer safely
   if (prev.sv && next.sv) {
-    if (prev.sv.x.value !== next.sv.x.value) return false;
-    if (prev.sv.y.value !== next.sv.y.value) return false;
-    if (prev.sv.rot.value !== next.sv.rot.value) return false;
-    if (prev.sv.flipX?.value !== next.sv.flipX?.value) return false;
+    if (prev.sv === next.sv) {
+      // If shared value references are identical, the position/rotation updates
+      // are handled natively by Reanimated (UI thread). We do NOT need to re-render.
+      // This avoids reading .value during component render, preventing the Reanimated warning!
+    } else {
+      // If they are different references (e.g. static GUI renderer mock objects, or restarted / swapped instances):
+      // Check if they are real shared values. If they are real shared values, since the references are different,
+      // we must re-render to bind the new shared values.
+      const isSharedValue = (val: any) => !!(val && val._isReanimatedSharedValue === true);
+      if (isSharedValue(prev.sv.x)) {
+        return false; // Different shared values -> re-render
+      }
+      
+      // If they are NOT real shared values (i.e. static GUI mock objects from GUIRenderer), we can safely compare their values.
+      if (prev.sv.x.value !== next.sv.x.value) return false;
+      if (prev.sv.y.value !== next.sv.y.value) return false;
+      if (prev.sv.rot.value !== next.sv.rot.value) return false;
+      if (prev.sv.flipX?.value !== next.sv.flipX?.value) return false;
+    }
   } else if (prev.sv !== next.sv) return false;
 
   // 3. Static props

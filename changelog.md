@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.8] - 2026-05-06
+### Fixed
+- **Reanimated Render-Phase Shared Value Reads**:
+  - Resolved `Reading from value during component render` console warnings/errors caused by synchronously accessing `.value` inside `PhysicsBody` memo comparator and state initialization during React render phase.
+  - Safe initial state initialization using conditional worklet checks, falling back to synchronous state sync inside `useEffect` on mount.
+  - Short-circuited reference-equal `prev.sv === next.sv` checks in `PhysicsBody`'s custom React.memo comparator to avoid reading `.value` during React reconciliation.
+
 ## [1.8.7] - 2026-05-06
 ### Added
 - **Gameplay Performance Optimizations**:
