@@ -118,7 +118,7 @@ export default function LaunchpadScreen() {
               <View style={styles.logoIcon}>
                 <OxionLogo size={120} />
               </View>
-              <Text style={styles.appTitle}>Oxion2d v0.6.4</Text>
+              <Text style={styles.appTitle}>Oxion2d v0.6.5</Text>
             </View>
 
             <View style={styles.sidebarLinks}>

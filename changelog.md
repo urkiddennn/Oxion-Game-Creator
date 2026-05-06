@@ -1,5 +1,70 @@
 # Changelog
 
+## [1.9.8] - 2026-05-06
+### Fixed
+- **Engine Physics Garbage Collection & Performance Stabilizer**:
+  - Implemented an automatic out-of-bounds physical Garbage Collector in the game update loop, detecting and destroying dynamic entities that fall below `roomHeight + 400` or travel far off-screen.
+  - Introduced an industry-standard chronologically-ordered safety cap (`MAX_DYNAMIC_ENTITIES = 120`) to prune the oldest spawned entities (excluding player and static/room-level assets) during infinite spawning scenarios, eliminating game degradation.
+
+## [1.9.7] - 2026-05-06
+### Added
+- **Engine Debug Sidebar - Real-Time Objects Breakdown & Instance Counters**:
+  - Engineered an interactive, real-time object/instance grouping breakdown system inside the Gameplay Engine Debug Sidebar.
+  - Displays the total number of placed, running, and active GUI overlay elements dynamically (`Static + Dynamic + GUI Overlays`).
+  - Implemented automatic grouping that categorizes every single active instance in the room by its respective Game Object name, sorting them in descending order of counts with premium visual status labels (e.g. *Coin: 15 active, Enemy: 4 active*).
+
+## [1.9.6] - 2026-05-06
+### Fixed
+- **Screen Bounds Boundary Clamping**:
+  - Implemented boundary constraint checks directly in the element drag mover, locking HUD elements precisely within the `800x600` screen-space grid. This prevents elements from flying off-screen or getting lost inside hidden overflows when dragged to the left edge or margins.
+- **Gesture Hijacking & Termination Shield**:
+  - Disabled background panning entirely (`.enabled(tool === 'hand')`) when using the `select` tool to prevent background handlers from hijacking element dragging events.
+  - Added strict gesture termination overrides (`onMoveShouldSetResponder={() => true}`, `onResponderTerminationRequest={() => false}`) to block other component containers or sidebars from canceling a drag in progress.
+
+## [1.9.5] - 2026-05-06
+### Added
+- **Infinite Zoom Workspace & Interactive Toolbar Controls**:
+  - Expanded canvas pinch limits to support near-infinite zoom boundaries from `0.05x` (extremely zoomed out overview) up to `15.0x` (microscopic pixel-perfect alignment zoom).
+  - Designed and added premium **Zoom In (+)**, **Zoom Out (-)**, and **Zoom Reset** action buttons in the header toolbar using Lucide icons.
+  - Multiplied starting auto-fit canvas scale by `2.0` (with a smart bounding box clamp of `1.2` minimum to `2.5` maximum) so elements and text appear **at least x2 larger** by default.
+- **Real-Time Dynamic Grid Snapping**:
+  - Resolved the grid misalignment issue by entirely binding the snapping logic to your active room's custom grid size variable (`GRID_SIZE = activeRoom.gridSize`) rather than a hardcoded value.
+  - Added buttery real-time local grid snapping *during active dragging*, allowing elements to visually glide from grid cell to grid cell with instant feedback and zero layout latency.
+
+## [1.9.4] - 2026-05-06
+### Added
+- **GUI Builder Performance Optimization**:
+  - Replaced high-frequency global store updates during GUI element dragging with high-performance local dragging state (`draggingNodeId`, `dragX`, `dragY`). 
+  - Restored O(1) rendering performance by deferring complex tree-rebuilds and disk JSON writing to the drag-release phase (`handleDragEnd`), achieving fluid 60+ FPS dragging.
+  - Swapped out disruptive real-time grid snapping during movement for smooth pixel dragging, activating alignment snaps exclusively on drag release for a Godot/Figma feel.
+- **Active Room Environmental Overlay Preview**:
+  - Dynamically retrieves the active/first room's background color, custom grid boundaries, and grid sizes to render inside the screen space bounds in real-time.
+  - Displays a faint, non-interactive visual preview of physical room instances (player, enemies, grounds) inside the GUI Screen Space canvas so developers have perfect layout context when designing HUDs.
+
+## [1.9.3] - 2026-05-06
+### Fixed
+- **Touch Responder Lock Negotiation**:
+  - Added responder claiming configuration (`onStartShouldSetResponder={() => true}`, `onMoveShouldSetResponder={() => true}`, `onResponderTerminationRequest={() => false}`) to `GameButton`.
+  - This informs the React Native touch responder system that the virtual controls claim their touches completely and refuse termination. This stops other touch responders (like the absolute-fill canvas pressable) from canceling the active movement inputs when a second thumb taps to jump/shoot.
+
+## [1.9.2] - 2026-05-06
+### Fixed
+- **Flawless Multi-Touch Controls (Raw Touch Events)**:
+  - Swapped out gesture-handler-based buttons for a highly optimized, custom `GameButton` built on raw React Native `onTouchStart`, `onTouchEnd`, and `onTouchCancel` view events.
+  - Raw pointer events run completely outside both the React Native responder system and native gesture-handler mutual-exclusion/cancellation systems. This enables 100% reliable simultaneous button presses (such as jumping/shooting while running left/right) on all mobile devices and Expo Go.
+
+## [1.9.1] - 2026-05-06
+### Fixed
+- **Concurrent Touch Handlers Resolution**:
+  - Replaced experimental `GesturePressable` components with fully robust and industry-tested `GestureTouchableOpacity` from `react-native-gesture-handler`.
+  - Restored 100% reliable `onPressIn` and `onPressOut` callback execution on Android, iOS, and Expo Go, ensuring movement and jumps execute exactly when pressed while fully retaining seamless concurrent multi-touch action.
+
+## [1.9.0] - 2026-05-06
+### Added
+- **True Multi-Touch Gameplay Controls**:
+  - Upgraded Left, Right, Shoot, and Jump control buttons from standard React Native `Pressable` to `GesturePressable` from `react-native-gesture-handler`.
+  - Resolved the React Native responder lockout issue, enabling players to hold a move button while concurrently pressing Jump or Shoot. This dramatically improves game playability on mobile screens and touch devices.
+
 ## [1.8.9] - 2026-05-06
 ### Fixed
 - **Room Layers Alignment & Sorting**:

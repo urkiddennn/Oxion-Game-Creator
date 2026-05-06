@@ -26,6 +26,44 @@ import base64js from 'base64-js';
 
 const SPRITE_CACHE = new Map<string, string>();
 
+const GameButton = ({
+  style,
+  pressedStyle,
+  onPressIn,
+  onPressOut,
+  children
+}: {
+  style?: any;
+  pressedStyle?: any;
+  onPressIn: () => void;
+  onPressOut: () => void;
+  children: React.ReactNode;
+}) => {
+  const [pressed, setPressed] = useState(false);
+  return (
+    <View
+      style={[style, pressed && pressedStyle]}
+      onStartShouldSetResponder={() => true}
+      onMoveShouldSetResponder={() => true}
+      onResponderTerminationRequest={() => false}
+      onTouchStart={() => {
+        setPressed(true);
+        onPressIn();
+      }}
+      onTouchEnd={() => {
+        setPressed(false);
+        onPressOut();
+      }}
+      onTouchCancel={() => {
+        setPressed(false);
+        onPressOut();
+      }}
+    >
+      {children}
+    </View>
+  );
+};
+
 const VirtualJoystick = ({ settings, onMove, onRelease }: {
   settings: any,
   onMove: (data: { x: number, y: number, angle: number, magnitude: number }) => void,
@@ -806,7 +844,7 @@ const PhysicsBody = React.memo(PhysicsBodyInner, (prev, next) => {
       if (isSharedValue(prev.sv.x)) {
         return false; // Different shared values -> re-render
       }
-      
+
       // If they are NOT real shared values (i.e. static GUI mock objects from GUIRenderer), we can safely compare their values.
       if (prev.sv.x.value !== next.sv.x.value) return false;
       if (prev.sv.y.value !== next.sv.y.value) return false;
@@ -1465,7 +1503,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       const num = parseFloat(valStr);
       // Allow simple numbers and floats, but skip if it looks like a property (e.g. "player.x") or variable with underscores
       if (!isNaN(num) && !valStr.includes('.') && !valStr.includes('_')) return num;
-      if (!isNaN(num) && /^-?\d+(\.\d+)?$/.test(valStr)) return num; 
+      if (!isNaN(num) && /^-?\d+(\.\d+)?$/.test(valStr)) return num;
 
       // Handle property access: player.x, this.y, enemy.vx
       if (valStr.includes('.')) {
@@ -1474,7 +1512,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
         if (target === 'this' || target === 'self') {
           targetBody = currentBody;
-          
+
           // Special case for GUI elements with no physical body
           if (!targetBody && actualObj) {
             if (prop === 'current_count' && actualObj.sprite_repeater) return actualObj.sprite_repeater.currentCount;
@@ -1711,7 +1749,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         if (health) {
           const old = health.current;
           const newVal = Math.max(0, Math.min(health.max, health.current + (amount * sign)));
-          
+
           const newHealth = { ...health, current: newVal };
           if (info.health) info.health = newHealth;
           if (info.obj?.health) info.obj.health = newHealth;
@@ -1749,7 +1787,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         if (pb) {
           const delta = amount * sign;
           const nextVal = Math.max(pb.minValue, Math.min(pb.maxValue, pb.currentValue + delta));
-          
+
           const newPb = { ...pb, currentValue: nextVal };
           if (info.progress_bar) info.progress_bar = newPb;
           if (info.obj?.progress_bar) info.obj.progress_bar = newPb;
@@ -2259,7 +2297,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           root: cloneNodes(pObj.gui_hierarchy.root || [])
         };
       }
-      
+
       liveObjectsRef.current.set(spawnId, instObj);
 
       (body as any).gameInfo = {
@@ -2350,7 +2388,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           p = s.split(':');
           cmd = p[0].trim();
           if (cmd === 'on_timer') timerMs = parseInt(p[1], 10) || 1000;
-          
+
           if (cmd === 'collision' && p.length > 2) {
             actionPart = p.slice(2).join(':').trim();
           } else {
@@ -2427,7 +2465,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         if (pObj.health) instObj.health = { ...pObj.health };
         if (pObj.progress_bar) instObj.progress_bar = { ...pObj.progress_bar };
         if (pObj.sprite_repeater) instObj.sprite_repeater = { ...pObj.sprite_repeater };
-        
+
         if (pObj.gui_hierarchy) {
           const cloneNodes = (nodes: any[]): any[] => nodes.map(n => ({
             ...n,
@@ -2480,7 +2518,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       if (obj.health) instObj.health = { ...obj.health };
       if (obj.progress_bar) instObj.progress_bar = { ...obj.progress_bar };
       if (obj.sprite_repeater) instObj.sprite_repeater = { ...obj.sprite_repeater };
-      
+
       if (obj.gui_hierarchy) {
         const cloneNodes = (nodes: any[]): any[] => nodes.map(n => ({
           ...n,
@@ -2609,16 +2647,16 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
           for (let i = 0; i < parsedScripts.length; i++) {
             const s = parsedScripts[i];
-            
+
             // Check if it's a collision script
             const isColMatch = s.cmd === 'collision' && (
-              s.parts[1]?.toLowerCase() === otherNameLower || 
+              s.parts[1]?.toLowerCase() === otherNameLower ||
               (otherBehaviorLower && s.parts[1]?.toLowerCase() === otherBehaviorLower)
             );
-            
+
             const isGenericCol = s.cmd === 'on_collision' && (
-              otherNameLower === 'player' || 
-              otherBehaviorLower === 'player' || 
+              otherNameLower === 'player' ||
+              otherBehaviorLower === 'player' ||
               isPlayer(otherObj)
             );
 
@@ -2890,12 +2928,60 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
       let dynamicChanged = false;
 
-      // 1. Cleanup expired dynamic elements (bullets, etc)
+      // 1. Cleanup expired dynamic elements (bullets, etc) OR out-of-bounds entities (e.g., fell into a pit)
+      const currentRoomInLoop = roomRef.current;
+      const roomW = currentRoomInLoop?.width || 800;
+      const roomH = currentRoomInLoop?.height || 600;
+
       for (let i = dynamicRef.length - 1; i >= 0; i--) {
         const d = dynamicRef[i];
+        let shouldDestroy = false;
+
+        // Particles/bullets lifetime expiry
         if (d.expires && now > d.expires) {
+          shouldDestroy = true;
+        }
+
+        // Out of bounds detection (excluding the main camera target player)
+        if (d.body && d.body !== cameraTargetBodyRef.current) {
+          const px = d.body.position.x;
+          const py = d.body.position.y;
+
+          if (
+            py > roomH + 400 ||
+            py < -1500 ||
+            px < -1500 ||
+            px > roomW + 1500
+          ) {
+            shouldDestroy = true;
+          }
+        }
+
+        if (shouldDestroy) {
           if (d.body) Matter.World.remove(engine.world, d.body);
           dynamicRef.splice(i, 1);
+          dynamicChanged = true;
+        }
+      }
+
+      // 1.5 Safety cap to prevent infinite loop spawning from choking the engine
+      const MAX_DYNAMIC_ENTITIES = 120;
+      if (dynamicRef.length > MAX_DYNAMIC_ENTITIES) {
+        let oldestPruneIndex = -1;
+        for (let i = 0; i < dynamicRef.length; i++) {
+          const d = dynamicRef[i];
+          const isPlayerObj = d.body === cameraTargetBodyRef.current || d.gameObject?.behavior === 'player' || d.gameObject?.name?.toLowerCase().includes('player');
+          // Don't prune the player, or static instances, or room instances
+          if (d.body && !isPlayerObj && !d.isRoomInstance && !d.body.isStatic) {
+            oldestPruneIndex = i;
+            break;
+          }
+        }
+
+        if (oldestPruneIndex !== -1) {
+          const oldest = dynamicRef[oldestPruneIndex];
+          if (oldest.body) Matter.World.remove(engine.world, oldest.body);
+          dynamicRef.splice(oldestPruneIndex, 1);
           dynamicChanged = true;
         }
       }
@@ -3161,7 +3247,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
       // --- Camera Follow ---
       // Use ref to avoid stale closure on room settings
-      const currentRoomInLoop = roomRef.current;
+
       const camSettings = currentRoomInLoop?.settings?.camera;
 
       if (camSettings?.enabled) {
@@ -3257,7 +3343,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     // Group instances by layer in a single O(N) pass to avoid L * N iterations
     const instancesByLayer = new Map<string, any[]>();
     const defaultLayerId = layers[0]?.id || 'default';
-    
+
     (currentRoom.instances || []).forEach((inst: any, index: number) => {
       if (!inst) return;
       const targetLayerId = inst.layerId || defaultLayerId;
@@ -3506,44 +3592,43 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
               ) : (
                 <>
                   {currentRoom?.settings?.showControls?.left !== false && (
-                    <Pressable
-                      style={({ pressed }) => [styles.floatingBtn, pressed && { opacity: 0.7 }]}
+                    <GameButton
+                      style={styles.floatingBtn}
+                      pressedStyle={{ opacity: 0.5 }}
                       onPressIn={() => { inputLeft.current = 1; }}
                       onPressOut={() => { inputLeft.current = 0; }}
                     >
                       <ArrowLeft color="#fff" size={30} />
-                    </Pressable>
+                    </GameButton>
                   )}
                   {currentRoom?.settings?.showControls?.right !== false && (
-                    <Pressable
-                      style={({ pressed }) => [styles.floatingBtn, pressed && { opacity: 0.7 }]}
+                    <GameButton
+                      style={styles.floatingBtn}
+                      pressedStyle={{ opacity: 0.5 }}
                       onPressIn={() => { inputLeft.current = 0; inputRight.current = 1; }}
                       onPressOut={() => { inputRight.current = 0; }}
                     >
                       <ArrowRight color="#fff" size={30} />
-                    </Pressable>
+                    </GameButton>
                   )}
                 </>
               )}
             </View>
             <View style={styles.actions}>
               {currentRoom?.settings?.showControls?.shoot !== false && (
-                <Pressable
-                  style={({ pressed }) => [styles.floatingBtn, styles.shootBtn, { marginBottom: 10 }, pressed && { opacity: 0.7 }]}
+                <GameButton
+                  style={[styles.floatingBtn, styles.shootBtn, { marginBottom: 10 }]}
+                  pressedStyle={{ opacity: 0.5 }}
                   onPressIn={() => { inputShoot.current = 1; }}
                   onPressOut={() => { inputShoot.current = 0; }}
                 >
                   <Bolt color="#fff" size={24} />
-                </Pressable>
+                </GameButton>
               )}
               {currentRoom?.settings?.showControls?.jump !== false && (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.floatingBtn,
-                    styles.jumpBtn,
-                    pressed && { opacity: 0.7, transform: [{ scale: 0.95 }] },
-                    inputJump.current === 1 && { backgroundColor: 'rgba(79, 172, 254, 0.8)' }
-                  ]}
+                <GameButton
+                  style={[styles.floatingBtn, styles.jumpBtn]}
+                  pressedStyle={{ backgroundColor: 'rgba(79, 172, 254, 0.8)' }}
                   onPressIn={() => {
                     inputJump.current = 1;
                     DeviceEventEmitter.emit('on_jump_press');
@@ -3551,7 +3636,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                   onPressOut={() => { inputJump.current = 0; }}
                 >
                   <ChevronUp color="#fff" size={30} />
-                </Pressable>
+                </GameButton>
               )}
             </View>
           </View>
@@ -3617,9 +3702,47 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                   </View>
                 ))}
 
-                <Text style={styles.debugLabel}>INSTANCES</Text>
+                <Text style={styles.debugLabel}>INSTANCES ({(currentRoom?.instances || []).length + dynamicElements.length + guiInstances.length})</Text>
                 <Text style={styles.debugValue}>Static: {(currentRoom?.instances || []).length}</Text>
                 <Text style={styles.debugValue}>Dynamic: {dynamicElements.length}</Text>
+                {guiInstances.length > 0 && <Text style={styles.debugValue}>GUI Overlays: {guiInstances.length}</Text>}
+
+                {/* Real-time Instances Breakdown grouped by Object Type */}
+                <Text style={[styles.debugLabel, { marginTop: 15 }]}>OBJECT BREAKDOWN</Text>
+                {(() => {
+                  const counts: Record<string, number> = {};
+
+                  // Count static room instances
+                  (currentRoom?.instances || []).forEach((inst: any) => {
+                    const obj = objectMap.get(inst.objectId);
+                    const name = obj?.name || 'Static Asset';
+                    counts[name] = (counts[name] || 0) + 1;
+                  });
+
+                  // Count running dynamic/physics instances
+                  dynamicElements.forEach((d: any) => {
+                    const name = d.gameObject?.name || 'Dynamic Instance';
+                    counts[name] = (counts[name] || 0) + 1;
+                  });
+
+                  // Count active HUD/GUI overlay instances
+                  guiInstances.forEach((g: any) => {
+                    const name = g.gameObject?.name || 'GUI HUD';
+                    counts[name] = (counts[name] || 0) + 1;
+                  });
+
+                  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+                  if (sorted.length === 0) {
+                    return <Text style={[styles.debugValue, { opacity: 0.5 }]}>No instances active</Text>;
+                  }
+
+                  return sorted.map(([name, count]) => (
+                    <View key={name} style={styles.debugVarRow}>
+                      <Text style={styles.debugVarName}>{name}</Text>
+                      <Text style={[styles.debugVarVal, { color: '#4facfe', fontWeight: 'bold' }]}>{count} active</Text>
+                    </View>
+                  ));
+                })()}
 
                 <Text style={[styles.debugLabel, { marginTop: 20 }]}>GLOBAL VARIABLES</Text>
                 {Object.entries(variables).map(([key, val]) => (

@@ -11,7 +11,7 @@ import { useProjectStore, GUINode, GameObject } from '../../store/useProjectStor
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useSharedValue, useAnimatedStyle, runOnJS } from 'react-native-reanimated';
 import { PixelSprite } from '../../components/PixelSprite';
-import { MousePointer2, Hand } from 'lucide-react-native';
+import { MousePointer2, Hand, ZoomIn, ZoomOut, RefreshCw } from 'lucide-react-native';
 
 // --- Recursive Tree Component ---
 const TreeItem = ({ node, level = 0, onSelect, isSelected, onToggleVisibility, onRemove, onMove, allObjects }: any) => {
@@ -84,9 +84,20 @@ export default function GUIBuilder({ route, navigation }: any) {
   const [selectedNode, setSelectedNode] = useState<GUINode | null>(null);
   const [showHierarchy, setShowHierarchy] = useState(true);
   const [tool, setTool] = useState<'select' | 'hand'>('select');
+  const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
+  const [dragX, setDragX] = useState<number>(0);
+  const [dragY, setDragY] = useState<number>(0);
+
+  const activeRoom = useMemo(() => {
+    const roomId = useProjectStore.getState().activeRoomId;
+    return activeProject?.rooms?.find(r => r.id === roomId) || activeProject?.rooms?.[0];
+  }, [activeProject]);
+
+  const roomBgColor = activeRoom?.settings?.backgroundColor || '#111111';
+  const GRID_SIZE = activeRoom?.settings?.gridSize || 32;
   
-  const scale = useSharedValue(0.8);
-  const savedScale = useSharedValue(0.8);
+  const scale = useSharedValue(1.6);
+  const savedScale = useSharedValue(1.6);
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const savedTranslateX = useSharedValue(0);
@@ -94,25 +105,53 @@ export default function GUIBuilder({ route, navigation }: any) {
 
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
+  const handleZoomIn = () => {
+    const nextScale = Math.min(15, scale.value * 1.25);
+    scale.value = nextScale;
+    savedScale.value = nextScale;
+  };
+
+  const handleZoomOut = () => {
+    const nextScale = Math.max(0.05, scale.value / 1.25);
+    scale.value = nextScale;
+    savedScale.value = nextScale;
+  };
+
+  const handleZoomReset = () => {
+    scale.value = 1.6;
+    savedScale.value = 1.6;
+    translateX.value = 0;
+    translateY.value = 0;
+    savedTranslateX.value = 0;
+    savedTranslateY.value = 0;
+  };
+
   // Dragging state
-  const dragInfo = useRef({ startX: 0, startY: 0, initialX: 0, initialY: 0, nodeId: '' });
+  const dragInfo = useRef({ startX: 0, startY: 0, initialX: 0, initialY: 0, nodeId: '', width: 32, height: 32 });
 
   const handleDragStart = (node: GUINode, pageX: number, pageY: number) => {
     if (tool !== 'select') return;
+    const obj = allObjects.find(o => o.id === node.objectId);
+    const w = node.width || obj?.width || 32;
+    const h = node.height || obj?.height || 32;
+
     dragInfo.current = {
       startX: pageX,
       startY: pageY,
       initialX: node.x,
       initialY: node.y,
-      nodeId: node.id
+      nodeId: node.id,
+      width: w,
+      height: h
     };
     setSelectedNode(node);
+    setDraggingNodeId(node.id);
+    setDragX(node.x);
+    setDragY(node.y);
   };
 
-  const GRID_SIZE = 40;
-
   const handleDragMove = (pageX: number, pageY: number) => {
-    const { startX, startY, initialX, initialY, nodeId } = dragInfo.current;
+    const { startX, startY, initialX, initialY, nodeId, width = 32, height = 32 } = dragInfo.current;
     if (!nodeId || tool !== 'select') return;
 
     const dx = (pageX - startX) / scale.value;
@@ -121,42 +160,56 @@ export default function GUIBuilder({ route, navigation }: any) {
     const targetX = initialX + dx;
     const targetY = initialY + dy;
 
-    handleUpdateNode(nodeId, { 
-      x: Math.round(targetX / GRID_SIZE) * GRID_SIZE, 
-      y: Math.round(targetY / GRID_SIZE) * GRID_SIZE 
-    });
+    // Bounding box clamp to keep elements inside the 800x600 screen boundary
+    const clampedX = Math.max(0, Math.min(800 - width, targetX));
+    const clampedY = Math.max(0, Math.min(600 - height, targetY));
+
+    // Real-time grid snapping during movement! Snaps to the room's custom grid size instantly.
+    const snappedX = Math.round(clampedX / GRID_SIZE) * GRID_SIZE;
+    const snappedY = Math.round(clampedY / GRID_SIZE) * GRID_SIZE;
+
+    // Double-check snapped values are also clamped inside the boundary
+    const finalX = Math.max(0, Math.min(800 - width, snappedX));
+    const finalY = Math.max(0, Math.min(600 - height, snappedY));
+
+    setDragX(finalX);
+    setDragY(finalY);
   };
 
   const handleDragEnd = () => {
+    const { nodeId } = dragInfo.current;
+    if (nodeId && draggingNodeId === nodeId) {
+      // Save already snapped coordinates directly to global store
+      handleUpdateNode(nodeId, { x: dragX, y: dragY });
+    }
     dragInfo.current.nodeId = '';
+    setDraggingNodeId(null);
   };
 
-  // Auto-fit zoom on mount
+  // Auto-fit zoom on mount (scaled up x2 for beautiful visual workspace)
   useEffect(() => {
     const horizontalZoom = (screenWidth - (showHierarchy ? 240 : 80) - (selectedNode ? 240 : 80)) / 800;
     const verticalZoom = (screenHeight - 200) / 600;
-    const targetZoom = Math.min(horizontalZoom, verticalZoom, 0.8);
+    const targetZoom = Math.max(1.2, Math.min(horizontalZoom * 2, verticalZoom * 2, 2.5));
     scale.value = targetZoom;
     savedScale.value = targetZoom;
   }, [screenWidth, screenHeight, showHierarchy, !!selectedNode]);
 
   const panGesture = Gesture.Pan()
+    .enabled(tool === 'hand')
     .onUpdate((e) => {
-      if (tool === 'hand') {
-        translateX.value = savedTranslateX.value + e.translationX;
-        translateY.value = savedTranslateY.value + e.translationY;
-      }
+      translateX.value = savedTranslateX.value + e.translationX;
+      translateY.value = savedTranslateY.value + e.translationY;
     })
     .onEnd(() => {
-      if (tool === 'hand') {
-        savedTranslateX.value = translateX.value;
-        savedTranslateY.value = translateY.value;
-      }
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
     });
 
   const pinchGesture = Gesture.Pinch()
     .onUpdate((e) => {
-      scale.value = Math.max(0.1, Math.min(5, savedScale.value * e.scale));
+      // Infinite zoom limits: extremely wide scale range from 0.05 to 15.0!
+      scale.value = Math.max(0.05, Math.min(15, savedScale.value * e.scale));
     })
     .onEnd(() => {
       savedScale.value = scale.value;
@@ -230,9 +283,14 @@ export default function GUIBuilder({ route, navigation }: any) {
     ]);
   };
 
+  // (Memoized Room properties moved to the top of component body to prevent TDZ)
+
   const renderCanvasNode = (node: GUINode, parentX = 0, parentY = 0) => {
     const obj = allObjects.find(o => o.id === node.objectId);
     const isSelected = selectedNode?.id === node.id;
+    const isCurrentlyDragging = draggingNodeId === node.id;
+    const posX = isCurrentlyDragging ? dragX : node.x;
+    const posY = isCurrentlyDragging ? dragY : node.y;
     const width = node.width || obj?.width || 32;
     const height = node.height || obj?.height || 32;
 
@@ -241,8 +299,10 @@ export default function GUIBuilder({ route, navigation }: any) {
     return (
       <View 
         key={node.id} 
-        style={{ position: 'absolute', left: node.x, top: node.y, zIndex: isSelected ? 100 : 1 }}
+        style={{ position: 'absolute', left: posX, top: posY, zIndex: isSelected ? 100 : 1 }}
         onStartShouldSetResponder={() => true}
+        onMoveShouldSetResponder={() => true}
+        onResponderTerminationRequest={() => false}
         onResponderGrant={(e) => handleDragStart(node, e.nativeEvent.pageX, e.nativeEvent.pageY)}
         onResponderMove={(e) => handleDragMove(e.nativeEvent.pageX, e.nativeEvent.pageY)}
         onResponderRelease={() => {
@@ -314,7 +374,22 @@ export default function GUIBuilder({ route, navigation }: any) {
           >
             <Hand size={16} color={tool === 'hand' ? "#000" : "#fff"} />
           </TouchableOpacity>
+          
           <View style={styles.vDivider} />
+          
+          {/* Zoom Buttons */}
+          <TouchableOpacity onPress={handleZoomOut} style={styles.headerBtn}>
+            <ZoomOut size={16} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleZoomReset} style={styles.headerBtn}>
+            <RefreshCw size={14} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleZoomIn} style={styles.headerBtn}>
+            <ZoomIn size={16} color="#fff" />
+          </TouchableOpacity>
+          
+          <View style={styles.vDivider} />
+          
           <TouchableOpacity
             onPress={() => setShowHierarchy(!showHierarchy)}
             style={[styles.headerBtn, showHierarchy && { backgroundColor: theme.colors.primary }]}
@@ -348,20 +423,51 @@ export default function GUIBuilder({ route, navigation }: any) {
           </View>
         )}
 
-        {/* CENTER: CANVAS */}
+         {/* CENTER: CANVAS */}
         <GestureDetector gesture={composedGesture}>
           <View style={styles.canvasArea}>
             <Animated.View style={[styles.canvasWrapper, animatedCanvasStyle]}>
-              <View style={[styles.screenBounds, { width: 800, height: 600, overflow: 'hidden' }]}>
-                {/* Grid Background */}
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0.1 }}>
-                  {Array.from({ length: 20 }).map((_, i) => (
-                    <View key={`v-${i}`} style={{ position: 'absolute', left: i * 40, top: 0, bottom: 0, width: 1, backgroundColor: '#fff' }} />
-                  ))}
-                  {Array.from({ length: 15 }).map((_, i) => (
-                    <View key={`h-${i}`} style={{ position: 'absolute', top: i * 40, left: 0, right: 0, height: 1, backgroundColor: '#fff' }} />
-                  ))}
-                </View>
+              <View style={[styles.screenBounds, { width: 800, height: 600, overflow: 'hidden', backgroundColor: roomBgColor }]}>
+                {/* Room Instances Preview (Faint Background Context) */}
+                {activeRoom?.instances?.map((inst: any) => {
+                  const obj = allObjects.find(o => o.id === inst.objectId);
+                  if (!obj) return null;
+                  const instWidth = inst.width || obj.width || 32;
+                  const instHeight = inst.height || obj.height || 32;
+                  const sprite = allSprites.find(s => s.id === obj.appearance?.spriteId);
+                  return (
+                    <View
+                      key={`bg-inst-${inst.id}`}
+                      style={{
+                        position: 'absolute',
+                        left: inst.x,
+                        top: inst.y,
+                        width: instWidth,
+                        height: instHeight,
+                        opacity: 0.25,
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      {sprite ? (
+                        <PixelSprite sprite={sprite} size={Math.max(instWidth, instHeight)} />
+                      ) : (
+                        <View style={{ width: instWidth, height: instHeight, backgroundColor: obj.appearance?.color || '#555' }} />
+                      )}
+                    </View>
+                  );
+                })}
+
+                {/* Grid Background (Matching Room Grid settings) */}
+                {activeRoom?.settings?.showGrid !== false && (
+                  <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0.08, pointerEvents: 'none' }}>
+                    {Array.from({ length: Math.ceil(800 / (activeRoom?.settings?.gridSize || 32)) }).map((_, i) => (
+                      <View key={`v-${i}`} style={{ position: 'absolute', left: i * (activeRoom?.settings?.gridSize || 32), top: 0, bottom: 0, width: 1, backgroundColor: '#fff' }} />
+                    ))}
+                    {Array.from({ length: Math.ceil(600 / (activeRoom?.settings?.gridSize || 32)) }).map((_, i) => (
+                      <View key={`h-${i}`} style={{ position: 'absolute', top: i * (activeRoom?.settings?.gridSize || 32), left: 0, right: 0, height: 1, backgroundColor: '#fff' }} />
+                    ))}
+                  </View>
+                )}
 
                 {hierarchy.length === 0 && (
                   <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -377,7 +483,7 @@ export default function GUIBuilder({ route, navigation }: any) {
             </Animated.View>
 
             <View style={styles.canvasOverlay}>
-              <Text style={styles.canvasInfo}>800 x 600 (Screen Space)</Text>
+              <Text style={styles.canvasInfo}>800 x 600 (Screen Space - Previewing: {activeRoom?.name || 'Active Room'})</Text>
             </View>
           </View>
         </GestureDetector>
