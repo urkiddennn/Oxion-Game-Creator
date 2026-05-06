@@ -1,5 +1,11 @@
 # Changelog - Oxion Game Creator
 
+## [1.8.9] - 2026-05-06
+### Fixed
+- **Room Layers Alignment & Sorting**:
+  - Fixed a critical alignment bug where reordering or moving layers (e.g. moving Layer 1 up) would cause instances to swap sprites and mix up positions during gameplay.
+  - Introduced `instanceToIndexMap` in the game player initialization loop to map layer-sorted instances back to their stable, unsorted original indices in `instanceSharedValues`. This preserves exact sprite, coordinate, and physics body bindings regardless of how room layers are sorted or arranged.
+
 ## [1.8.8] - 2026-05-06
 ### Fixed
 - **Reanimated Render-Phase Shared Value Reads**:

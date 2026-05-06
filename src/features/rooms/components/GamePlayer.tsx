@@ -2317,8 +2317,15 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       return orderA - orderB;
     });
 
-    sortedInstances.forEach((inst: any, index: number) => {
+    // Create a map to preserve the original unsorted index of each instance
+    const instanceToIndexMap = new Map(
+      (currentRoom?.instances || []).map((i: any, idx: number) => [i.id, idx])
+    );
+
+    sortedInstances.forEach((inst: any) => {
       if (!inst) return;
+      const originalIndex = instanceToIndexMap.get(inst.id);
+      if (originalIndex === undefined) return;
       const instLayerId = inst.layerId || (layers[0]?.id || 'default');
       const layer = layers.find(l => l.id === instLayerId);
       const layerIndex = layers.findIndex(l => l.id === instLayerId);
@@ -2406,7 +2413,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
       // GUI containers go to a separate list to avoid heavy re-renders in dynamicElements
       if (pObj.behavior === 'gui_container') {
-        const sv = instanceSharedValues[index];
+        const sv = instanceSharedValues[originalIndex];
         if (sv) {
           sv.x.value = inst.x;
           sv.y.value = inst.y;
@@ -2435,7 +2442,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         guiRef.push({
           id: inst.id,
           gameObject: instObj,
-          sv: sv || instanceSharedValues[index],
+          sv: sv || instanceSharedValues[originalIndex],
           layerIndex: layerIndex >= 0 ? layerIndex : 0,
           _logicState: {
             obj: instObj,
@@ -2513,7 +2520,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         }, 100);
       }
 
-      const sv = instanceSharedValues[index];
+      const sv = instanceSharedValues[originalIndex];
       if (sv) {
         sv.x.value = inst.x;
         sv.y.value = inst.y;
