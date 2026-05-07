@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Modal, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Modal, Image, Platform } from 'react-native';
 import { theme } from '../../theme';
 import { useProjectStore } from '../../store/useProjectStore';
 import { Settings as SettingsIcon, LogOut, Shield, Database, Bell, X, Box, Image as ImageIcon, Trash2, Globe, Smartphone } from 'lucide-react-native';
@@ -24,7 +24,7 @@ export default function SettingsScreen() {
   // Dynamically resolve local host computer IP in Expo Go
   const getDynamicHostIp = () => {
     try {
-      const hostUri = Constants.expoConfig?.hostUri || Constants.manifest2?.extra?.expoGoLaunchMetadata?.debuggerHost;
+      const hostUri = Constants.expoConfig?.hostUri || (Constants.manifest2?.extra as any)?.expoGoLaunchMetadata?.debuggerHost;
       if (hostUri) {
         const ip = hostUri.split(':')[0];
         if (ip && ip !== 'localhost' && ip !== '127.0.0.1') {
@@ -117,7 +117,7 @@ export default function SettingsScreen() {
           if (sprite.type === 'imported' && sprite.uri && sprite.uri.startsWith('file://')) {
             try {
               const base64 = await FileSystem.readAsStringAsync(sprite.uri, {
-                encoding: FileSystem.EncodingType.Base64,
+                encoding: 'base64',
               });
               return {
                 ...sprite,
@@ -137,7 +137,7 @@ export default function SettingsScreen() {
           if (sound.type === 'imported' && sound.uri && sound.uri.startsWith('file://')) {
             try {
               const base64 = await FileSystem.readAsStringAsync(sound.uri, {
-                encoding: FileSystem.EncodingType.Base64,
+                encoding: 'base64',
               });
               const ext = sound.uri.endsWith('.mp3') ? 'mp3' : 'wav';
               return {
@@ -926,7 +926,7 @@ const styles = StyleSheet.create({
   },
   logText: {
     color: '#39ff14', // Neon terminal green
-    fontFamily: process.platform === 'ios' ? 'Courier' : 'monospace',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     fontSize: 10,
     lineHeight: 14,
   },

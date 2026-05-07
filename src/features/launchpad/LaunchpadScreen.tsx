@@ -7,9 +7,10 @@ import { SquarePlus, ArrowRight, User, Trash2, Heart, Play } from 'lucide-react-
 import { OxionLogo } from '../../components/OxionLogo';
 import CommunityScreen from '../community/CommunityScreen';
 import AuthModal from '../auth/AuthModal';
+import ProfileScreen from '../profile/ProfileScreen';
 
 export default function LaunchpadScreen() {
-  const [activeTab, setActiveTab] = useState<'Projects' | 'Community'>('Projects');
+  const [activeTab, setActiveTab] = useState<'Projects' | 'Community' | 'Profile'>('Projects');
   const [authModalVisible, setAuthModalVisible] = useState(false);
   const [namingModalVisible, setNamingModalVisible] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
@@ -52,8 +53,9 @@ export default function LaunchpadScreen() {
               <Text style={styles.navSignInText}>Sign In</Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity style={styles.navSignInButton} onPress={() => signOut()}>
-              <Text style={styles.navSignInText}>Sign Out</Text>
+            <TouchableOpacity style={styles.navSignInButton} onPress={() => setActiveTab('Profile')}>
+              <User size={14} color={theme.colors.primary} />
+              <Text style={styles.navSignInText}>Profile</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -61,6 +63,8 @@ export default function LaunchpadScreen() {
 
       {activeTab === 'Community' ? (
         <CommunityScreen />
+      ) : activeTab === 'Profile' ? (
+        <ProfileScreen />
       ) : (
         <View style={styles.mainContent}>
           {/* Project Section */}
@@ -198,9 +202,10 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     flexDirection: 'row',
-    height: 40,
+    height: 60,
     backgroundColor: '#16191E',
     borderBottomWidth: 1,
+
     borderBottomColor: theme.colors.border,
     paddingHorizontal: 8,
     alignItems: 'center',

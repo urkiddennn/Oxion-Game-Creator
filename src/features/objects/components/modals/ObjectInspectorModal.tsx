@@ -1176,6 +1176,8 @@ export default function ObjectInspectorModal({
                                 style={styles.listenerTriggerLabel}
                                 onPress={() => {
                                   setActiveListenerIndex(index);
+                                  setActiveSubIndex(null);
+                                  setIsAddingSubForIndex(null);
                                   setEventPickerVisible(true);
                                 }}
                               >
@@ -1217,6 +1219,8 @@ export default function ObjectInspectorModal({
                                     <TouchableOpacity
                                       onPress={() => {
                                         setActiveListenerIndex(index);
+                                        setActiveSubIndex(null);
+                                        setIsAddingSubForIndex(null);
                                         setEventPickerVisible(true);
                                       }}
                                     >
@@ -1269,6 +1273,7 @@ export default function ObjectInspectorModal({
                                     onPress={() => {
                                       setActiveListenerIndex(index);
                                       setActiveSubIndex(null);
+                                      setActiveActionIndex(null);
                                       setActionPickerVisible(true);
                                     }}
                                     style={{ marginTop: 4 }}
@@ -1282,19 +1287,32 @@ export default function ObjectInspectorModal({
                                     <View key={scIdx} style={styles.conditionBlock}>
                                       <View style={styles.conditionHeader}>
                                         <GitBranch size={10} color={theme.colors.secondary} />
-                                        <TextInput
-                                          style={[styles.actionInput, { color: theme.colors.secondary }]}
-                                          value={sc.condition}
-                                          placeholder="IF (condition)"
-                                          placeholderTextColor="#444"
-                                          onFocus={() => setActiveInputInfo({ type: 'condition', index, subIndex: scIdx })}
-                                          onChangeText={(v) => {
-                                            const newListeners = [...safeObject.logic.listeners];
-                                            newListeners[index].subConditions[scIdx].condition = v;
-                                            updateField('logic.listeners', newListeners);
-                                            setSuggestionQuery(v);
-                                          }}
-                                        />
+                                        <View style={[styles.actionInputWrapper, { flex: 1, backgroundColor: 'rgba(0,0,0,0.2)', borderColor: theme.colors.secondary + '30', minHeight: 24, paddingVertical: 2 }]}>
+                                          <TextInput
+                                            style={[styles.actionInput, { color: theme.colors.secondary }]}
+                                            value={sc.condition}
+                                            placeholder="IF (condition)"
+                                            placeholderTextColor="#444"
+                                            onFocus={() => setActiveInputInfo({ type: 'condition', index, subIndex: scIdx })}
+                                            onChangeText={(v) => {
+                                              const newListeners = [...safeObject.logic.listeners];
+                                              newListeners[index].subConditions[scIdx].condition = v;
+                                              updateField('logic.listeners', newListeners);
+                                              setSuggestionQuery(v);
+                                            }}
+                                          />
+                                          <TouchableOpacity
+                                            onPress={() => {
+                                              setActiveListenerIndex(index);
+                                              setActiveSubIndex(scIdx);
+                                              setIsAddingSubForIndex(null);
+                                              setEventPickerVisible(true);
+                                            }}
+                                            style={{ paddingHorizontal: 4 }}
+                                          >
+                                            <Plus size={12} color={theme.colors.secondary} />
+                                          </TouchableOpacity>
+                                        </View>
                                         <TouchableOpacity onPress={() => {
                                           const newListeners = [...safeObject.logic.listeners];
                                           newListeners[index].subConditions.splice(scIdx, 1);
@@ -1332,12 +1350,22 @@ export default function ObjectInspectorModal({
                                                 <Plus size={14} color={theme.colors.primary} />
                                               </TouchableOpacity>
                                             </View>
+                                            <TouchableOpacity
+                                              onPress={() => {
+                                                const newListeners = [...safeObject.logic.listeners];
+                                                newListeners[index].subConditions[scIdx].actions.splice(aIdx, 1);
+                                                updateField('logic.listeners', newListeners);
+                                              }}
+                                            >
+                                              <X size={12} color="#555" />
+                                            </TouchableOpacity>
                                           </View>
                                         ))}
                                         <TouchableOpacity
                                           onPress={() => {
                                             setActiveListenerIndex(index);
                                             setActiveSubIndex(scIdx);
+                                            setActiveActionIndex(null);
                                             setActionPickerVisible(true);
                                           }}
                                           style={{ marginTop: 2 }}
@@ -1350,6 +1378,7 @@ export default function ObjectInspectorModal({
                                             <Text style={{ color: '#F43F5E', fontSize: 8, fontWeight: 'bold', marginBottom: 4 }}>ELSE</Text>
                                             {(sc.elseActions || []).map((act: string, aIdx: number) => (
                                               <View key={aIdx} style={styles.actionRow}>
+                                                <Text style={{ color: '#F43F5E', fontSize: 8, fontWeight: 'bold' }}>ELSE</Text>
                                                 <View style={styles.actionInputWrapper}>
                                                   <TextInput
                                                     style={styles.actionInput}
@@ -1366,13 +1395,32 @@ export default function ObjectInspectorModal({
                                                       (global as any).pickingForElse = true;
                                                     }}
                                                   />
+                                                  <TouchableOpacity onPress={() => {
+                                                    setActiveListenerIndex(index);
+                                                    setActiveSubIndex(scIdx);
+                                                    setActiveActionIndex(aIdx);
+                                                    (global as any).pickingForElse = true;
+                                                    setActionPickerVisible(true);
+                                                  }}>
+                                                    <Plus size={14} color={theme.colors.primary} />
+                                                  </TouchableOpacity>
                                                 </View>
+                                                <TouchableOpacity
+                                                  onPress={() => {
+                                                    const newListeners = [...safeObject.logic.listeners];
+                                                    newListeners[index].subConditions[scIdx].elseActions.splice(aIdx, 1);
+                                                    updateField('logic.listeners', newListeners);
+                                                  }}
+                                                >
+                                                  <X size={12} color="#555" />
+                                                </TouchableOpacity>
                                               </View>
                                             ))}
                                             <TouchableOpacity
                                               onPress={() => {
                                                 setActiveListenerIndex(index);
                                                 setActiveSubIndex(scIdx);
+                                                setActiveActionIndex(null);
                                                 (global as any).pickingForElse = true;
                                                 setActionPickerVisible(true);
                                               }}
@@ -1387,13 +1435,15 @@ export default function ObjectInspectorModal({
 
                                   <TouchableOpacity
                                     onPress={() => {
+                                      setActiveListenerIndex(null);
+                                      setActiveSubIndex(null);
                                       setIsAddingSubForIndex(index);
                                       setEventPickerVisible(true);
                                     }}
                                     style={{ marginLeft: 20, marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}
                                   >
                                     <GitBranch size={10} color={theme.colors.secondary} />
-                                    <Text style={{ color: theme.colors.secondary, fontSize: 8, fontWeight: 'bold' }}>+ ADD IF/THEN CONDITION</Text>
+                                    <Text style={{ color: theme.colors.secondary, fontSize: 8, fontWeight: 'bold' }}>+ ADD SUBCONDITION</Text>
                                   </TouchableOpacity>
                                 </View>
                               )}
@@ -1404,6 +1454,8 @@ export default function ObjectInspectorModal({
                         <TouchableOpacity
                           onPress={() => {
                             setActiveListenerIndex(null);
+                            setActiveSubIndex(null);
+                            setIsAddingSubForIndex(null);
                             setEventPickerVisible(true);
                           }}
                           style={[styles.addButtonCompact, { marginTop: 10 }]}

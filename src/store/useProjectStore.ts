@@ -1121,21 +1121,47 @@ export const useProjectStore = create<ProjectState>()(
             throw new Error(`Failed to save game logic: ${projectError.message}`);
           }
 
-          // 5. Batch Upload Assets (Much faster and more reliable)
+          // 5. Read physical files from disk and convert them back to base64 Data URIs if they are local paths
+          const processedSprites = await Promise.all(
+            (sprites || []).map(async (s: any) => {
+              if (s.uri && s.uri.startsWith('file://')) {
+                try {
+                  const base64 = await FileSystem.readAsStringAsync(s.uri, {
+                    encoding: FileSystem.EncodingType.Base64,
+                  });
+                  const extension = s.uri.split('.').pop() || 'png';
+                  const mimeType = extension === 'bmp' ? 'image/bmp' : 'image/png';
+                  return {
+                    ...s,
+                    uri: `data:${mimeType};base64,${base64}`
+                  };
+                } catch (readErr) {
+                  console.warn(`Could not convert physical asset ${s.id} to base64:`, readErr);
+                }
+              }
+              return s;
+            })
+          );
+
+          // 6. Chunk Upload Assets (Much faster and more reliable, avoids 413 Payload Too Large)
           const assetPayloads = [
-            ...(sprites || []).map((s: any) => ({ id: s.id, game_id: project.id, type: 'sprite', data: s })),
+            ...processedSprites.map((s: any) => ({ id: s.id, game_id: project.id, type: 'sprite', data: s })),
             ...(sounds || []).map((s: any) => ({ id: s.id, game_id: project.id, type: 'sound', data: s })),
             ...(animations || []).map((s: any) => ({ id: s.id, game_id: project.id, type: 'animation', data: s }))
           ];
 
           if (assetPayloads.length > 0) {
-            const { error: assetError } = await supabase
-              .from('game_assets')
-              .upsert(assetPayloads, { onConflict: 'id' });
+            const chunkSize = 3;
+            for (let i = 0; i < assetPayloads.length; i += chunkSize) {
+              const chunk = assetPayloads.slice(i, i + chunkSize);
+              const { error: assetError } = await supabase
+                .from('game_assets')
+                .upsert(chunk, { onConflict: 'id' });
 
-            if (assetError) {
-              console.error('Asset Upload Error:', assetError);
-              throw new Error(`Failed to save assets: ${assetError.message}`);
+              if (assetError) {
+                console.error(`Asset Chunk Upload Error at offset ${i}:`, assetError);
+                throw new Error(`Failed to save asset chunk starting at index ${i}: ${assetError.message}`);
+              }
             }
           }
 

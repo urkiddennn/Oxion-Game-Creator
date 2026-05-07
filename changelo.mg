@@ -1,5 +1,49 @@
 # Changelog - Oxion Game Creator
 
+## [1.11.0] - 2026-05-07
+### Added
+- **Developer & Creator Profiles System**:
+  - Implemented a complete **User Profile tab** inside the Launchpad screen, allowing users to view their developer metadata, email, member joined date, and global cloud stats.
+  - Added a **Developer Stats** card summarizing their community impact, including Total Published Games, Reputation Hearts, and Total Play Counts.
+  - Created a **My Creator Portfolio** dashboard showing all games published to the cloud, allowing developers to play their cloud games or **unpublish (delete)** them from the community database and clean up cloud files.
+  - Implemented **Public Creator Profiles**: Clicking any author name (`@username`) on community game cards or game details now triggers a stunning public profile popup. Players can inspect other developers, see their reputation statistics, and instantly play their portfolio of creations!
+  - Added an engaging custom **Profile Gate/Lock screen** that prompts logged-out users to create an account or sign in to claim their Developer ID and build their portfolio.
+  - Aligned all user and public profiles with Oxion's core **compact design aesthetics**—featuring low container corner radius (`borderRadius: 2`), tight padding and layouts, retro square-pixel avatar avatars (`borderRadius: 0`), and minimized spacing and element gaps.
+
+## [1.10.5] - 2026-05-07
+### Fixed
+- **Community Asset Upload / Broken Images**:
+  - Resolved a severe bug where custom imported images became broken or missing for other community downloaders. When an image is imported, its state URI is updated to point to a physical device file path (`file://...`). Publishing now dynamically reads physical assets from disk, converts them to base64 Data URIs, and packages them back into database records.
+  - Resolved potential network upload failures by chunking asset uploads into groups of 3 instead of bulk-sending them at once. This prevents Supabase gateway timeouts and `413 Payload Too Large` rejections from blocking project publications.
+
+## [1.10.4] - 2026-05-07
+### Fixed
+- **Event Picker Input Target Bleeding**:
+  - Resolved a critical bug where adding `if else` or `if then` subconditions would sometimes bleed and append to the main event/trigger input instead of inserting a fresh subcondition row.
+  - Ensured that all five Event Picker triggers explicitly reset unrelated active selection indices (`activeListenerIndex`, `activeSubIndex`, and `isAddingSubForIndex`) upon activation. This isolates every single picker session completely and prevents state contamination.
+
+## [1.10.3] - 2026-05-07
+### Fixed
+- **Action Selection State Hijack**:
+  - Resolved a critical bug in the Visual Logic & Action Editor where clicking `+ ADD ACTION`, `+ ADD THEN`, or `+ ADD ELSE` would overwrite or append directly into the previously focused action input instead of appending a brand new line.
+  - Clears `activeActionIndex` upon clicking any newly created action, allowing creators to seamlessly mix direct typing and picker selections.
+
+### Added
+- **Subcondition ELSE Quick Picker**:
+  - Engineered the `Plus` selection helper icon inside the Logic `ELSE` subcondition editor rows, matching the interactive `THEN` quick picker experience.
+- **Subcondition Actions Deletion Buttons**:
+  - Implemented interactive `X` deletion buttons on the right margin of both `THEN` and `ELSE` action rows, empowering creators to prune unwanted subcondition actions instantly without manual backspacing.
+
+## [1.10.2] - 2026-05-07
+### Added
+- **Subcondition Quick Event Picker**:
+  - Engineered an interactive `Plus` selection helper icon inside the Logic subcondition editor rows.
+  - Clicking this button automatically sets the active subcondition state context and launches the unified Event Picker Modal, allowing creators to dynamically select properties, built-in triggers, project variables, math, and operations to append directly into subcondition clauses without typing syntax.
+
+### Updated
+- **Subcondition Naming Refinement**:
+  - Renamed the custom listener condition trigger button from `+ ADD IF/THEN CONDITION` to `+ ADD SUBCONDITION` to standardize naming conventions and improve visual readability of nested actions.
+
 ## [1.10.1] - 2026-05-07
 ### Updated
 - **Experimental Feature Tagging**:

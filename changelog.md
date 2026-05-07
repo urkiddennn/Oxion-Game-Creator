@@ -1,5 +1,88 @@
 # Changelog
 
+## [1.11.0] - 2026-05-07
+### Added
+- **Developer & Creator Profiles System**:
+  - Implemented a complete **User Profile tab** inside the Launchpad screen, allowing users to view their developer metadata, email, member joined date, and global cloud stats.
+  - Added a **Developer Stats** card summarizing their community impact, including Total Published Games, Reputation Hearts, and Total Play Counts.
+  - Created a **My Creator Portfolio** dashboard showing all games published to the cloud, allowing developers to play their cloud games or **unpublish (delete)** them from the community database and clean up cloud files.
+  - Implemented **Public Creator Profiles**: Clicking any author name (`@username`) on community game cards or game details now triggers a stunning public profile popup. Players can inspect other developers, see their reputation statistics, and instantly play their portfolio of creations!
+  - Added an engaging custom **Profile Gate/Lock screen** that prompts logged-out users to create an account or sign in to claim their Developer ID and build their portfolio.
+  - Aligned all user and public profiles with Oxion's core **compact design aesthetics**—featuring low container corner radius (`borderRadius: 2`), tight padding and layouts, retro square-pixel avatar avatars (`borderRadius: 0`), and minimized spacing and element gaps.
+
+## [1.10.5] - 2026-05-07
+### Fixed
+- **Community Asset Upload / Broken Images**:
+  - Resolved a severe bug where custom imported images became broken or missing for other community downloaders. When an image is imported, its state URI is updated to point to a physical device file path (`file://...`). Publishing now dynamically reads physical assets from disk, converts them to base64 Data URIs, and packages them back into database records.
+  - Resolved potential network upload failures by chunking asset uploads into groups of 3 instead of bulk-sending them at once. This prevents Supabase gateway timeouts and `413 Payload Too Large` rejections from blocking project publications.
+
+## [1.10.4] - 2026-05-07
+### Fixed
+- **Event Picker Input Target Bleeding**:
+  - Resolved a critical bug where adding `if else` or `if then` subconditions would sometimes bleed and append to the main event/trigger input instead of inserting a fresh subcondition row.
+  - Ensured that all five Event Picker triggers explicitly reset unrelated active selection indices (`activeListenerIndex`, `activeSubIndex`, and `isAddingSubForIndex`) upon activation. This isolates every single picker session completely and prevents state contamination.
+
+## [1.10.3] - 2026-05-07
+### Fixed
+- **Action Selection State Hijack**:
+  - Resolved a critical bug in the Visual Logic & Action Editor where clicking `+ ADD ACTION`, `+ ADD THEN`, or `+ ADD ELSE` would overwrite or append directly into the previously focused action input instead of appending a brand new line.
+  - Clears `activeActionIndex` upon clicking any newly created action, allowing creators to seamlessly mix direct typing and picker selections.
+
+### Added
+- **Subcondition ELSE Quick Picker**:
+  - Engineered the `Plus` selection helper icon inside the Logic `ELSE` subcondition editor rows, matching the interactive `THEN` quick picker experience.
+- **Subcondition Actions Deletion Buttons**:
+  - Implemented interactive `X` deletion buttons on the right margin of both `THEN` and `ELSE` action rows, empowering creators to prune unwanted subcondition actions instantly without manual backspacing.
+
+## [1.10.2] - 2026-05-07
+### Added
+- **Subcondition Quick Event Picker**:
+  - Engineered an interactive `Plus` selection helper icon inside the Logic subcondition editor rows.
+  - Clicking this button automatically sets the active subcondition state context and launches the unified Event Picker Modal, allowing creators to dynamically select properties, built-in triggers, project variables, math, and operations to append directly into subcondition clauses without typing syntax.
+
+### Updated
+- **Subcondition Naming Refinement**:
+  - Renamed the custom listener condition trigger button from `+ ADD IF/THEN CONDITION` to `+ ADD SUBCONDITION` to standardize naming conventions and improve visual readability of nested actions.
+
+## [1.10.1] - 2026-05-07
+### Updated
+- **Experimental Feature Tagging**:
+  - Appended `(Experimental)` tags to the **Web Export** and **APK Build** buttons, setup interfaces, and compilation/loading modals in Settings. This signals to creators that these newly released standalone export and cloud packaging pipelines are in a pre-release, edge testing state.
+
+## [1.10.0] - 2026-05-07
+### Added
+- **EAS Project Override Fields**:
+  - Added custom **EAS Project ID** and **Expo Project Slug** override text inputs inside the editor Settings modal, persisting them locally via React Native `AsyncStorage`. This lets creators compile finished standalone games directly under their own personalized Expo Developer Accounts.
+- **Standalone APK Packaging Documentation**:
+  - Appended a comprehensive, beautifully-formatted step-by-step Android packaging guide inside `Oxion_QuickStart.html`. Details the prerequisite configurations, local build service execution, Expo Token generation, and setting up custom Project IDs and Slugs.
+- **Standalone Game Version Reset**:
+  - Configured the build service to automatically reset exported game version fields in the sandboxed `app.json` to start fresh at `1.0.0` instead of inheriting the parent editor engine's version (`1.8.7`).
+- **Base64 Standalone Asset Serialization**:
+  - Configured the editor to automatically serialize imported images and sounds into raw Base64 Data URIs during sprite/audio imports and on-the-fly right before packaging the build payload. This guarantees that all game assets are embedded natively in `project.json` and load flawlessly in sandboxed standalone APK environments!
+- **Standalone Game Player UI Refinement**:
+  - Updated `GamePlayer.tsx` to automatically hide the developer Exit (X), Pause, and Restart toolbar buttons in standalone mode. This removes editor controls for your players and provides a pristine, 100% immersive, full-screen gameplay experience.
+
+### Fixed
+- **Instant Sandboxing Copying Performance**:
+  - Added directory filters inside the Node.js build service to skip the heavy `.agents` folder (agent cache, session logs, scratch space) during sandboxed workspace copy operations.
+  - Normalized path separators (`\`) on Windows to ensure strict directory comparisons, bringing the copy step down to an instantaneous 1ms.
+- **EAS Case Mismatch Safeguard**:
+  - Integrated automatic lowercase normalization on custom Expo project slugs on the build server, preventing case-sensitive mismatch failures (e.g. `Game3` vs `game3`) within EAS CLI compilation.
+
+## [1.9.9] - 2026-05-07
+### Added
+- **Local APK Build Agent (`oxion-build-service`)**:
+  - Engineered an Express-based Node.js remote build agent server.
+  - Handles isolated sandboxed compilation folders inside `./temp/build_[UUID]` to guarantee simultaneous thread safety.
+  - Injects runtime settings (`app.json` name, slug, bundleId) and writes active game data directly into `assets/project.json`.
+  - Spawns cross-platform CLI shells to execute EAS Cloud Builds under secure user tokens.
+- **Credentials Persistence Shield**:
+  - Integrated React Native `AsyncStorage` persistence inside the Settings module.
+  - Securely remembers Expo Developer Tokens and bundle names directly in local client memory so settings aren't lost on restart.
+- **Real-Time Log Terminal View**:
+  - Designed a high-tech green terminal monospace logger inside the Settings view.
+  - Streams the local build server's standard outputs directly into the editor app so developers can watch compiles live.
+
 ## [1.9.8] - 2026-05-06
 ### Fixed
 - **Engine Physics Garbage Collection & Performance Stabilizer**:

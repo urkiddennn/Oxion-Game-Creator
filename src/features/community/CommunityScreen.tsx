@@ -6,11 +6,12 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { useProjectStore } from '../../store/useProjectStore';
 import AuthModal from '../auth/AuthModal';
 import GamePlayer from '../rooms/components/GamePlayer';
-import { Download, Play, MessageSquare, Heart, Search, UploadCloud, User } from 'lucide-react-native';
+import { Download, Play, MessageSquare, Heart, Search, UploadCloud, User, Award, Gamepad2 } from 'lucide-react-native';
 
 interface CommunityGame {
   id: string;
   title: string;
+  author_id?: string;
   author_name: string;
   play_count: number;
   comments_count: number;
@@ -72,6 +73,7 @@ export default function CommunityScreen({ navigation }: any) {
       const formattedGames = (data || []).map(p => ({
         id: p.id,
         title: p.title || 'Untitled',
+        author_id: p.author_id || '',
         author_name: p.author_name || 'Unknown',
         play_count: p.play_count || 0,
         likes: p.likes || 0,
@@ -110,6 +112,7 @@ export default function CommunityScreen({ navigation }: any) {
       setPlayingProject(project);
       setIsPlaying(true);
       setSelectedGame(null); // Close details modal when playing starts
+      setCreatorModalVisible(false); // Close creator modal if playing started
 
       // 2. Increment play count in background
       const { error: rpcError } = await supabase.rpc('increment_play_count', { game_id: gameId });
@@ -125,6 +128,52 @@ export default function CommunityScreen({ navigation }: any) {
       Alert.alert('Play Error', err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Creator profile states
+  const [creatorModalVisible, setCreatorModalVisible] = useState(false);
+  const [creatorId, setCreatorId] = useState<string | null>(null);
+  const [creatorName, setCreatorName] = useState('');
+  const [creatorGames, setCreatorGames] = useState<any[]>([]);
+  const [loadingCreatorProfile, setLoadingCreatorProfile] = useState(false);
+
+  const handleOpenCreatorProfile = async (authorId: string, authorName: string) => {
+    if (!authorId) {
+      Alert.alert('Profile Error', 'This creator profile is unavailable.');
+      return;
+    }
+    setCreatorId(authorId);
+    setCreatorName(authorName);
+    setCreatorModalVisible(true);
+    setLoadingCreatorProfile(true);
+    try {
+      const { data, error } = await supabase
+        .from('games')
+        .select('*')
+        .eq('author_id', authorId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const formatted = (data || []).map(p => ({
+        id: p.id,
+        title: p.title || 'Untitled',
+        author_id: p.author_id,
+        author_name: p.author_name || authorName,
+        play_count: p.play_count || 0,
+        likes: p.likes || 0,
+        comments_count: p.comments_count || 0,
+        created_at: p.created_at,
+        description: p.description,
+        icon_preview: p.project_data?.iconPreview
+      }));
+
+      setCreatorGames(formatted);
+    } catch (err: any) {
+      console.error('Error fetching creator games:', err);
+    } finally {
+      setLoadingCreatorProfile(false);
     }
   };
 
@@ -270,7 +319,13 @@ export default function CommunityScreen({ navigation }: any) {
       </View>
       <View style={styles.gameInfo}>
         <Text style={styles.gameTitle} numberOfLines={1}>{item.title}</Text>
-        <Text style={styles.gameAuthor} numberOfLines={1}>@{item.author_name}</Text>
+        <TouchableOpacity 
+          onPress={() => item.author_id && handleOpenCreatorProfile(item.author_id, item.author_name)}
+          activeOpacity={0.7}
+          style={{ alignSelf: 'flex-start' }}
+        >
+          <Text style={styles.gameAuthor} numberOfLines={1}>@{item.author_name}</Text>
+        </TouchableOpacity>
 
         <View style={styles.statsRow}>
           <View style={styles.stat}>
@@ -488,7 +543,15 @@ export default function CommunityScreen({ navigation }: any) {
                       <Text style={styles.versionTagText}>v1.0.0</Text>
                     </View>
                   </View>
-                  <Text style={styles.detailsAuthor}>Created by @{selectedGame.author_name}</Text>
+                  <TouchableOpacity 
+                    onPress={() => selectedGame.author_id && handleOpenCreatorProfile(selectedGame.author_id, selectedGame.author_name)}
+                    activeOpacity={0.7}
+                    style={{ alignSelf: 'flex-start' }}
+                  >
+                    <Text style={styles.detailsAuthor}>
+                      Created by <Text style={{ color: theme.colors.primary, textDecorationLine: 'underline' }}>@{selectedGame.author_name}</Text>
+                    </Text>
+                  </TouchableOpacity>
 
                   <View style={styles.descriptionBox}>
                     <Text style={styles.descriptionTitle}>Description</Text>
@@ -546,6 +609,119 @@ export default function CommunityScreen({ navigation }: any) {
             </ScrollView>
           </View>
         )}
+      </Modal>
+
+      {/* Creator Profile Modal */}
+      <Modal visible={creatorModalVisible} animationType="slide" transparent={false} onRequestClose={() => setCreatorModalVisible(false)}>
+        <View style={styles.detailsModal}>
+          <View style={styles.detailsHeader}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => setCreatorModalVisible(false)}
+            >
+              <Text style={styles.backButtonText}>← Close Profile</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.detailsScroll} contentContainerStyle={styles.detailsScrollContent}>
+            {/* Public Profile Card Header */}
+            <View style={styles.creatorHeader}>
+              <View style={styles.avatarWrapLarge}>
+                <Text style={styles.avatarCharLarge}>
+                  {creatorName ? creatorName.substring(0, 2).toUpperCase() : 'OX'}
+                </Text>
+                <View style={styles.onlineBadge} />
+              </View>
+
+              <View style={styles.profileDetails}>
+                <View style={styles.nameRow}>
+                  <Text style={styles.profileNameLarge}>@{creatorName}</Text>
+                  <View style={styles.badgeLevel}>
+                    <Award size={10} color={theme.colors.primary} />
+                    <Text style={styles.badgeText}>CREATOR</Text>
+                  </View>
+                </View>
+                <Text style={styles.reputationLabel}>Community Game Creator</Text>
+              </View>
+            </View>
+
+            {/* Developer Reputation Summary stats */}
+            <View style={styles.statsSection}>
+              <View style={styles.statBox}>
+                <Text style={styles.statNumber}>{creatorGames.length}</Text>
+                <Text style={styles.statLabel}>Shared Games</Text>
+              </View>
+              <View style={styles.statBox}>
+                <Text style={styles.statNumber}>
+                  {creatorGames.reduce((acc, curr) => acc + curr.likes, 0)}
+                </Text>
+                <Text style={styles.statLabel}>Reputation Hearts</Text>
+              </View>
+              <View style={styles.statBox}>
+                <Text style={styles.statNumber}>
+                  {creatorGames.reduce((acc, curr) => acc + curr.play_count, 0)}
+                </Text>
+                <Text style={styles.statLabel}>Total Plays</Text>
+              </View>
+            </View>
+
+            {/* Creator Portfolio */}
+            <View style={{ paddingHorizontal: 20, marginTop: 10 }}>
+              <Text style={styles.portfolioTitle}>@{creatorName}'s Portfolio</Text>
+
+              {loadingCreatorProfile ? (
+                <View style={{ padding: 40, alignItems: 'center' }}>
+                  <ActivityIndicator size="small" color={theme.colors.primary} />
+                </View>
+              ) : creatorGames.length === 0 ? (
+                <View style={styles.emptyPortfolioCard}>
+                  <Text style={{ color: theme.colors.textMuted, fontSize: 12 }}>No games published yet.</Text>
+                </View>
+              ) : (
+                <View style={{ gap: 10 }}>
+                  {creatorGames.map((game) => (
+                    <TouchableOpacity
+                      key={game.id}
+                      style={styles.creatorGameRow}
+                      onPress={() => {
+                        setCreatorModalVisible(false);
+                        setSelectedGame(game);
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                        <View style={styles.iconContainer}>
+                          {renderIcon(game.icon_preview, 40)}
+                        </View>
+                        <View style={{ marginLeft: 12, flex: 1 }}>
+                          <Text style={{ color: theme.colors.text, fontSize: 12, fontWeight: '800' }} numberOfLines={1}>
+                            {game.title}
+                          </Text>
+                          <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                              <Play size={8} color={theme.colors.textMuted} />
+                              <Text style={{ color: theme.colors.textMuted, fontSize: 8 }}>{game.play_count}</Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                              <Heart size={8} color="#ff4b4b" fill="#ff4b4b" />
+                              <Text style={{ color: theme.colors.textMuted, fontSize: 8 }}>{game.likes}</Text>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.cardPlayBtn}
+                        onPress={() => handlePlay(game.id)}
+                      >
+                        <Play size={8} color={theme.colors.background} fill={theme.colors.background} />
+                        <Text style={{ color: theme.colors.background, fontSize: 8, fontWeight: 'bold' }}>PLAY</Text>
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          </ScrollView>
+        </View>
       </Modal>
 
       <GamePlayer
@@ -1079,5 +1255,154 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontSize: 13,
     fontWeight: '500',
+  },
+  creatorHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#16191E',
+    borderRadius: 2,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: 'center',
+    marginHorizontal: 12,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  avatarWrapLarge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#20242B',
+    borderWidth: 1.5,
+    borderColor: theme.colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  avatarCharLarge: {
+    color: theme.colors.primary,
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  profileNameLarge: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: theme.colors.text,
+  },
+  reputationLabel: {
+    fontSize: 9,
+    color: theme.colors.textMuted,
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  statsSection: {
+    flexDirection: 'row',
+    gap: 6,
+    marginHorizontal: 12,
+    marginBottom: 12,
+  },
+  statBox: {
+    flex: 1,
+    backgroundColor: '#1E2228',
+    borderRadius: 2,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: theme.colors.text,
+    marginBottom: 1,
+  },
+  statLabel: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: theme.colors.textMuted,
+    textTransform: 'uppercase',
+  },
+  portfolioTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: theme.colors.text,
+    marginBottom: 8,
+    letterSpacing: -0.2,
+  },
+  emptyPortfolioCard: {
+    backgroundColor: '#121418',
+    borderRadius: 2,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: 'center',
+  },
+  creatorGameRow: {
+    flexDirection: 'row',
+    backgroundColor: '#1E2228',
+    borderRadius: 2,
+    padding: 6,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  iconContainer: {
+    width: 36,
+    height: 36,
+    backgroundColor: '#16191E',
+    borderRadius: 2,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.03)',
+  },
+  cardPlayBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 2,
+    gap: 2,
+  },
+  onlineBadge: {
+    position: 'absolute',
+    bottom: -1,
+    right: -1,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#27AE60',
+    borderWidth: 1.5,
+    borderColor: '#16191E',
+  },
+  profileDetails: {
+    flex: 1,
+    marginLeft: 10,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
+  },
+  badgeLevel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(52, 152, 219, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(52, 152, 219, 0.3)',
+    borderRadius: 2,
+    paddingHorizontal: 3,
+    paddingVertical: 1,
+    gap: 2,
+  },
+  badgeText: {
+    color: theme.colors.primary,
+    fontSize: 6,
+    fontWeight: '900',
   },
 });

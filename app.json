@@ -16,9 +16,9 @@
       "backgroundColor": "#1D1D3E"
     },
     "splash": {
-      "image": "./assets/oxion.png",
+      "image": "./assets/image.png",
       "resizeMode": "contain",
-      "backgroundColor": "#1D1D3E"
+      "backgroundColor": "#000000"
     },
     "ios": {
       "supportsTablet": true
