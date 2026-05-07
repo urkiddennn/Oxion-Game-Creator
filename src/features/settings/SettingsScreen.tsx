@@ -1,9 +1,14 @@
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Modal, Image } from 'react-native';
 import { theme } from '../../theme';
 import { useProjectStore } from '../../store/useProjectStore';
-import { Settings as SettingsIcon, LogOut, Shield, Database, Bell, X, Box, Image as ImageIcon, Trash2, Globe } from 'lucide-react-native';
+import { Settings as SettingsIcon, LogOut, Shield, Database, Bell, X, Box, Image as ImageIcon, Trash2, Globe, Smartphone } from 'lucide-react-native';
 import { Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
+import * as FileSystem from 'expo-file-system';
 import React from 'react';
+
+
 
 export default function SettingsScreen() {
   const { activeProject: currentProject, closeProject, updateProject, removeProject, exportToWeb } = useProjectStore();
@@ -11,6 +16,224 @@ export default function SettingsScreen() {
   const [isExporting, setIsExporting] = React.useState(false);
   const [exportProgress, setExportProgress] = React.useState(0);
   const [exportStatus, setExportStatus] = React.useState('Preparing...');
+
+  // APK Build Agent State
+  const [showApkSetup, setShowApkSetup] = React.useState(false);
+  const [showApkProgress, setShowApkProgress] = React.useState(false);
+  
+  // Dynamically resolve local host computer IP in Expo Go
+  const getDynamicHostIp = () => {
+    try {
+      const hostUri = Constants.expoConfig?.hostUri || Constants.manifest2?.extra?.expoGoLaunchMetadata?.debuggerHost;
+      if (hostUri) {
+        const ip = hostUri.split(':')[0];
+        if (ip && ip !== 'localhost' && ip !== '127.0.0.1') {
+          return `http://${ip}:3001`;
+        }
+      }
+    } catch (e) {
+      console.log('Failed to detect developer machine IP from Metro bundler', e);
+    }
+    return 'http://localhost:3001';
+  };
+
+  const [buildAgentUrl, setBuildAgentUrl] = React.useState(getDynamicHostIp());
+  const [expoToken, setExpoToken] = React.useState('');
+  const [bundleIdentifier, setBundleIdentifier] = React.useState(
+    currentProject ? `com.oxion.${currentProject.name.toLowerCase().replace(/[^a-z0-9]/g, '')}` : 'com.oxion.game'
+  );
+  const [expoOwner, setExpoOwner] = React.useState('');
+  const [easProjectId, setEasProjectId] = React.useState('');
+  const [expoSlug, setExpoSlug] = React.useState('');
+  const [apkBuildStatus, setApkBuildStatus] = React.useState('');
+  const [apkBuildLog, setApkBuildLog] = React.useState('');
+
+  // Load saved credentials on mount
+  React.useEffect(() => {
+    const loadApkSettings = async () => {
+      try {
+        const token = await AsyncStorage.getItem('oxion_apk_expo_token');
+        const owner = await AsyncStorage.getItem('oxion_apk_expo_owner');
+        const savedBundle = await AsyncStorage.getItem(`oxion_apk_bundle_${currentProject?.id}`);
+        const savedUrl = await AsyncStorage.getItem('oxion_apk_build_agent_url');
+        const savedEasProjectId = await AsyncStorage.getItem(`oxion_apk_eas_project_id_${currentProject?.id}`);
+        const savedExpoSlug = await AsyncStorage.getItem(`oxion_apk_expo_slug_${currentProject?.id}`);
+        
+        if (token) setExpoToken(token);
+        if (owner) setExpoOwner(owner);
+        if (savedBundle) setBundleIdentifier(savedBundle);
+        if (savedEasProjectId) setEasProjectId(savedEasProjectId);
+        if (savedExpoSlug) setExpoSlug(savedExpoSlug);
+        if (savedUrl) {
+          setBuildAgentUrl(savedUrl);
+        } else {
+          setBuildAgentUrl(getDynamicHostIp());
+        }
+      } catch (e) {
+        console.warn('Failed to load APK settings', e);
+      }
+    };
+    loadApkSettings();
+  }, [currentProject?.id]);
+
+  // Handle build execution and live logging feedback
+  const handleStartApkBuild = async () => {
+    if (!expoToken) {
+      Alert.alert('Missing Expo Token', 'Please enter your Expo Personal Access Token.');
+      return;
+    }
+    if (!bundleIdentifier) {
+      Alert.alert('Missing Bundle Identifier', 'Please enter a valid package name, e.g. com.yourname.mygame');
+      return;
+    }
+    if (!buildAgentUrl) {
+      Alert.alert('Missing Agent URL', 'Please enter a valid Build Agent URL.');
+      return;
+    }
+
+    // Save inputs
+    try {
+      await AsyncStorage.setItem('oxion_apk_expo_token', expoToken);
+      await AsyncStorage.setItem('oxion_apk_expo_owner', expoOwner);
+      await AsyncStorage.setItem('oxion_apk_build_agent_url', buildAgentUrl);
+      if (currentProject) {
+        await AsyncStorage.setItem(`oxion_apk_bundle_${currentProject.id}`, bundleIdentifier);
+        await AsyncStorage.setItem(`oxion_apk_eas_project_id_${currentProject.id}`, easProjectId);
+        await AsyncStorage.setItem(`oxion_apk_expo_slug_${currentProject.id}`, expoSlug);
+      }
+    } catch (e) {
+      console.warn('Failed to save APK settings', e);
+    }
+
+    setShowApkSetup(false);
+    setShowApkProgress(true);
+    setApkBuildStatus('Processing and packing local game assets...');
+    setApkBuildLog(`Serializing images and audio into portable standalone bundles...`);
+
+    try {
+      // 1. Convert all local file URIs to Base64 Data URIs for portable standalone assets (sprites + sounds)
+      const processedSprites = await Promise.all(
+        (currentProject?.sprites || []).map(async (sprite) => {
+          if (sprite.type === 'imported' && sprite.uri && sprite.uri.startsWith('file://')) {
+            try {
+              const base64 = await FileSystem.readAsStringAsync(sprite.uri, {
+                encoding: FileSystem.EncodingType.Base64,
+              });
+              return {
+                ...sprite,
+                uri: `data:image/png;base64,${base64}`,
+              };
+            } catch (err) {
+              console.warn(`Failed to convert sprite ${sprite.name} to base64`, err);
+              return sprite;
+            }
+          }
+          return sprite;
+        })
+      );
+
+      const processedSounds = await Promise.all(
+        (currentProject?.sounds || []).map(async (sound) => {
+          if (sound.type === 'imported' && sound.uri && sound.uri.startsWith('file://')) {
+            try {
+              const base64 = await FileSystem.readAsStringAsync(sound.uri, {
+                encoding: FileSystem.EncodingType.Base64,
+              });
+              const ext = sound.uri.endsWith('.mp3') ? 'mp3' : 'wav';
+              return {
+                ...sound,
+                uri: `data:audio/${ext};base64,${base64}`,
+              };
+            } catch (err) {
+              console.warn(`Failed to convert sound ${sound.name} to base64`, err);
+              return sound;
+            }
+          }
+          return sound;
+        })
+      );
+
+      const processedProject = {
+        ...currentProject,
+        sprites: processedSprites,
+        sounds: processedSounds,
+      };
+
+      setApkBuildStatus('Initializing build on local agent...');
+      setApkBuildLog(`Connecting to local agent on ${buildAgentUrl}...`);
+
+      const buildRequestPayload = {
+        expoToken,
+        projectConfig: {
+          name: currentProject?.name || 'Oxion Game',
+          slug: expoSlug ? expoSlug.trim() : (currentProject?.name || 'oxion-game').toLowerCase().replace(/[^a-z0-9]/g, '-'),
+          owner: expoOwner || undefined,
+          bundleIdentifier,
+          easProjectId: easProjectId || undefined
+        },
+        gameData: processedProject
+      };
+
+      const response = await fetch(`${buildAgentUrl}/api/v1/build`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer oxion_dev_build_key'
+        },
+        body: JSON.stringify(buildRequestPayload)
+      });
+
+      if (!response.ok) {
+        const errJson = await response.json();
+        throw new Error(errJson.error || `Server responded with status code ${response.status}`);
+      }
+
+      const resData = await response.json();
+      const { buildId, statusUrl, logUrl } = resData;
+
+      // Map polling URLs dynamically based on the configured agent host
+      const parsedStatusUrl = statusUrl.startsWith('http') ? statusUrl : `${buildAgentUrl}${statusUrl}`;
+      const parsedLogUrl = logUrl.startsWith('http') ? logUrl : `${buildAgentUrl}${logUrl}`;
+
+      setApkBuildStatus('Build Accepted. Launching EAS build process...');
+      setApkBuildLog(prev => `${prev}\n\n✅ Build scheduled with ID: ${buildId}\nMonitoring compiler process stream...\n`);
+
+      // Start Polling Loop
+      let isFinished = false;
+      const pollTimer = setInterval(async () => {
+        if (isFinished) return;
+        try {
+          const statusRes = await fetch(parsedStatusUrl);
+          const statusData = await statusRes.json();
+          
+          const logRes = await fetch(parsedLogUrl);
+          const rawLogText = await logRes.text();
+          setApkBuildLog(rawLogText);
+
+          if (statusData.status === 'success') {
+            isFinished = true;
+            clearInterval(pollTimer);
+            setApkBuildStatus('SUCCESS: APK build completed! Check EAS Dashboard.');
+            Alert.alert('Build Succeeded!', 'Your Android APK build completed successfully!');
+          } else if (statusData.status === 'failed') {
+            isFinished = true;
+            clearInterval(pollTimer);
+            setApkBuildStatus(`FAILED: ${statusData.error}`);
+            Alert.alert('Build Failed', statusData.error || 'Check local logs for compile details.');
+          } else {
+            setApkBuildStatus('Local agent running EAS compilation...');
+          }
+        } catch (pollErr) {
+          console.warn('Log polling error:', pollErr);
+        }
+      }, 3000);
+
+    } catch (err: any) {
+      setApkBuildStatus('FAILED: Could not contact build agent');
+      setApkBuildLog(prev => `${prev}\n\n❌ Error: ${err.message}\n\nPlease verify that your local build service is running on ${buildAgentUrl}!`);
+    }
+  };
+
 
   const handleDeleteProject = () => {
     if (!currentProject) return;
@@ -146,9 +369,20 @@ export default function SettingsScreen() {
           >
             <View style={styles.itemLeft}>
               <Globe color={theme.colors.primary} size={20} />
-              <Text style={styles.itemLabel}>Web Export</Text>
+              <Text style={styles.itemLabel}>Web Export (Experimental)</Text>
             </View>
             <Text style={styles.itemValue}>Ready</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.item} 
+            onPress={() => setShowApkSetup(true)}
+          >
+            <View style={styles.itemLeft}>
+              <Smartphone color={theme.colors.primary} size={20} />
+              <Text style={styles.itemLabel}>APK Build (Experimental)</Text>
+            </View>
+            <Text style={styles.itemValue}>Local Agent</Text>
           </TouchableOpacity>
 
           <SettingItem icon={Database} label="Storage" />
@@ -225,7 +459,7 @@ export default function SettingsScreen() {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { padding: 24, alignItems: 'center' }]}>
             <Globe color={theme.colors.primary} size={48} />
-            <Text style={[styles.modalTitle, { marginTop: 16, fontSize: 18 }]}>Building Web App</Text>
+            <Text style={[styles.modalTitle, { marginTop: 16, fontSize: 18 }]}>Building Web App (Experimental)</Text>
             <Text style={{ color: theme.colors.textSecondary, marginBottom: 20 }}>{exportStatus}</Text>
             
             <View style={styles.progressBarContainer}>
@@ -233,6 +467,165 @@ export default function SettingsScreen() {
             </View>
             
             <Text style={{ color: theme.colors.primary, fontWeight: 'bold', marginTop: 10 }}>{exportProgress}%</Text>
+          </View>
+        </View>
+      </Modal>
+
+      {/* APK SETUP MODAL */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showApkSetup}
+        onRequestClose={() => setShowApkSetup(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '85%', padding: 16 }]}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Smartphone color={theme.colors.primary} size={20} />
+                <Text style={styles.modalTitle}>APK Build Setup (Experimental)</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowApkSetup(false)}>
+                <X color={theme.colors.text} size={20} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 12 }}>
+              <Text style={{ color: theme.colors.textSecondary, fontSize: 11, marginBottom: 16, lineHeight: 16 }}>
+                Configure your Expo credentials and mobile packaging properties to package your Oxion game into an Android APK through your local build agent.
+              </Text>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.inputLabel}>Local Build Agent URL</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={buildAgentUrl}
+                  onChangeText={setBuildAgentUrl}
+                  placeholder="e.g. http://192.168.1.50:3001"
+                  placeholderTextColor={theme.colors.textMuted}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.inputLabel}>Expo Access Token</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={expoToken}
+                  onChangeText={setExpoToken}
+                  secureTextEntry={true}
+                  placeholder="Paste your personal access token (EXPO_TOKEN)"
+                  placeholderTextColor={theme.colors.textMuted}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.inputLabel}>Bundle Identifier (Package Name)</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={bundleIdentifier}
+                  onChangeText={setBundleIdentifier}
+                  placeholder="e.g. com.yourname.mygame"
+                  placeholderTextColor={theme.colors.textMuted}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.inputLabel}>Expo Owner Account (Optional)</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={expoOwner}
+                  onChangeText={setExpoOwner}
+                  placeholder="Your Expo Username / Org"
+                  placeholderTextColor={theme.colors.textMuted}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.inputLabel}>EAS Project ID (Optional for custom accounts)</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={easProjectId}
+                  onChangeText={setEasProjectId}
+                  placeholder="e.g. 96f74b74-c465-42b8-b118-d4451765b06d"
+                  placeholderTextColor={theme.colors.textMuted}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.inputLabel}>Expo Project Slug (Optional override)</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={expoSlug}
+                  onChangeText={setExpoSlug}
+                  placeholder="e.g. game3"
+                  placeholderTextColor={theme.colors.textMuted}
+                />
+              </View>
+
+              <TouchableOpacity
+                style={styles.buildSubmitButton}
+                onPress={handleStartApkBuild}
+              >
+                <Smartphone color="#000" size={18} />
+                <Text style={styles.buildSubmitText}>Trigger Local APK Build</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* APK PROGRESS & REAL-TIME LOGS MODAL */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showApkProgress}
+        onRequestClose={() => {
+          if (apkBuildStatus.startsWith('SUCCESS') || apkBuildStatus.startsWith('FAILED')) {
+            setShowApkProgress(false);
+          } else {
+            Alert.alert('Build in progress', 'The build is executing on your local build agent. Closing this view will not stop the build.');
+            setShowApkProgress(false);
+          }
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '90%', padding: 16 }]}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Smartphone color={theme.colors.primary} size={20} />
+                <Text style={styles.modalTitle}>Local APK Compiler (Experimental)</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowApkProgress(false)}>
+                <X color={theme.colors.text} size={20} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ marginTop: 12, flex: 1, minHeight: 380 }}>
+              <Text style={{ color: theme.colors.primary, fontSize: 13, fontWeight: 'bold', marginBottom: 4 }}>
+                {apkBuildStatus}
+              </Text>
+              
+              <View style={styles.logConsole}>
+                <ScrollView 
+                  ref={(ref) => ref?.scrollToEnd({ animated: true })}
+                  showsVerticalScrollIndicator={true}
+                  style={{ flex: 1 }}
+                >
+                  <Text style={styles.logText}>
+                    {apkBuildLog || 'Waiting for log stream...'}
+                  </Text>
+                </ScrollView>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+                <TouchableOpacity
+                  style={[styles.modalControlBtn, { backgroundColor: theme.colors.surface }]}
+                  onPress={() => setShowApkProgress(false)}
+                >
+                  <Text style={{ color: theme.colors.text, fontWeight: '600', fontSize: 12 }}>Dismiss View</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         </View>
       </Modal>
@@ -487,4 +880,63 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 13,
   },
+  formGroup: {
+    marginBottom: 12,
+  },
+  inputLabel: {
+    color: theme.colors.textSecondary,
+    fontSize: 10,
+    fontWeight: '600',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  formInput: {
+    backgroundColor: theme.colors.background,
+    borderRadius: 2,
+    padding: 8,
+    color: theme.colors.text,
+    fontSize: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  buildSubmitButton: {
+    backgroundColor: theme.colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 10,
+    borderRadius: 2,
+    marginTop: 16,
+  },
+  buildSubmitText: {
+    color: '#000',
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+  logConsole: {
+    flex: 1,
+    backgroundColor: '#0a0a0d',
+    borderColor: theme.colors.border,
+    borderWidth: 1,
+    borderRadius: 2,
+    padding: 8,
+    minHeight: 250,
+    marginTop: 8,
+  },
+  logText: {
+    color: '#39ff14', // Neon terminal green
+    fontFamily: process.platform === 'ios' ? 'Courier' : 'monospace',
+    fontSize: 10,
+    lineHeight: 14,
+  },
+  modalControlBtn: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  }
 });

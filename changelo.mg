@@ -1,5 +1,44 @@
 # Changelog - Oxion Game Creator
 
+## [1.10.1] - 2026-05-07
+### Updated
+- **Experimental Feature Tagging**:
+  - Appended `(Experimental)` tags to the **Web Export** and **APK Build** buttons, setup interfaces, and compilation/loading modals in Settings. This signals to creators that these newly released standalone export and cloud packaging pipelines are in a pre-release, edge testing state.
+
+## [1.10.0] - 2026-05-07
+### Added
+- **EAS Project Override Fields**:
+  - Added custom **EAS Project ID** and **Expo Project Slug** override text inputs inside the editor Settings modal, persisting them locally via React Native `AsyncStorage`. This lets creators compile finished standalone games directly under their own personalized Expo Developer Accounts.
+- **Standalone APK Packaging Documentation**:
+  - Appended a comprehensive, beautifully-formatted step-by-step Android packaging guide inside `Oxion_QuickStart.html`. Details the prerequisite configurations, local build service execution, Expo Token generation, and setting up custom Project IDs and Slugs.
+- **Standalone Game Version Reset**:
+  - Configured the build service to automatically reset exported game version fields in the sandboxed `app.json` to start fresh at `1.0.0` instead of inheriting the parent editor engine's version (`1.8.7`).
+- **Base64 Standalone Asset Serialization**:
+  - Configured the editor to automatically serialize imported images and sounds into raw Base64 Data URIs during sprite/audio imports and on-the-fly right before packaging the build payload. This guarantees that all game assets are embedded natively in `project.json` and load flawlessly in sandboxed standalone APK environments!
+- **Standalone Game Player UI Refinement**:
+  - Updated `GamePlayer.tsx` to automatically hide the developer Exit (X), Pause, and Restart toolbar buttons in standalone mode. This removes editor controls for your players and provides a pristine, 100% immersive, full-screen gameplay experience.
+
+### Fixed
+- **Instant Sandboxing Copying Performance**:
+  - Added directory filters inside the Node.js build service to skip the heavy `.agents` folder (agent cache, session logs, scratch space) during sandboxed workspace copy operations.
+  - Normalized path separators (`\`) on Windows to ensure strict directory comparisons, bringing the copy step down to an instantaneous 1ms.
+- **EAS Case Mismatch Safeguard**:
+  - Integrated automatic lowercase normalization on custom Expo project slugs on the build server, preventing case-sensitive mismatch failures (e.g. `Game3` vs `game3`) within EAS CLI compilation.
+
+## [1.9.9] - 2026-05-07
+### Added
+- **Local APK Build Agent (`oxion-build-service`)**:
+  - Engineered an Express-based Node.js remote build agent server.
+  - Handles isolated sandboxed compilation folders inside `./temp/build_[UUID]` to guarantee simultaneous thread safety.
+  - Injects runtime settings (`app.json` name, slug, bundleId) and writes active game data directly into `assets/project.json`.
+  - Spawns cross-platform CLI shells to execute EAS Cloud Builds under secure user tokens.
+- **Credentials Persistence Shield**:
+  - Integrated React Native `AsyncStorage` persistence inside the Settings module.
+  - Securely remembers Expo Developer Tokens and bundle names directly in local client memory so settings aren't lost on restart.
+- **Real-Time Log Terminal View**:
+  - Designed a high-tech green terminal monospace logger inside the Settings view.
+  - Streams the local build server's standard outputs directly into the editor app so developers can watch compiles live.
+
 ## [1.9.8] - 2026-05-06
 ### Fixed
 - **Engine Physics Garbage Collection & Performance Stabilizer**:

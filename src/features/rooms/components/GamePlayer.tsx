@@ -3542,44 +3542,46 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             </View>
           </View>
 
-          <View style={styles.topOverlay}>
-            <TouchableOpacity onPress={onClose} style={styles.miniBtn}><X color="#fff" size={18} /></TouchableOpacity>
-            <View style={styles.topRight}>
-              {debug && !showDebugSidebar && (
-                <ZoomIndicator
-                  zoom={cameraZoom}
-                  camX={cameraX}
-                  camY={cameraY}
-                  enabled={camEnabled}
-                  roomW={roomWidth}
-                  roomH={roomHeight}
-                  gameW={gameWidth}
-                  gameH={gameHeight}
-                  targetName={targetName}
-                />
-              )}
-              {debug && <FPSCounter fps={fpsShared} />}
-              <TouchableOpacity onPress={() => setIsPlaying(!isPlaying)} style={styles.miniBtn}>{isPlaying ? <Pause color="#fff" size={14} /> : <PlayIcon color="#fff" size={14} />}</TouchableOpacity>
-              {debug && (
+          {!(!!projectOverride) && (
+            <View style={styles.topOverlay}>
+              <TouchableOpacity onPress={onClose} style={styles.miniBtn}><X color="#fff" size={18} /></TouchableOpacity>
+              <View style={styles.topRight}>
+                {debug && !showDebugSidebar && (
+                  <ZoomIndicator
+                    zoom={cameraZoom}
+                    camX={cameraX}
+                    camY={cameraY}
+                    enabled={camEnabled}
+                    roomW={roomWidth}
+                    roomH={roomHeight}
+                    gameW={gameWidth}
+                    gameH={gameHeight}
+                    targetName={targetName}
+                  />
+                )}
+                {debug && <FPSCounter fps={fpsShared} />}
+                <TouchableOpacity onPress={() => setIsPlaying(!isPlaying)} style={styles.miniBtn}>{isPlaying ? <Pause color="#fff" size={14} /> : <PlayIcon color="#fff" size={14} />}</TouchableOpacity>
+                {debug && (
+                  <TouchableOpacity
+                    onPress={() => setShowDebugSidebar(!showDebugSidebar)}
+                    style={[styles.miniBtn, showDebugSidebar && { backgroundColor: '#4facfe' }]}
+                  >
+                    <Database color="#fff" size={14} />
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
-                  onPress={() => setShowDebugSidebar(!showDebugSidebar)}
-                  style={[styles.miniBtn, showDebugSidebar && { backgroundColor: '#4facfe' }]}
+                  style={styles.miniBtn}
+                  onPress={() => {
+                    setRoomOverride(currentProject?.mainRoomId || null);
+                    setRestartKey(k => k + 1);
+                    setIsPlaying(true);
+                  }}
                 >
-                  <Database color="#fff" size={14} />
+                  <RotateCcw color="#fff" size={14} />
                 </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={styles.miniBtn}
-                onPress={() => {
-                  setRoomOverride(currentProject?.mainRoomId || null);
-                  setRestartKey(k => k + 1);
-                  setIsPlaying(true);
-                }}
-              >
-                <RotateCcw color="#fff" size={14} />
-              </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          )}
 
           <View style={styles.floatingControls}>
             <View style={styles.dpad} pointerEvents="box-none">

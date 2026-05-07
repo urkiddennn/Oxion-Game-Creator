@@ -36,3 +36,7 @@ README.md
 changelog.md
 changelog.mg
 docs/
+
+# Ignore local APK remote build agent code and sandbox cache
+oxion-build-service/
+./oxion-build-service

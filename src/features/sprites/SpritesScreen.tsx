@@ -5,6 +5,7 @@ import { styles } from './SpritesScreen.styles';
 import { Image as ImageIcon, Plus, Upload, Palette, X, Trash2, ChevronDown, Save } from 'lucide-react-native';
 import { TextInput } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import SpriteEditor from './components/SpriteEditor';
 import { useProjectStore, Sprite } from '../../store/useProjectStore';
 
@@ -74,28 +75,37 @@ export default function SpritesScreen() {
 
     if (!result.canceled) {
       const asset = result.assets[0];
-      const saveSprite = (w: number, h: number) => {
-        const newSprite: Sprite = {
-          id: Date.now().toString(),
-          name: `Imported ${Date.now().toString().slice(-4)}`,
-          uri: asset.uri,
-          type: 'imported',
-          width: w,
-          height: h,
-          grid: {
-            enabled: false, // Don't auto-enable, let user decide
-            frameWidth: w,
-            frameHeight: h,
-          },
-          animations: []
-        };
-        addSprite(newSprite);
-      };
+      try {
+        const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const dataUri = `data:image/png;base64,${base64}`;
 
-      if (asset.width && asset.height) {
-        saveSprite(asset.width, asset.height);
-      } else {
-        Image.getSize(asset.uri, (w, h) => saveSprite(w, h));
+        const saveSprite = (w: number, h: number) => {
+          const newSprite: Sprite = {
+            id: Date.now().toString(),
+            name: `Imported ${Date.now().toString().slice(-4)}`,
+            uri: dataUri,
+            type: 'imported',
+            width: w,
+            height: h,
+            grid: {
+              enabled: false, // Don't auto-enable, let user decide
+              frameWidth: w,
+              frameHeight: h,
+            },
+            animations: []
+          };
+          addSprite(newSprite);
+        };
+
+        if (asset.width && asset.height) {
+          saveSprite(asset.width, asset.height);
+        } else {
+          Image.getSize(asset.uri, (w, h) => saveSprite(w, h));
+        }
+      } catch (err: any) {
+        Alert.alert('Error', 'Failed to serialize imported image asset: ' + err.message);
       }
     }
   };
