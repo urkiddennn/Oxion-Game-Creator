@@ -1,6 +1,6 @@
 import React, { JSX, useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, TextInput, Switch, Image, StyleSheet } from 'react-native';
-import { Info, Palette, Bolt, Share2, Settings, X, Plus, Trash2, Heart, Music, Target, Layers, Play, ArrowLeft, ArrowRight, Pause, ChevronUp, Zap, MousePointer2, HelpCircle, Layout, Globe, Activity, ChevronDown, ChevronRight, Database, Cpu, GitBranch, Code, Monitor } from 'lucide-react-native';
+import { Info, Palette, Bolt, Share2, Settings, X, Plus, Trash2, Heart, Music, Target, Layers, Play, ArrowLeft, ArrowRight, Pause, ChevronUp, Zap, MousePointer2, HelpCircle, Layout, Globe, Activity, ChevronDown, ChevronRight, Database, Cpu, GitBranch, Code, Monitor, ZoomIn, ZoomOut, RotateCcw, FileCode, Image as ImageIcon } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../../../../theme';
 import { GameObject, useProjectStore } from '../../../../store/useProjectStore';
@@ -154,6 +154,163 @@ const CollisionPreview = ({ obj, renderSpritePreview, currentProject }: { obj: a
   );
 };
 
+const ViewportPreview = ({ obj, renderSpritePreview, currentProject, onSwitchToCode }: { obj: any, renderSpritePreview: any, currentProject: any, onSwitchToCode: () => void }) => {
+  const [zoom, setZoom] = useState(100); // Default zoom at 100%
+  const sprite = (currentProject?.sprites || []).find((s: any) => s.id === obj.appearance.spriteId);
+  const isGrid = !!sprite?.grid?.enabled;
+  const fw = isGrid ? (sprite?.grid?.frameWidth || sprite?.width || 32) : (sprite?.width || obj.width || 32);
+  const fh = isGrid ? (sprite?.grid?.frameHeight || sprite?.height || 32) : (sprite?.height || obj.height || 32);
+
+  const objW = fw;
+  const objH = fh;
+
+  const col = obj.physics?.collision || {
+    type: 'rectangle',
+    width: obj.width || objW || 32,
+    height: obj.height || objH || 32,
+    offsetX: 0,
+    offsetY: 0
+  };
+
+  const shapeWidth = (col.type === 'circle' ? (col.radius || objW / 2) * 2 : (col.width ?? objW));
+  const shapeHeight = (col.type === 'circle' ? (col.radius || objW / 2) * 2 : (col.height ?? objH));
+
+  const scale = zoom / 100;
+  const spriteSize = Math.max(objW, objH, 1) * scale;
+
+  // Collision Shape Dimensions scaled
+  const shapeW = shapeWidth * scale;
+  const shapeH = shapeHeight * scale;
+  const offX = (col.offsetX || 0) * scale;
+  const offY = (col.offsetY || 0) * scale;
+
+  // We want to render a beautiful grid centered in the viewport.
+  // The spacing of our visual grid in pixels is, say, 16 pixels scaled by zoom.
+  const gridSpacing = 16 * scale;
+  const gridIndices = [-8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8];
+
+  return (
+    <View style={{ flex: 1, backgroundColor: '#0B0D10', position: 'relative', overflow: 'hidden', justifyContent: 'center', alignItems: 'center' }}>
+      {/* Dynamic Grid */}
+      <View style={{ position: 'absolute', width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', opacity: 0.15 }} pointerEvents="none">
+        {gridIndices.map((idx) => (
+          <React.Fragment key={`grid-${idx}`}>
+            {/* Vertical grid lines */}
+            <View
+              style={{
+                position: 'absolute',
+                width: 1,
+                height: '200%',
+                backgroundColor: '#FFF',
+                left: '50%',
+                transform: [{ translateX: idx * gridSpacing }]
+              }}
+            />
+            {/* Horizontal grid lines */}
+            <View
+              style={{
+                position: 'absolute',
+                height: 1,
+                width: '200%',
+                backgroundColor: '#FFF',
+                top: '50%',
+                transform: [{ translateY: idx * gridSpacing }]
+              }}
+            />
+          </React.Fragment>
+        ))}
+      </View>
+
+      {/* Origin Axis Rulers crossing in the exact center */}
+      {/* X Axis (Red-ish) */}
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          height: 1.5,
+          width: '100%',
+          backgroundColor: '#EF4444',
+          opacity: 0.45,
+          top: '50%',
+        }}
+      />
+      {/* Y Axis (Green-ish) */}
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          width: 1.5,
+          height: '100%',
+          backgroundColor: '#10B981',
+          opacity: 0.45,
+          left: '50%',
+        }}
+      />
+
+      {/* Central workspace contents container */}
+      <View style={{ justifyContent: 'center', alignItems: 'center', width: spriteSize, height: spriteSize }}>
+        {/* Sprite image preview */}
+        <View style={{ opacity: 0.95 }}>
+          {renderSpritePreview(obj.appearance.spriteId, spriteSize)}
+        </View>
+
+        {/* Collision overlay */}
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            borderWidth: 2,
+            borderColor: '#00D1FF',
+            backgroundColor: 'rgba(0, 209, 255, 0.25)',
+            borderRadius: col.type === 'circle' ? 999 : 2,
+            width: shapeW,
+            height: shapeH,
+            // Center the collision shape and apply coordinates offsets
+            transform: [
+              { translateX: offX },
+              { translateY: offY }
+            ]
+          }}
+        />
+
+        {/* Pivot orange crosshair at center */}
+        <View pointerEvents="none" style={{ position: 'absolute', width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: '#FF8C00', backgroundColor: '#0D0F12', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ width: 2, height: 2, borderRadius: 1, backgroundColor: '#FF8C00' }} />
+        </View>
+        <View pointerEvents="none" style={{ position: 'absolute', width: 14, height: 1.5, backgroundColor: '#FF8C00', transform: [{ translateX: 0 }] }} />
+        <View pointerEvents="none" style={{ position: 'absolute', width: 1.5, height: 14, backgroundColor: '#FF8C00', transform: [{ translateY: 0 }] }} />
+      </View>
+
+      {/* TOP RIGHT BADGE: Zoom percentage */}
+      <View style={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(10, 12, 16, 0.85)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 2, borderWidth: 1, borderColor: '#222', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Text style={{ color: theme.colors.primary, fontSize: 9, fontFamily: 'monospace', fontWeight: 'bold' }}>{zoom.toFixed(1)}%</Text>
+      </View>
+
+      {/* BOTTOM RIGHT: Floating Zoom Controls */}
+      <View style={{ position: 'absolute', bottom: 12, right: 12, flexDirection: 'row', gap: 6, backgroundColor: 'rgba(10, 12, 16, 0.85)', padding: 4, borderRadius: 2, borderWidth: 1, borderColor: '#222' }}>
+        <TouchableOpacity
+          onPress={() => setZoom(z => Math.max(10, z - 10))}
+          style={{ width: 24, height: 24, justifyContent: 'center', alignItems: 'center', backgroundColor: '#16191E', borderRadius: 2, borderWidth: 1, borderColor: '#333' }}
+        >
+          <ZoomOut size={12} color="#FFF" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setZoom(100)}
+          style={{ width: 24, height: 24, justifyContent: 'center', alignItems: 'center', backgroundColor: '#16191E', borderRadius: 2, borderWidth: 1, borderColor: '#333' }}
+        >
+          <RotateCcw size={12} color="#FFF" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setZoom(z => Math.min(2000, z + 10))}
+          style={{ width: 24, height: 24, justifyContent: 'center', alignItems: 'center', backgroundColor: '#16191E', borderRadius: 2, borderWidth: 1, borderColor: '#333' }}
+        >
+          <ZoomIn size={12} color="#FFF" />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
 const ParticlePreview = ({ settings, particleSprite }: { settings: any, particleSprite: any }) => {
   const [p, setP] = useState<{ id: number, x: number, y: number, vx: number, vy: number, life: number }[]>([]);
   const frameRef = useRef<number | null>(null);
@@ -231,6 +388,7 @@ export default function ObjectInspectorModal({
   const navigation = useNavigation();
   const [activeActionIndex, setActiveActionIndex] = useState<number | null>(null);
   const [isAddingSubForIndex, setIsAddingSubForIndex] = useState<number | null>(null);
+  const [activeCenterTab, setActiveCenterTab] = useState<'preview' | 'code'>('preview');
 
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     about: true,
@@ -735,11 +893,6 @@ export default function ObjectInspectorModal({
                     expanded={expandedSections.physics}
                     onToggle={() => toggleSection('physics')}
                   >
-                    {safeObject.physics.enabled && (
-                      <View style={{ marginBottom: 0, alignItems: 'center' }}>
-                        <CollisionPreview obj={safeObject} renderSpritePreview={renderSpritePreview} currentProject={currentProject} />
-                      </View>
-                    )}
                     <SwitchRow label="Enabled" value={safeObject.physics.enabled} onToggle={(v: boolean) => updateField('physics.enabled', v)} />
                     <SwitchRow label="Sticky HUD" value={safeObject.isHUD || false} onToggle={(v: boolean) => updateField('isHUD', v)} />
 
@@ -1132,155 +1285,203 @@ export default function ObjectInspectorModal({
                 </ScrollView>
               </View>
 
-              {/* CENTER COLUMN: Logic and Actions */}
-              <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.01)' }}>
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 4, paddingBottom: 40, paddingTop: 8 }}>
-                  <Section
-                    title="Logic & Actions"
-                    icon={<Cpu size={14} color="#60A5FA" />}
-                    expanded={expandedSections.logic}
-                    onToggle={() => toggleSection('logic')}
-                  >
-                    <SuggestionsBar />
-                    <View style={styles.logicContainer}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <Text style={styles.subSectionTitleCompact}>EVENTS & ACTIONS</Text>
-                        <TouchableOpacity
-                          onPress={() => {
-                            const next: Record<number, boolean> = {};
-                            safeObject.logic.listeners.forEach((_: any, i: number) => next[i] = true);
-                            setCollapsedListeners(next);
-                          }}
-                        >
-                          <Text style={{ color: theme.colors.textMuted, fontSize: 8 }}>COLLAPSE ALL</Text>
-                        </TouchableOpacity>
-                      </View>
-                      {safeObject.logic.listeners.map((listener: any, index: number) => {
-                        const isCollapsed = collapsedListeners[index];
-                        return (
-                          <View key={index} style={styles.listenerCard}>
-                            {/* TRIGGER HEADER */}
-                            <View style={styles.listenerHeader}>
-                              <TouchableOpacity
-                                onPress={() => toggleListenerCollapse(index)}
-                                style={{ padding: 4 }}
-                              >
-                                {isCollapsed ? (
-                                  <ChevronRight size={12} color={theme.colors.primary} />
-                                ) : (
-                                  <ChevronDown size={12} color={theme.colors.primary} />
-                                )}
-                              </TouchableOpacity>
+              {/* CENTER COLUMN: Tabbed Workspace */}
+              <View style={{ flex: 1, backgroundColor: '#0D0F12', borderRightWidth: 1, borderRightColor: '#222' }}>
+                {/* GODOT-STYLE TAB BAR */}
+                <View style={{ flexDirection: 'row', backgroundColor: '#16191E', borderBottomWidth: 1, borderBottomColor: '#222', paddingHorizontal: 8, height: 36, alignItems: 'center', justifyContent: 'space-between' }}>
+                  <View style={{ flexDirection: 'row', gap: 2 }}>
+                    <TouchableOpacity
+                      onPress={() => setActiveCenterTab('preview')}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        paddingHorizontal: 12,
+                        height: 35,
+                        backgroundColor: activeCenterTab === 'preview' ? '#0D0F12' : 'transparent',
+                        borderBottomWidth: activeCenterTab === 'preview' ? 2 : 0,
+                        borderBottomColor: theme.colors.primary,
+                      }}
+                    >
+                      <ImageIcon size={12} color={activeCenterTab === 'preview' ? theme.colors.primary : '#888'} />
+                      <Text style={{ color: activeCenterTab === 'preview' ? theme.colors.text : '#888', fontSize: 10, fontWeight: 'bold', letterSpacing: 0.5 }}>2D VIEWPORT</Text>
+                    </TouchableOpacity>
 
-                              <TouchableOpacity
-                                style={styles.listenerTriggerLabel}
-                                onPress={() => {
-                                  setActiveListenerIndex(index);
-                                  setActiveSubIndex(null);
-                                  setIsAddingSubForIndex(null);
-                                  setEventPickerVisible(true);
-                                }}
-                              >
-                                <Zap size={12} color={theme.colors.primary} fill={theme.colors.primary + '30'} />
-                                <Text style={styles.triggerText}>
-                                  {listener.eventId ? listener.eventId.toUpperCase() : 'SELECT TRIGGER'}
-                                </Text>
-                              </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setActiveCenterTab('code')}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        paddingHorizontal: 12,
+                        height: 35,
+                        backgroundColor: activeCenterTab === 'code' ? '#0D0F12' : 'transparent',
+                        borderBottomWidth: activeCenterTab === 'code' ? 2 : 0,
+                        borderBottomColor: theme.colors.primary,
+                      }}
+                    >
+                      <FileCode size={12} color={activeCenterTab === 'code' ? theme.colors.primary : '#888'} />
+                      <Text style={{ color: activeCenterTab === 'code' ? theme.colors.text : '#888', fontSize: 10, fontWeight: 'bold', letterSpacing: 0.5 }}>SCRIPT / LOGIC</Text>
+                    </TouchableOpacity>
+                  </View>
 
-                              <TouchableOpacity
-                                style={styles.deleteButtonSmall}
-                                onPress={() => {
-                                  const newListeners = safeObject.logic.listeners.filter((_: any, i: number) => i !== index);
-                                  updateField('logic.listeners', newListeners);
-                                }}
-                              >
-                                <Trash2 size={12} color="#F43F5E" />
-                              </TouchableOpacity>
-                            </View>
+                  {/* <View style={{ paddingRight: 8 }}>
+                    <Text style={{ color: '#555', fontSize: 9, fontFamily: 'monospace' }}>
+                      {activeCenterTab === 'preview' ? 'VIEW: 2D_CANVAS' : `LISTENERS: ${safeObject.logic.listeners.length}`}
+                    </Text>
+                  </View> */}
+                </View>
 
-                            {!isCollapsed && (
-                              <View style={{ paddingBottom: 8 }}>
-                                {/* EVENT INPUT */}
-                                <View style={{ padding: 8, paddingBottom: 4 }}>
-                                  <View style={styles.actionInputWrapper}>
-                                    <TextInput
-                                      style={styles.actionInput}
-                                      value={listener.eventId}
-                                      placeholder="Event (e.g. on_tap, collision:Player)"
-                                      placeholderTextColor="#444"
-                                      onFocus={() => setActiveInputInfo({ type: 'event', index })}
-                                      onChangeText={(v) => {
-                                        const newListeners = [...safeObject.logic.listeners];
-                                        newListeners[index] = { ...newListeners[index], eventId: v };
-                                        updateField('logic.listeners', newListeners);
-                                        setSuggestionQuery(v);
-                                      }}
-                                    />
+                {activeCenterTab === 'preview' ? (
+                  <ViewportPreview obj={safeObject} renderSpritePreview={renderSpritePreview} currentProject={currentProject} onSwitchToCode={() => setActiveCenterTab('code')} />
+                ) : (
+                  <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 4, paddingBottom: 40, paddingTop: 8 }}>
+                    <Section
+                      title="Logic & Actions"
+                      icon={<Cpu size={14} color="#60A5FA" />}
+                      expanded={expandedSections.logic}
+                      onToggle={() => toggleSection('logic')}
+                    >
+                      <SuggestionsBar />
+                      <View style={styles.logicContainer}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <Text style={styles.subSectionTitleCompact}>EVENTS & ACTIONS</Text>
+                          <TouchableOpacity
+                            onPress={() => {
+                              const next: Record<number, boolean> = {};
+                              safeObject.logic.listeners.forEach((_: any, i: number) => next[i] = true);
+                              setCollapsedListeners(next);
+                            }}
+                          >
+                            <Text style={{ color: theme.colors.textMuted, fontSize: 8 }}>COLLAPSE ALL</Text>
+                          </TouchableOpacity>
+                        </View>
+                        {safeObject.logic.listeners.map((listener: any, index: number) => {
+                          const isCollapsed = collapsedListeners[index];
+                          return (
+                            <View key={index} style={styles.listenerCard}>
+                              {/* TRIGGER HEADER */}
+                              <View style={styles.listenerHeader}>
+                                <TouchableOpacity
+                                  onPress={() => toggleListenerCollapse(index)}
+                                  style={{ padding: 4 }}
+                                >
+                                  {isCollapsed ? (
+                                    <ChevronRight size={12} color={theme.colors.primary} />
+                                  ) : (
+                                    <ChevronDown size={12} color={theme.colors.primary} />
+                                  )}
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                  style={styles.listenerTriggerLabel}
+                                  onPress={() => {
+                                    setActiveListenerIndex(index);
+                                    setActiveSubIndex(null);
+                                    setIsAddingSubForIndex(null);
+                                    setEventPickerVisible(true);
+                                  }}
+                                >
+                                  <Zap size={12} color={theme.colors.primary} fill={theme.colors.primary + '30'} />
+                                  <Text style={styles.triggerText}>
+                                    {listener.eventId ? listener.eventId.toUpperCase() : 'SELECT TRIGGER'}
+                                  </Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                  style={styles.deleteButtonSmall}
+                                  onPress={() => {
+                                    const newListeners = safeObject.logic.listeners.filter((_: any, i: number) => i !== index);
+                                    updateField('logic.listeners', newListeners);
+                                  }}
+                                >
+                                  <Trash2 size={12} color="#F43F5E" />
+                                </TouchableOpacity>
+                              </View>
+
+                              {!isCollapsed && (
+                                <View style={{ paddingBottom: 8 }}>
+                                  {/* EVENT INPUT */}
+                                  <View style={{ padding: 8, paddingBottom: 4 }}>
+                                    <View style={styles.actionInputWrapper}>
+                                      <TextInput
+                                        style={styles.actionInput}
+                                        value={listener.eventId}
+                                        placeholder="Event (e.g. on_tap, collision:Player)"
+                                        placeholderTextColor="#444"
+                                        onFocus={() => setActiveInputInfo({ type: 'event', index })}
+                                        onChangeText={(v) => {
+                                          const newListeners = [...safeObject.logic.listeners];
+                                          newListeners[index] = { ...newListeners[index], eventId: v };
+                                          updateField('logic.listeners', newListeners);
+                                          setSuggestionQuery(v);
+                                        }}
+                                      />
+                                      <TouchableOpacity
+                                        onPress={() => {
+                                          setActiveListenerIndex(index);
+                                          setActiveSubIndex(null);
+                                          setIsAddingSubForIndex(null);
+                                          setEventPickerVisible(true);
+                                        }}
+                                      >
+                                        <Plus size={14} color={theme.colors.primary} />
+                                      </TouchableOpacity>
+                                    </View>
+                                  </View>
+
+                                  {/* IMMEDIATE ACTIONS */}
+                                  <View style={styles.actionBlock}>
+                                    {(listener.immediateActions || []).map((act: string, aIdx: number) => (
+                                      <View key={aIdx} style={styles.actionRow}>
+                                        <Play size={10} color="#27AE60" />
+                                        <View style={styles.actionInputWrapper}>
+                                          <TextInput
+                                            style={styles.actionInput}
+                                            value={act}
+                                            onChangeText={(v) => {
+                                              const newListeners = [...safeObject.logic.listeners];
+                                              newListeners[index].immediateActions[aIdx] = v;
+                                              updateField('logic.listeners', newListeners);
+                                            }}
+                                            onFocus={() => {
+                                              setActiveListenerIndex(index);
+                                              setActiveActionIndex(aIdx);
+                                            }}
+                                          />
+                                          <TouchableOpacity
+                                            onPress={() => {
+                                              setActiveListenerIndex(index);
+                                              setActiveActionIndex(aIdx);
+                                              setActionPickerVisible(true);
+                                            }}
+                                          >
+                                            <Plus size={14} color={theme.colors.primary} />
+                                          </TouchableOpacity>
+                                        </View>
+                                        <TouchableOpacity
+                                          onPress={() => {
+                                            const newListeners = [...safeObject.logic.listeners];
+                                            newListeners[index].immediateActions.splice(aIdx, 1);
+                                            updateField('logic.listeners', newListeners);
+                                          }}
+                                        >
+                                          <X size={12} color="#555" />
+                                        </TouchableOpacity>
+                                      </View>
+                                    ))}
                                     <TouchableOpacity
                                       onPress={() => {
                                         setActiveListenerIndex(index);
                                         setActiveSubIndex(null);
-                                        setIsAddingSubForIndex(null);
-                                        setEventPickerVisible(true);
+                                        setActiveActionIndex(null);
+                                        setActionPickerVisible(true);
                                       }}
+                                      style={{ marginTop: 4 }}
                                     >
-                                      <Plus size={14} color={theme.colors.primary} />
+                                      <Text style={{ color: '#27AE60', fontSize: 9, fontWeight: 'bold' }}>+ ADD ACTION</Text>
                                     </TouchableOpacity>
                                   </View>
-                                </View>
-
-                                {/* IMMEDIATE ACTIONS */}
-                                <View style={styles.actionBlock}>
-                                  {(listener.immediateActions || []).map((act: string, aIdx: number) => (
-                                    <View key={aIdx} style={styles.actionRow}>
-                                      <Play size={10} color="#27AE60" />
-                                      <View style={styles.actionInputWrapper}>
-                                        <TextInput
-                                          style={styles.actionInput}
-                                          value={act}
-                                          onChangeText={(v) => {
-                                            const newListeners = [...safeObject.logic.listeners];
-                                            newListeners[index].immediateActions[aIdx] = v;
-                                            updateField('logic.listeners', newListeners);
-                                          }}
-                                          onFocus={() => {
-                                            setActiveListenerIndex(index);
-                                            setActiveActionIndex(aIdx);
-                                          }}
-                                        />
-                                        <TouchableOpacity
-                                          onPress={() => {
-                                            setActiveListenerIndex(index);
-                                            setActiveActionIndex(aIdx);
-                                            setActionPickerVisible(true);
-                                          }}
-                                        >
-                                          <Plus size={14} color={theme.colors.primary} />
-                                        </TouchableOpacity>
-                                      </View>
-                                      <TouchableOpacity
-                                        onPress={() => {
-                                          const newListeners = [...safeObject.logic.listeners];
-                                          newListeners[index].immediateActions.splice(aIdx, 1);
-                                          updateField('logic.listeners', newListeners);
-                                        }}
-                                      >
-                                        <X size={12} color="#555" />
-                                      </TouchableOpacity>
-                                    </View>
-                                  ))}
-                                  <TouchableOpacity
-                                    onPress={() => {
-                                      setActiveListenerIndex(index);
-                                      setActiveSubIndex(null);
-                                      setActiveActionIndex(null);
-                                      setActionPickerVisible(true);
-                                    }}
-                                    style={{ marginTop: 4 }}
-                                  >
-                                    <Text style={{ color: '#27AE60', fontSize: 9, fontWeight: 'bold' }}>+ ADD ACTION</Text>
-                                  </TouchableOpacity>
-                                </View>
 
                                   {/* SUB-CONDITIONS */}
                                   {(listener.subConditions || []).map((sc: any, scIdx: number) => (
@@ -1464,22 +1665,16 @@ export default function ObjectInspectorModal({
                           <Text style={styles.addButtonTextSmall}>NEW EVENT LISTENER</Text>
                         </TouchableOpacity>
                       </View>
-                  </Section>
-                </ScrollView>
+                    </Section>
+                  </ScrollView>
+                )}
               </View>
 
               {/* RIGHT COLUMN: Preview, Identity, Appearance, Audio */}
               <View style={{ width: '30%', borderLeftWidth: 1, borderLeftColor: '#222' }}>
                 <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40, padding: 8 }}>
                   {/* Sprite Preview Section */}
-                  <View style={styles.previewHeader}>
 
-
-                    <CollisionPreview obj={safeObject} renderSpritePreview={renderSpritePreview} currentProject={currentProject} />
-
-                    <Text style={[styles.inspectorTitle, { marginTop: 12, fontSize: 16 }]}>{safeObject.name.toUpperCase()}</Text>
-                    <Text style={{ color: theme.colors.textMuted, fontSize: 9, marginTop: 2 }}>ID: {safeObject.id.slice(0, 8)}...</Text>
-                  </View>
 
                   <Section
                     title="Identity"

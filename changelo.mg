@@ -1,5 +1,16 @@
 # Changelog - Oxion Game Creator
 
+## [1.12.3] - 2026-05-09
+### Added
+- **Godot-Style 2D Viewport & Redesigned Object Inspector**:
+  - Engineered an ultra-premium, interactive **2D Viewport** workspace right in the center column of the [ObjectInspectorModal.tsx](file:///c:/Users/richa/OneDrive/Documents/programming/Oxion%20Game%20Creator/src/features/objects/components/modals/ObjectInspectorModal.tsx), replicating the professional visual editing canvas of Godot Engine.
+  - Implemented a sleek, top-center tab-bar permitting seamless switching between the **2D Viewport** (Visual workspace) and the full **Script / Logic** editor (Events & Actions list).
+  - Built a dynamic, high-fidelity dark grid background, red horizontal coordinate X-axis, green vertical coordinate Y-axis, and an orange origin/pivot marker representing the entity crosshair.
+  - Rendered a highly detailed collision overlay (capsule, rectangle, or circle) over the center-scaled sprite matching offset (`offsetX`, `offsetY`) and physical boundaries exactly.
+  - Designed responsive floating zoom controls (`Zoom In`, `Zoom Out`, and `Reset Zoom`) with an live-updating percentage indicator scale up to 2000%.
+  - Added real-time entity information badge (dimensions, behavior, body physics) in the viewport corner.
+  - Integrated convenient shortcut buttons inside both the central Viewport canvas and the right-column sprite header section to immediately switch focus to the object's code scripts and listeners.
+
 ## [1.12.2] - 2026-05-09
 ### Fixed
 - **Out-of-Bounds Culling & Static Solids Collision**:
