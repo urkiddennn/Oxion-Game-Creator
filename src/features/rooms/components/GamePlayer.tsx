@@ -3112,18 +3112,27 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           shouldDestroy = true;
         }
 
-        // Out of bounds detection (excluding the main camera target player)
-        if (d.body && d.body !== cameraTargetBodyRef.current) {
+        // Out of bounds detection (excluding the main camera target player, static bodies, and preserving horizontally-placed room instances)
+        if (d.body && d.body !== cameraTargetBodyRef.current && !d.body.isStatic) {
           const px = d.body.position.x;
           const py = d.body.position.y;
 
-          if (
-            py > roomH + 400 ||
-            py < -1500 ||
-            px < -1500 ||
-            px > roomW + 1500
-          ) {
-            shouldDestroy = true;
+          if (d.isRoomInstance) {
+            // Room instances (placed by level editor) should only be destroyed if they fall deep into a pit,
+            // never horizontally or above.
+            if (py > roomH + 1000) {
+              shouldDestroy = true;
+            }
+          } else {
+            // Spawned entities (particles, bullets, etc.) are cleaned up strictly
+            if (
+              py > roomH + 400 ||
+              py < -1500 ||
+              px < -1500 ||
+              px > roomW + 1500
+            ) {
+              shouldDestroy = true;
+            }
           }
         }
 

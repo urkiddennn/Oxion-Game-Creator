@@ -1,5 +1,12 @@
 # Changelog - Oxion Game Creator
 
+## [1.12.2] - 2026-05-09
+### Fixed
+- **Out-of-Bounds Culling & Static Solids Collision**:
+  - Resolved a critical engine bug where walking long distances on a straight line of solid blocks caused physical collisions to suddenly deactivate and the player to fall through.
+  - Fixed the game update loop's out-of-bounds physical Garbage Collector in [GamePlayer.tsx](file:///c:/Users/richa/OneDrive/Documents/programming/Oxion%20Game%20Creator/src/features/rooms/components/GamePlayer.tsx) to ignore static bodies (`d.body.isStatic`) entirely, ensuring placed solid blocks remain in the physical world permanently.
+  - Refactored room-instance dynamic body culling to only destroy editor-placed room instances if they fall deep into a pit (`py > roomH + 1000`), rather than being culled horizontally or above, so they remain fully interactive across large zoomable maps.
+
 ## [1.12.1] - 2026-05-09
 ### Fixed
 - **Expo SDK 55 Native Audio Compatibility (Migration to `expo-audio`)**:
