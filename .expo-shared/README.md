@@ -1,11 +1,18 @@
-> Why do I have a folder named ".expo-shared" in my project?
+# 🌌 Oxion Game Creator
 
-The ".expo-shared" folder is created when running commands that produce state that is intended to be shared with all developers on the project. For example, "npx expo-optimize".
+![Oxion Logo](../assets/oxion.png)
 
-> What does the "assets.json" file contain?
+**Oxion** is a mobile-first 2D game engine built with React Native and Matter.js.
 
-The "assets.json" file describes the assets that have been optimized through "expo-optimize" and do not need to be processed again.
+## ✨ Features
+- **Visual Logic Editor**: No-code game mechanics.
+- **Matter.js Physics**: Realistic collisions and movement.
+- **Room & Sprite Editor**: Professional design tools.
+- **Community Sharing**: Publish and play games globally.
 
-> Should I commit the ".expo-shared" folder?
+## 🤝 Contribution
+1. Fork the repository.
+2. Create your feature branch.
+3. Submit a Pull Request.
 
-Yes, you should share the ".expo-shared" folder with your collaborators.
+For detailed documentation, please see the root [README.md](../README.md).
