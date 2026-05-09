@@ -8,9 +8,10 @@ import { OxionLogo } from '../../components/OxionLogo';
 import CommunityScreen from '../community/CommunityScreen';
 import AuthModal from '../auth/AuthModal';
 import ProfileScreen from '../profile/ProfileScreen';
+import TutorialsScreen from '../tutorials/TutorialsScreen';
 
 export default function LaunchpadScreen() {
-  const [activeTab, setActiveTab] = useState<'Projects' | 'Community' | 'Profile'>('Projects');
+  const [activeTab, setActiveTab] = useState<'Projects' | 'Community' | 'Tutorials' | 'Profile'>('Projects');
   const [authModalVisible, setAuthModalVisible] = useState(false);
   const [namingModalVisible, setNamingModalVisible] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
@@ -44,6 +45,12 @@ export default function LaunchpadScreen() {
           >
             <Text style={[styles.tabText, activeTab === 'Community' && styles.tabTextActive]}>Community</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'Tutorials' && styles.tabActive]}
+            onPress={() => setActiveTab('Tutorials')}
+          >
+            <Text style={[styles.tabText, activeTab === 'Tutorials' && styles.tabTextActive]}>Tutorials</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.tabBarRight}>
@@ -63,6 +70,8 @@ export default function LaunchpadScreen() {
 
       {activeTab === 'Community' ? (
         <CommunityScreen />
+      ) : activeTab === 'Tutorials' ? (
+        <TutorialsScreen />
       ) : activeTab === 'Profile' ? (
         <ProfileScreen />
       ) : (
@@ -122,7 +131,7 @@ export default function LaunchpadScreen() {
               <View style={styles.logoIcon}>
                 <OxionLogo size={120} />
               </View>
-              <Text style={styles.appTitle}>Oxion2d v0.6.5</Text>
+              <Text style={styles.appTitle}>Oxion2d v1.12.8</Text>
             </View>
 
             <View style={styles.sidebarLinks}>

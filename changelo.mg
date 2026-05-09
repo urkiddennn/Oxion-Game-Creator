@@ -1,5 +1,15 @@
 # Changelog - Oxion Game Creator
 
+## [1.12.8] - 2026-05-09
+### Added
+- **Tutorials & Learning Center**:
+  - Implemented a dedicated **Tutorials tab** in the Launchpad navigation bar, providing creators with instant access to documentation, physics guides, and video tutorials.
+  - Integrated **Supabase database fetching** to dynamically load the latest community-contributed tutorials and official video guides.
+  - Designed a high-fidelity learning dashboard with interactive resource cards, helping new users master Oxion2d's visual logic and engine capabilities.
+- **Launchpad Navigation Overhaul**:
+  - Redesigned the top navigation bar to include **Projects**, **Community**, and **Tutorials** as primary tabs.
+  - Streamlined access to cloud community and developer learning resources directly from the main entry point.
+
 ## [1.12.7] - 2026-05-09
 ### Fixed
 - Fixed the spawning pipeline order-of-operations in `GamePlayer.tsx`. Shared values are now fully created and attached to the physical body's `gameInfo` *before* `'on_start'` scripts are executed, ensuring runtime scale changes (e.g. `self.scale = 4`) during spawn initialization are applied correctly to the visual sprite.

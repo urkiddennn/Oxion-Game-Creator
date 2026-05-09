@@ -10,7 +10,7 @@
       "channel": "development"
     },
     "preview": {
-      "node": "20.10.0",
+      "node": "22.12.0",
       "distribution": "store",
       "channel": "preview",
       "android": {
@@ -19,7 +19,7 @@
       }
     },
     "production": {
-      "node": "20.10.0",
+      "node": "22.12.0",
       "autoIncrement": true,
       "channel": "production"
     }
