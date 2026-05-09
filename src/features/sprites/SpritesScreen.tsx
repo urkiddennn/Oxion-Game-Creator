@@ -5,7 +5,7 @@ import { styles } from './SpritesScreen.styles';
 import { Image as ImageIcon, Plus, Upload, Palette, X, Trash2, ChevronDown, Save } from 'lucide-react-native';
 import { TextInput } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import SpriteEditor from './components/SpriteEditor';
 import { useProjectStore, Sprite } from '../../store/useProjectStore';
 

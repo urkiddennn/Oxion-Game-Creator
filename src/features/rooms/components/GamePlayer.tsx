@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, DeviceEventEmitter, TextInput, Image, Pressable, Modal, Dimensions, ScrollView, Alert } from 'react-native';
-import { Audio } from 'expo-av';
+import { createAudioPlayer } from 'expo-audio';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { styles } from './GamePlayer.styles';
 import Matter from 'matter-js';
@@ -981,6 +981,89 @@ const GUIRenderer = React.memo(({
 });
 
 const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
+
+const MicroSparkline = React.memo(({ history, color = '#00ff66', max = 5 }: { history: number[], color?: string, max?: number }) => {
+  return (
+    <View style={styles.sparklineContainer}>
+      {history.map((val, idx) => {
+        const hPct = Math.min(100, Math.max(10, (val / max) * 100));
+        return (
+          <View
+            key={idx}
+            style={[
+              styles.sparklineBar,
+              {
+                height: `${hPct}%`,
+                backgroundColor: color,
+              }
+            ]}
+          />
+        );
+      })}
+    </View>
+  );
+});
+
+const MatterStatsPanel = React.memo(({ stats, utHistory, rtHistory }: { stats: any, utHistory: number[], rtHistory: number[] }) => {
+  return (
+    <View style={styles.matterStatsContainer}>
+      {/* Top Row: Entity Counts */}
+      <View style={styles.matterStatsGrid}>
+        <View style={styles.matterStatsCol}>
+          <Text style={styles.matterStatsLabel}>Part</Text>
+          <Text style={styles.matterStatsValue}>{stats.partCount}</Text>
+        </View>
+        <View style={styles.matterStatsCol}>
+          <Text style={styles.matterStatsLabel}>Body</Text>
+          <Text style={stats.bodyCount > 100 ? [styles.matterStatsValue, { color: '#ff4d4d' }] : styles.matterStatsValue}>{stats.bodyCount}</Text>
+        </View>
+        <View style={styles.matterStatsCol}>
+          <Text style={styles.matterStatsLabel}>Cons</Text>
+          <Text style={styles.matterStatsValue}>{stats.consCount}</Text>
+        </View>
+        <View style={styles.matterStatsCol}>
+          <Text style={styles.matterStatsLabel}>Comp</Text>
+          <Text style={styles.matterStatsValue}>{stats.compCount}</Text>
+        </View>
+        <View style={styles.matterStatsCol}>
+          <Text style={styles.matterStatsLabel}>Pair</Text>
+          <Text style={stats.pairCount > 150 ? [styles.matterStatsValue, { color: '#ff9f43' }] : styles.matterStatsValue}>{stats.pairCount}</Text>
+        </View>
+      </View>
+      
+      {/* Bottom Row: Performance indicators */}
+      <View style={styles.matterStatsRow}>
+        <View style={styles.matterIndicatorItem}>
+          <View style={[styles.matterIndicatorDot, { backgroundColor: stats.fps < 45 ? '#ff4d4d' : '#00ff66' }]} />
+          <Text style={styles.matterIndicatorText}>{stats.fps} fps</Text>
+        </View>
+        <View style={styles.matterIndicatorItem}>
+          <View style={[styles.matterIndicatorDot, { backgroundColor: stats.dt > 25 ? '#ff9f43' : '#00ff66' }]} />
+          <Text style={styles.matterIndicatorText}>{stats.dt.toFixed(2)} dt</Text>
+        </View>
+        <View style={styles.matterIndicatorItem}>
+          <View style={[styles.matterIndicatorDot, { backgroundColor: '#00ff66' }]} />
+          <Text style={styles.matterIndicatorText}>{stats.upf} upf</Text>
+        </View>
+        <View style={styles.matterIndicatorItem}>
+          <View style={[styles.matterIndicatorDot, { backgroundColor: stats.ut > 10 ? '#ff4d4d' : stats.ut > 5 ? '#ff9f43' : '#00ff66' }]} />
+          <Text style={styles.matterIndicatorText}>{stats.ut.toFixed(2)} ut</Text>
+          <MicroSparkline history={utHistory} color={stats.ut > 10 ? '#ff4d4d' : stats.ut > 5 ? '#ff9f43' : '#00ff66'} max={8} />
+        </View>
+        <View style={styles.matterIndicatorItem}>
+          <View style={[styles.matterIndicatorDot, { backgroundColor: stats.rt > 10 ? '#ff4d4d' : stats.rt > 5 ? '#ff9f43' : '#00ff66' }]} />
+          <Text style={styles.matterIndicatorText}>{stats.rt.toFixed(2)} rt</Text>
+          <MicroSparkline history={rtHistory} color={stats.rt > 10 ? '#ff4d4d' : stats.rt > 5 ? '#ff9f43' : '#00ff66'} max={8} />
+        </View>
+        <View style={styles.matterIndicatorItem}>
+          <View style={[styles.matterIndicatorDot, { backgroundColor: '#00ff66' }]} />
+          <Text style={styles.matterIndicatorText}>{stats.timeScale.toFixed(2)} x</Text>
+        </View>
+      </View>
+    </View>
+  );
+});
+
 const FPSCounter = React.memo(({ fps }: { fps: SharedValue<number> }) => {
   const [displayFps, setDisplayFps] = useState(0);
 
@@ -1090,6 +1173,21 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
   const [isPlaying, setIsPlaying] = useState(true);
   const [showDebugSidebar, setShowDebugSidebar] = useState(false);
   const [nonce, setNonce] = useState(0);
+  const [physicsStats, setPhysicsStats] = useState({
+    partCount: 0,
+    bodyCount: 0,
+    consCount: 0,
+    compCount: 0,
+    pairCount: 0,
+    fps: 0,
+    dt: 0,
+    upf: 1,
+    ut: 0,
+    rt: 0,
+    timeScale: 1.0,
+  });
+  const [utHistory, setUtHistory] = useState<number[]>(new Array(10).fill(0));
+  const [rtHistory, setRtHistory] = useState<number[]>(new Array(10).fill(0));
   const varCooldowns = useRef<Record<string, number>>({});
   const lastRestartRef = useRef(0);
   const pendingLoadRef = useRef<any>(null);
@@ -1405,7 +1503,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
   const [instanceOverrides, setInstanceOverrides] = useState<Record<string, { spriteId?: string, animName?: string }>>({});
   const instanceOverridesRef = useRef<Record<string, any>>({});
   const liveObjectsRef = useRef<Map<string, GameObject>>(new Map());
-  const soundObjectsRef = useRef<Map<string, Audio.Sound>>(new Map());
+  const soundObjectsRef = useRef<Map<string, any>>(new Map());
   useEffect(() => { instanceOverridesRef.current = instanceOverrides; }, [instanceOverrides]);
 
   // Sync refs to state at a throttled rate for UI rendering (backup sync)
@@ -1474,6 +1572,16 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     });
     let physicsFrameCounter = 0;
     const newBodies: Matter.Body[] = [];
+    const getPrecisionTime = () => {
+      return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+    };
+    let lastFrameTime = getPrecisionTime();
+    let statsAccumulator = {
+      dtSum: 0,
+      utSum: 0,
+      rtSum: 0,
+      count: 0
+    };
     const playerBodies: { body: Matter.Body; obj: GameObject; sv?: any; isPlayer?: boolean; jumpedThisPress?: boolean; onGround?: boolean }[] = [];
     const emitters: { body: Matter.Body; obj: GameObject; lastSpawn: number }[] = [];
     const dynamicRef: {
@@ -1579,21 +1687,21 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       try {
         if (soundObjectsRef.current.has(soundName)) {
           const existing = soundObjectsRef.current.get(soundName);
-          await existing?.stopAsync();
-          await existing?.unloadAsync();
+          existing?.pause();
+          existing?.release();
         }
 
-        const { sound: newSound } = await Audio.Sound.createAsync(
-          { uri: soundAsset.uri },
-          { shouldPlay: true }
-        );
+        const newSound = createAudioPlayer(soundAsset.uri);
         soundObjectsRef.current.set(soundName, newSound);
+        newSound.play();
+
         DeviceEventEmitter.emit('on_start_sound', { name: soundName });
         DeviceEventEmitter.emit(`on_start_sound:${soundName}`, { name: soundName });
 
-        newSound.setOnPlaybackStatusUpdate((status) => {
-          if (status.isLoaded && status.didJustFinish) {
-            newSound.unloadAsync();
+        const subscription = newSound.addListener('playbackStatusUpdate', (status) => {
+          if (status.didJustFinish) {
+            subscription.remove();
+            newSound.release();
             soundObjectsRef.current.delete(soundName);
             DeviceEventEmitter.emit('on_stop_sound', { name: soundName });
             DeviceEventEmitter.emit(`on_stop_sound:${soundName}`, { name: soundName });
@@ -2024,12 +2132,11 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         const soundName = parts[1];
         const snd = soundObjectsRef.current.get(soundName);
         if (snd) {
-          snd.stopAsync().then(() => {
-            snd.unloadAsync();
-            soundObjectsRef.current.delete(soundName);
-            DeviceEventEmitter.emit('on_stop_sound', { name: soundName });
-            DeviceEventEmitter.emit(`on_stop_sound:${soundName}`, { name: soundName });
-          });
+          snd.pause();
+          snd.release();
+          soundObjectsRef.current.delete(soundName);
+          DeviceEventEmitter.emit('on_stop_sound', { name: soundName });
+          DeviceEventEmitter.emit(`on_stop_sound:${soundName}`, { name: soundName });
         }
       }
     };
@@ -2305,6 +2412,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         height,
         obj: instObj,
         scripts: parsedScripts,
+        tickScripts: parsedScripts.filter((s: any) => s && s.cmd === 'on_tick'),
+        timerScripts: parsedScripts.filter((s: any) => s && s.cmd === 'on_timer' && s.timerMs > 0),
         spawnTime: Date.now(),
         layerIndex: layerIndex ?? 0
       };
@@ -2485,6 +2594,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           _logicState: {
             obj: instObj,
             scripts: parsedScripts,
+            tickScripts: parsedScripts.filter((s: any) => s && s.cmd === 'on_tick'),
+            timerScripts: parsedScripts.filter((s: any) => s && s.cmd === 'on_timer' && s.timerMs > 0),
             health: instObj.health,
             progress_bar: instObj.progress_bar,
             sprite_repeater: instObj.sprite_repeater
@@ -2535,6 +2646,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         width,
         height,
         scripts: parsedScripts,
+        tickScripts: parsedScripts.filter((s: any) => s && s.cmd === 'on_tick'),
+        timerScripts: parsedScripts.filter((s: any) => s && s.cmd === 'on_timer' && s.timerMs > 0),
         constantVx: obj.logic?.constantVelocityX,
         obj: instObj,
         nameLower: obj.name?.toLowerCase(),
@@ -2750,6 +2863,14 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       if (!isActiveRef.current) return;
       if (!isPlayingRef.current) { frameId = requestAnimationFrame(update); return; }
       const now = Date.now();
+      const nowPrecision = getPrecisionTime();
+      const dt = nowPrecision - lastFrameTime;
+      lastFrameTime = nowPrecision;
+
+      const utStart = getPrecisionTime();
+      let utTime = 0;
+      let rtStart = 0;
+      let rtTime = 0;
 
       // Refresh body cache — avoid full traversal every frame if possible
       // (Matter.Composite.allBodies is O(N) but can be expensive with many nested composites)
@@ -2757,12 +2878,61 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         cachedBodies = Matter.Composite.allBodies(engine.world);
       }
 
-      // Calculate FPS
+      // Calculate FPS & Refresh Statistics
       fpsFrames++;
       if (now - fpsLastTime >= 1000) {
         fpsShared.value = fpsFrames;
+
+        const bodies = Matter.Composite.allBodies(engine.world);
+        const partsCount = bodies.reduce((acc, b) => acc + (b.parts ? b.parts.length : 1), 0);
+        const bodiesCount = bodies.length;
+        const constraintsCount = Matter.Composite.allConstraints(engine.world).length;
+        const compositesCount = Matter.Composite.allComposites(engine.world).length;
+        const pairsCount = engine.pairs?.list?.length || 0;
+
+        const avgDt = statsAccumulator.count > 0 ? (statsAccumulator.dtSum / statsAccumulator.count) : 16.67;
+        const avgUt = statsAccumulator.count > 0 ? (statsAccumulator.utSum / statsAccumulator.count) : 0;
+        const avgRt = statsAccumulator.count > 0 ? (statsAccumulator.rtSum / statsAccumulator.count) : 0;
+
+        setPhysicsStats({
+          partCount: partsCount,
+          bodyCount: bodiesCount,
+          consCount: constraintsCount,
+          compCount: compositesCount,
+          pairCount: pairsCount,
+          fps: fpsFrames,
+          dt: avgDt,
+          upf: 1,
+          ut: avgUt,
+          rt: avgRt,
+          timeScale: engine.timing?.timeScale || 1.0
+        });
+
+        setUtHistory(prev => {
+          const next = [...prev];
+          next.shift();
+          next.push(avgUt);
+          return next;
+        });
+
+        setRtHistory(prev => {
+          const next = [...prev];
+          next.shift();
+          next.push(avgRt);
+          return next;
+        });
+
+        // Reset accumulators
+        statsAccumulator.dtSum = 0;
+        statsAccumulator.utSum = 0;
+        statsAccumulator.rtSum = 0;
+        statsAccumulator.count = 0;
+
         fpsFrames = 0;
         fpsLastTime = now;
+      } else {
+        // Accumulate stats
+        statsAccumulator.dtSum += dt;
       }
 
       globalFrameTimer.value = now - roomStartTime;
@@ -3069,24 +3239,31 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           info.lastCount = count;
         }
 
-        // General Triggers (Tick & Timer)
-        info.scripts.forEach((script: any) => {
-          if (script.cmd === 'on_tick') {
-            if (script.listenerData) executeListenerLogic(script.listenerData, body, info, 'TickLoop');
-            else if (script.actionPart) executeAction(script.actionPart, body, info, 'TickLoop');
+        // General Triggers (Tick & Timer) using pre-categorized lists to bypass any on-tick lookup tax
+        const tickScripts = info.tickScripts || [];
+        const timerScripts = info.timerScripts || [];
+        const tickLen = tickScripts.length;
+        const timerLen = timerScripts.length;
+
+        for (let i = 0; i < tickLen; i++) {
+          const script = tickScripts[i];
+          if (script.listenerData) executeListenerLogic(script.listenerData, body, info, 'TickLoop');
+          else if (script.actionPart) executeAction(script.actionPart, body, info, 'TickLoop');
+          script.triggerCount = (script.triggerCount || 0) + 1;
+          script.lastAction = script.actionPart || 'Listener';
+        }
+
+        for (let i = 0; i < timerLen; i++) {
+          const script = timerScripts[i];
+          if (!script.lastRun) script.lastRun = now;
+          if (now - script.lastRun > script.timerMs) {
+            if (script.listenerData) executeListenerLogic(script.listenerData, body, info, 'TimerLoop');
+            else if (script.actionPart) executeAction(script.actionPart, body, info, 'TimerLoop');
+            script.lastRun = now;
             script.triggerCount = (script.triggerCount || 0) + 1;
             script.lastAction = script.actionPart || 'Listener';
-          } else if (script.cmd === 'on_timer' && script.timerMs > 0) {
-            if (!script.lastRun) script.lastRun = now;
-            if (now - script.lastRun > script.timerMs) {
-              if (script.listenerData) executeListenerLogic(script.listenerData, body, info, 'TimerLoop');
-              else if (script.actionPart) executeAction(script.actionPart, body, info, 'TimerLoop');
-              script.lastRun = now;
-              script.triggerCount = (script.triggerCount || 0) + 1;
-              script.lastAction = script.actionPart || 'Listener';
-            }
           }
-        });
+        }
       };
 
       // A. Process World Body Logic
@@ -3199,9 +3376,12 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
               if (obj.progress_bar) liveObj.progress_bar = { ...obj.progress_bar };
               if (obj.sprite_repeater) liveObj.sprite_repeater = { ...obj.sprite_repeater };
 
+              const filteredScripts = scripts.filter(Boolean);
               node._logicState = {
                 obj: liveObj,
-                scripts: scripts.filter(Boolean),
+                scripts: filteredScripts,
+                tickScripts: filteredScripts.filter((s: any) => s && s.cmd === 'on_tick'),
+                timerScripts: filteredScripts.filter((s: any) => s && s.cmd === 'on_timer' && s.timerMs > 0),
                 health: liveObj.health,
                 sprite_repeater: liveObj.sprite_repeater,
                 progress_bar: liveObj.progress_bar
@@ -3223,6 +3403,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           processGuiLogicRecursive(inst.gameObject.gui_hierarchy.root);
         }
       });
+
+      utTime = getPrecisionTime() - utStart;
+      rtStart = getPrecisionTime();
 
       if (dynamicChanged || dynamicRef.length !== lastSyncedLength) {
         // Optimized: Only copy essential data for React state
@@ -3311,6 +3494,12 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         cameraZoom.value = 1;
       }
 
+      rtTime = getPrecisionTime() - rtStart;
+
+      statsAccumulator.utSum += utTime;
+      statsAccumulator.rtSum += rtTime;
+      statsAccumulator.count++;
+
       frameId = requestAnimationFrame(update);
     };
     frameId = requestAnimationFrame(update);
@@ -3326,10 +3515,10 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       cameraTargetBodyRef.current = null;
 
       // Sound cleanup
-      soundObjectsRef.current.forEach(async (s) => {
+      soundObjectsRef.current.forEach((s) => {
         try {
-          await s.stopAsync();
-          await s.unloadAsync();
+          s.pause();
+          s.release();
         } catch (e) { }
       });
       soundObjectsRef.current.clear();
@@ -3559,7 +3748,6 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                     targetName={targetName}
                   />
                 )}
-                {debug && <FPSCounter fps={fpsShared} />}
                 <TouchableOpacity onPress={() => setIsPlaying(!isPlaying)} style={styles.miniBtn}>{isPlaying ? <Pause color="#fff" size={14} /> : <PlayIcon color="#fff" size={14} />}</TouchableOpacity>
                 {debug && (
                   <TouchableOpacity
@@ -3581,6 +3769,10 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                 </TouchableOpacity>
               </View>
             </View>
+          )}
+
+          {debug && (
+            <MatterStatsPanel stats={physicsStats} utHistory={utHistory} rtHistory={rtHistory} />
           )}
 
           <View style={styles.floatingControls}>

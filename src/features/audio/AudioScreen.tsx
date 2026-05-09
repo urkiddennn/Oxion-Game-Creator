@@ -4,12 +4,12 @@ import { theme } from '../../theme';
 import { Music, Play, Plus, Trash2, Download, Volume2, Square } from 'lucide-react-native';
 import { useProjectStore, SoundAsset } from '../../store/useProjectStore';
 import * as DocumentPicker from 'expo-document-picker';
-import { Audio } from 'expo-av';
+import { createAudioPlayer } from 'expo-audio';
 
 export default function AudioScreen() {
   const { activeProject, addSound, removeSound } = useProjectStore();
   const [selectedSoundId, setSelectedSoundId] = useState<string | null>(null);
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [sound, setSound] = useState<any | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
   const sounds = useMemo(() => 
@@ -18,7 +18,7 @@ export default function AudioScreen() {
   );
 
   useEffect(() => {
-    return sound ? () => { sound.unloadAsync(); } : undefined;
+    return sound ? () => { sound.release(); } : undefined;
   }, [sound]);
 
   const handleImportSound = async () => {
@@ -50,20 +50,18 @@ export default function AudioScreen() {
   const playSound = async (uri: string) => {
     try {
       if (sound) {
-        await sound.unloadAsync();
+        sound.release();
       }
       
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri },
-        { shouldPlay: true }
-      );
-      
+      const newSound = createAudioPlayer(uri);
       setSound(newSound);
       setIsPlaying(true);
-
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
+      newSound.play();
+      
+      const subscription = newSound.addListener('playbackStatusUpdate', (status) => {
+        if (status.didJustFinish) {
           setIsPlaying(false);
+          subscription.remove();
         }
       });
     } catch (err) {
@@ -73,7 +71,7 @@ export default function AudioScreen() {
 
   const stopSound = async () => {
     if (sound) {
-      await sound.stopAsync();
+      sound.pause();
       setIsPlaying(false);
     }
   };

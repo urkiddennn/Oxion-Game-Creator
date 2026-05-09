@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.12.0] - 2026-05-09
+### Upgraded
+- **Expo SDK 55 & React Native 0.83 Core Platform Upgrade**:
+  - Upgraded the underlying Expo platform to **SDK 55** and React Native core to **0.83.6**.
+  - Synchronized all native platform modules for optimal performance, including `expo-build-properties` (~55.0.13), `expo-file-system` (~55.0.19), `expo-navigation-bar` (~55.0.12), `react-native-reanimated` (4.2.1), and `react-native-gesture-handler` (~2.30.0).
+  - Migrated core React runtime framework to **React 19.2.0** for faster concurrent rendering and advanced scheduling efficiency across the entire Game Creator IDE.
+
+## [1.11.3] - 2026-05-07
+### Optimized
+- **Engine Script Execution & on_tick Ticker Speedup**:
+  - Engineered a high-performance script pre-categorization pipeline that runs during object spawning and initial room load inside [GamePlayer.tsx](file:///c:/Users/richa/OneDrive/Documents/programming/Oxion%20Game%20Creator/src/features/rooms/components/GamePlayer.tsx).
+  - Groups event scripts into stable `tickScripts` and `timerScripts` arrays once, completely avoiding any frame-by-frame search, string condition checks, or array `forEach` traversals for hundreds of idle or non-ticking instances.
+  - Swapped out callback-heavy `info.scripts.forEach(...)` with highly optimized, direct `for` loops inside the 60 FPS `runScriptLogic` update step. This dramatically reduces JavaScript thread update time (`ut`) and provides silky smooth frame-rates even with numerous active on-screen actors and collision pairs.
+
+## [1.11.2] - 2026-05-07
+### Fixed
+- **Expo SDK 54 File System Serialization Crash**:
+  - Resolved a severe bug causing asset serialization to crash with `Cannot read property 'Base64' of undefined` when a user attempts to import custom images inside the Sprites sheet or package/compile game standalone files inside Settings.
+  - Corrected modern `'expo-file-system'` module imports to use `'expo-file-system/legacy'` within [SpritesScreen.tsx](file:///c:/Users/richa/OneDrive/Documents/programming/Oxion%20Game%20Creator/src/features/sprites/SpritesScreen.tsx) and [SettingsScreen.tsx](file:///c:/Users/richa/OneDrive/Documents/programming/Oxion%20Game%20Creator/src/features/settings/SettingsScreen.tsx). This restores critical standalone operations like `readAsStringAsync` and the `EncodingType.Base64` enum exports.
+
+## [1.11.1] - 2026-05-07
+### Added
+- **Matter.js Style Live Telemetry & Performance Monitor**:
+  - Replicated the precise desktop Matter.js physics engine dashboard layout within the player's runtime HUD when debug mode is enabled.
+  - Added a **Top Row (Entity Counts)**: Counts of rigid body parts (`Part`), active physical bodies (`Body`), physics constraints (`Cons`), nested composite structures (`Comp`), and active collision detection list pairs (`Pair`).
+  - Added a **Bottom Row (Performance Metrics)**: Color-coded real-time indicators for frame rate (`fps`), total frame delta time (`dt`), physics updates per frame (`upf`), engine math/update tick calculation time (`ut`), render view and Reanimated coordinate sync duration (`rt`), and physics simulation timescale modifier (`x`).
+  - Designed beautiful **Real-time Micro-Sparklines**: High-fidelity, smooth-scrolling visual histograms plotted behind the engine calculation (`ut`) and rendering (`rt`) metric text to trace performance spikes and bottlenecks over time.
+  - Implemented **High-Efficiency Sampling**: Throttles telemetry-to-React UI state syncing to 1Hz intervals while calculating precise high-frequency averages in the frame loop. This completely avoids performance overhead or UI thread blocking, ensuring continuous 60fps gameplay.
+
 ## [1.11.0] - 2026-05-07
 ### Added
 - **Developer & Creator Profiles System**:

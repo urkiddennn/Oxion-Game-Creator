@@ -2,7 +2,7 @@
   "expo": {
     "name": "Oxion2d",
     "slug": "oxion-game-creator",
-    "version": "1.8.7",
+    "version": "1.12.1",
     "orientation": "landscape",
     "icon": "./assets/oxion.png",
     "backgroundColor": "#0F1115",
@@ -35,16 +35,8 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "extra": {
-      "eas": {
-        "projectId": "96f74b74-c465-42b8-b118-d4451765b06d"
-      }
-    },
     "runtimeVersion": {
       "policy": "appVersion"
-    },
-    "updates": {
-      "url": "https://u.expo.dev/96f74b74-c465-42b8-b118-d4451765b06d"
     },
     "plugins": [
       [
@@ -53,10 +45,19 @@
           "android": {
             "enableProguardInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": false,
-            "extraProguardRules": "-keep class com.facebook.react.turbomodule.** { *; }\n-keep class com.swmansion.reanimated.** { *; }\n-keep class com.facebook.yoga.** { *; }\n-keep class com.facebook.react.bridge.Systrace { *; }"
+            "extraProguardRules": "-keep class com.facebook.react.turbomodule.** { *; }\n-keep class com.swmansion.reanimated.** { *; }\n-keep class com.facebook.yoga.** { *; }\n-keep class com.facebook.react.bridge.Systrace { *; }",
+            "enableMinifyInReleaseBuilds": true
           }
         }
-      ]
-    ]
+      ],
+      "expo-sharing",
+      "expo-audio"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "891ce5f9-42de-478b-b303-77b4f153453d"
+      }
+    },
+    "owner": "urkiddenn"
   }
 }

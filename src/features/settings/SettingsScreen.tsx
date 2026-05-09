@@ -5,7 +5,7 @@ import { Settings as SettingsIcon, LogOut, Shield, Database, Bell, X, Box, Image
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import React from 'react';
 
 
