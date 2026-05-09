@@ -1,5 +1,29 @@
 # Changelog - Oxion Game Creator
 
+## [1.12.7] - 2026-05-09
+### Fixed
+- Fixed the spawning pipeline order-of-operations in `GamePlayer.tsx`. Shared values are now fully created and attached to the physical body's `gameInfo` *before* `'on_start'` scripts are executed, ensuring runtime scale changes (e.g. `self.scale = 4`) during spawn initialization are applied correctly to the visual sprite.
+- Resolved a factor of 2 calculation bug in debug collision outline and center dot offsets. Corrected alignment coordinates inside `PhysicsBodyInner` so the debug outline and central pivot dot represent the actual Matter.js physical body boundaries and center of mass exactly.
+
+## [1.12.6] - 2026-05-09
+### Fixed
+- Fixed script parsing of built-in actions (e.g. `self.scale = 2`, `self.x = 200`, `self.angle = 90`) in `GamePlayer.tsx`. Values are now correctly matched with execution arguments instead of mapping to string keys.
+
+## [1.12.5] - 2026-05-09
+### Fixed
+- Fixed coordinate offset calculation inside `GamePlayer.tsx`. Corrected debug overlay box and center dot positioning to properly counteract container translation, aligning them perfectly with the physical Matter.js hitboxes.
+
+
+## [1.12.4] - 2026-05-09
+### Added
+- **Dynamic Physics-Engine Scaling & Expression Engine Integration**:
+  - Implemented dynamic, reactive physics and visual scaling at runtime via scripting.
+  - Added full support for assignment and addition syntax, resolving expressions such as `self.scale = 2` and `self.scale += 0.5`.
+  - Upgraded the Matter.js physics integration to dynamically scale rigid hitboxes and boundary boxes in real-time, enabling entities to physically grow or shrink.
+  - Linked scale transformations directly to the Reanimated shared values pipeline for butter-smooth visual resizing and frame interpolation without React re-render overhead.
+  - Extended the expression evaluator to allow reading of scale values dynamically using dot-notation properties, e.g. `self.scale`, `other.scale`, or `enemy.scale`.
+  - Added automatic scale shared-value initialization for dynamically spawned elements (bullets, spawned items, particles) in the spawning pipeline.
+
 ## [1.12.3] - 2026-05-09
 ### Added
 - **Godot-Style 2D Viewport & Redesigned Object Inspector**:

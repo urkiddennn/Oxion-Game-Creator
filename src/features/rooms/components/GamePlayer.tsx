@@ -575,19 +575,21 @@ const PhysicsBodyInner = ({
       ty += cameraY.value;
     }
 
+    const currentScale = sv.scale ? sv.scale.value : scaleVal;
+
     return {
       transform: [
         { translateX: tx },
         { translateY: ty },
         { rotate: `${sv.rot.value}rad` },
-        { scaleX: (sv.flipX ? sv.flipX.value : 1) * scaleVal },
-        { scaleY: scaleVal },
+        { scaleX: (sv.flipX ? sv.flipX.value : 1) * currentScale },
+        { scaleY: currentScale },
         { translateX: -offsetXVal },
         { translateY: -offsetYVal }
       ],
       display: isVisible.value ? 'flex' : 'none',
       borderColor: debug ? (sv.isColliding?.value ? '#ff0000' : '#00ff00') : 'transparent',
-      zIndex: (layerIndexVal * 10000) + (ySortEnabled ? Math.floor(ty + heightVal * scaleVal + ySortAmt + ySortOffset) : 0),
+      zIndex: (layerIndexVal * 10000) + (ySortEnabled ? Math.floor(ty + heightVal * currentScale + ySortAmt + ySortOffset) : 0),
     };
   });
 
@@ -814,8 +816,8 @@ const PhysicsBodyInner = ({
             height: 4,
             borderRadius: 2,
             backgroundColor: '#FFF',
-            left: offsetX + (colW / 2) - 2,
-            top: offsetY + (colH / 2) - 2,
+            left: (width / 2) + offsetX - 2,
+            top: (height / 2) + offsetY - 2,
             zIndex: 10000,
           }}
         />
@@ -1030,7 +1032,7 @@ const MatterStatsPanel = React.memo(({ stats, utHistory, rtHistory }: { stats: a
           <Text style={stats.pairCount > 150 ? [styles.matterStatsValue, { color: '#ff9f43' }] : styles.matterStatsValue}>{stats.pairCount}</Text>
         </View>
       </View>
-      
+
       {/* Bottom Row: Performance indicators */}
       <View style={styles.matterStatsRow}>
         <View style={styles.matterIndicatorItem}>
@@ -1328,16 +1330,21 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
   const instanceSharedValues = useMemo(() => {
     if (!currentRoom || !currentRoom.instances) return [];
-    return (currentRoom.instances || []).map((inst: any) => ({
-      x: makeMutable(inst.x || 0),
-      y: makeMutable(inst.y || 0),
-      rot: makeMutable((inst.angle || 0) * Math.PI / 180),
-      isColliding: makeMutable(0),
-      animState: makeMutable(0), // 0: idle, 1: move, 2: jump, 3: hit, 4: dead
-      flipX: makeMutable(1),
-      pbValue: makeMutable(0),
-    }));
-  }, [currentRoom?.id, currentRoom?.instances, restartKey]);
+    return (currentRoom.instances || []).map((inst: any) => {
+      const obj = objectMap.get(inst.objectId);
+      const defaultScale = obj?.physics?.scale ?? 1;
+      return {
+        x: makeMutable(inst.x || 0),
+        y: makeMutable(inst.y || 0),
+        rot: makeMutable((inst.angle || 0) * Math.PI / 180),
+        isColliding: makeMutable(0),
+        animState: makeMutable(0), // 0: idle, 1: move, 2: jump, 3: hit, 4: dead
+        flipX: makeMutable(1),
+        pbValue: makeMutable(0),
+        scale: makeMutable(defaultScale),
+      };
+    });
+  }, [currentRoom?.id, currentRoom?.instances, objectMap, restartKey]);
 
   const [variables, setVariables] = useState<Record<string, number>>(currentProject?.variables?.global || { score: 0 });
   const variablesRef = useRef<Record<string, number>>(currentProject?.variables?.global || { score: 0 });
@@ -1627,6 +1634,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             if (prop === 'max_count' && actualObj.sprite_repeater) return actualObj.sprite_repeater.maxCount;
             if (prop === 'value' && actualObj.progress_bar) return actualObj.progress_bar.currentValue;
             if (prop === 'health' && actualObj.health) return actualObj.health.current;
+            if (prop === 'scale') return actualObj.physics?.scale || 1;
           }
         } else if (target === 'tap') {
           if (prop === 'x') return variablesRef.current.tap_x || 0;
@@ -1653,6 +1661,11 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           if (prop === 'vy') return targetBody.velocity.y;
           if (prop === 'width') return (targetBody as any).gameInfo?.width || 0;
           if (prop === 'height') return (targetBody as any).gameInfo?.height || 0;
+          if (prop === 'scale') {
+            const sv = (targetBody as any).gameInfo?.sv;
+            if (sv && sv.scale) return sv.scale.value;
+            return (targetBody as any).gameInfo?.obj?.physics?.scale || 1;
+          }
 
           // Sprite Repeater Properties
           const sr = (targetBody as any).gameInfo?.obj?.sprite_repeater;
@@ -1744,6 +1757,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           else if (prop === 'vy') cmd = 'set_vy';
           else if (prop === 'angle') cmd = op === '=' ? 'set_angle' : 'add_angle';
           else if (prop === 'health' || prop === 'hp') cmd = op === '=' ? 'set_health' : 'add_health';
+          else if (prop === 'scale') cmd = op === '=' ? 'set_scale' : 'add_scale';
           else cmd = op === '=' ? 'lvar_set' : 'lvar_add';
         } else {
           // Cross-object targeting handled in executeAction via cmd
@@ -1754,6 +1768,10 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
         if (lowerTarget !== 'global' && lowerTarget !== 'self' && lowerTarget !== 'this') {
           return { cmd: lowerTarget, parts: [lowerTarget, op === '=' ? 'set' : 'add', prop, finalVal] };
+        }
+
+        if ((lowerTarget === 'self' || lowerTarget === 'this') && cmd !== 'lvar_set' && cmd !== 'lvar_add') {
+          return { cmd, parts: [cmd, finalVal] };
         }
 
         return { cmd, parts: [cmd, prop, finalVal] };
@@ -1796,7 +1814,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         'set_value', 'tween_to', 'add_value', 'bind_to_variable', 'set_health', 'add_health',
         'damage', 'heal', 'set_count', 'restart_room', 'go_to_room', 'create_instance',
         'animation', 'set_animation', 'start_sound', 'stop_sound', 'target_other',
-        'save_game', 'load_game'
+        'save_game', 'load_game', 'set_scale', 'add_scale'
       ];
 
       if (!knownCommands.includes(cmd)) {
@@ -1841,6 +1859,44 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         if (body) {
           const jmp = obj?.physics?.jumpStrength !== undefined ? obj.physics.jumpStrength : 12;
           Matter.Body.setVelocity(body, { x: body.velocity.x, y: -jmp });
+        }
+      } else if (cmd === 'set_scale' || cmd === 'add_scale') {
+        const val = resolveValue(parts[1], body, obj);
+        const info = body ? (body as any).gameInfo : (obj as any);
+        console.log(`[Oxion Scale Debug] cmd: ${cmd}, val: ${val}, info exists: ${!!info}`);
+        if (info) {
+          if (info.obj && !info.obj.physics) {
+            info.obj.physics = { enabled: false };
+          }
+          const currentScale = info.obj?.physics?.scale ?? info.scale ?? info.physics?.scale ?? 1;
+          let nextScale = currentScale;
+          if (cmd === 'set_scale') {
+            nextScale = val;
+          } else {
+            nextScale = currentScale + val;
+          }
+          console.log(`[Oxion Scale Debug] currentScale: ${currentScale}, nextScale: ${nextScale}`);
+
+          if (nextScale <= 0) nextScale = 0.01; // Avoid negative/zero scale bugs
+
+          if (info.obj?.physics) info.obj.physics.scale = nextScale;
+          if (info.physics) info.physics.scale = nextScale;
+          info.scale = nextScale;
+
+          if (info.sv && info.sv.scale) {
+            info.sv.scale.value = nextScale;
+            console.log(`[Oxion Scale Debug] updated sv.scale.value to ${info.sv.scale.value}`);
+          } else {
+            console.log(`[Oxion Scale Debug] sv.scale does not exist! info.sv: ${!!info.sv}`);
+          }
+
+          if (body) {
+            const scaleFactor = nextScale / currentScale;
+            console.log(`[Oxion Scale Debug] scaling body by scaleFactor: ${scaleFactor}`);
+            Matter.Body.scale(body, scaleFactor, scaleFactor);
+          }
+
+          setNonce(n => n + 1);
         }
       } else if (cmd === 'damage' || cmd === 'heal') {
         // Resolve amount: try variable first, then literal number
@@ -2407,6 +2463,18 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
       liveObjectsRef.current.set(spawnId, instObj);
 
+      const scale = pObj.physics?.scale || 1;
+      const sv = {
+        x: makeMutable(x - (width / 2 + (pObj.physics?.collision?.offsetX || 0)) * scale),
+        y: makeMutable(y - (height / 2 + (pObj.physics?.collision?.offsetY || 0)) * scale),
+        rot: makeMutable(0),
+        isColliding: makeMutable(0),
+        animState: makeMutable(0),
+        flipX: makeMutable(1),
+        scale: makeMutable(scale)
+      };
+      svMap.set(body.label, sv);
+
       (body as any).gameInfo = {
         width,
         height,
@@ -2415,27 +2483,17 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         tickScripts: parsedScripts.filter((s: any) => s && s.cmd === 'on_tick'),
         timerScripts: parsedScripts.filter((s: any) => s && s.cmd === 'on_timer' && s.timerMs > 0),
         spawnTime: Date.now(),
-        layerIndex: layerIndex ?? 0
+        layerIndex: layerIndex ?? 0,
+        sv
       };
 
       // Run 'on_start' scripts immediately for spawned instance
       parsedScripts.forEach((script: any) => {
         if (script.cmd === 'on_start') {
-          if (script.listenerData) executeListenerLogic(script.listenerData, body, pObj, 'SpawnStart');
-          else if (script.actionPart) executeAction(script.actionPart, body, pObj, 'SpawnStart');
+          if (script.listenerData) executeListenerLogic(script.listenerData, body, instObj, 'SpawnStart');
+          else if (script.actionPart) executeAction(script.actionPart, body, instObj, 'SpawnStart');
         }
       });
-
-      const scale = pObj.physics?.scale || 1;
-      const sv = {
-        x: makeMutable(x - (width / 2 + (pObj.physics?.collision?.offsetX || 0)) * scale),
-        y: makeMutable(y - (height / 2 + (pObj.physics?.collision?.offsetY || 0)) * scale),
-        rot: makeMutable(0),
-        isColliding: makeMutable(0),
-        animState: makeMutable(0),
-        flipX: makeMutable(1)
-      };
-      svMap.set(body.label, sv);
 
       dynamicRef.push({
         id: body.label,
@@ -3309,7 +3367,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         const col = info.obj?.physics?.collision;
         const offsetX = col?.offsetX || 0;
         const offsetY = col?.offsetY || 0;
-        const scale = info.obj?.physics?.scale || 1;
+        const scale = info.obj?.physics?.scale || info.scale || 1;
         const sv = info.sv || svMap.get(body.label);
 
         if (sv && sv.x && sv.y) {

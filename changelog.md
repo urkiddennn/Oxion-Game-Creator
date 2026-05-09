@@ -1,5 +1,55 @@
 # Changelog
 
+## [1.12.7] - 2026-05-09
+### Fixed
+- Fixed the spawning pipeline order-of-operations in `GamePlayer.tsx`. Shared values are now fully created and attached to the physical body's `gameInfo` *before* `'on_start'` scripts are executed, ensuring runtime scale changes (e.g. `self.scale = 4`) during spawn initialization are applied correctly to the visual sprite.
+- Resolved a factor of 2 calculation bug in debug collision outline and center dot offsets. Corrected alignment coordinates inside `PhysicsBodyInner` so the debug outline and central pivot dot represent the actual Matter.js physical body boundaries and center of mass exactly.
+
+## [1.12.6] - 2026-05-09
+### Fixed
+- Fixed script parsing of built-in actions (e.g. `self.scale = 2`, `self.x = 200`, `self.angle = 90`) in `GamePlayer.tsx`. Values are now correctly matched with execution arguments instead of mapping to string keys.
+
+## [1.12.5] - 2026-05-09
+### Fixed
+- Fixed coordinate offset calculation inside `GamePlayer.tsx`. Corrected debug overlay box and center dot positioning to properly counteract container translation, aligning them perfectly with the physical Matter.js hitboxes.
+
+
+## [1.12.4] - 2026-05-09
+### Added
+- **Dynamic Physics-Engine Scaling & Expression Engine Integration**:
+  - Implemented dynamic, reactive physics and visual scaling at runtime via scripting.
+  - Added full support for assignment and addition syntax, resolving expressions such as `self.scale = 2` and `self.scale += 0.5`.
+  - Upgraded the Matter.js physics integration to dynamically scale rigid hitboxes and boundary boxes in real-time, enabling entities to physically grow or shrink.
+  - Linked scale transformations directly to the Reanimated shared values pipeline for butter-smooth visual resizing and frame interpolation without React re-render overhead.
+  - Extended the expression evaluator to allow reading of scale values dynamically using dot-notation properties, e.g. `self.scale`, `other.scale`, or `enemy.scale`.
+  - Added automatic scale shared-value initialization for dynamically spawned elements (bullets, spawned items, particles) in the spawning pipeline.
+
+## [1.12.3] - 2026-05-09
+### Added
+- **Godot-Style 2D Viewport & Redesigned Object Inspector**:
+  - Engineered an ultra-premium, interactive **2D Viewport** workspace right in the center column of the ObjectInspectorModal.tsx, replicating the professional visual editing canvas of Godot Engine.
+  - Implemented a sleek, top-center tab-bar permitting seamless switching between the **2D Viewport** (Visual workspace) and the full **Script / Logic** editor (Events & Actions list).
+  - Built a dynamic, high-fidelity dark grid background, red horizontal coordinate X-axis, green vertical coordinate Y-axis, and an orange origin/pivot marker representing the entity crosshair.
+  - Rendered a highly detailed collision overlay (capsule, rectangle, or circle) over the center-scaled sprite matching offset (`offsetX`, `offsetY`) and physical boundaries exactly.
+  - Designed responsive floating zoom controls (`Zoom In`, `Zoom Out`, and `Reset Zoom`) with an live-updating percentage indicator scale up to 2000%.
+  - Added real-time entity information badge (dimensions, behavior, body physics) in the viewport corner.
+  - Integrated convenient shortcut buttons inside both the central Viewport canvas and the right-column sprite header section to immediately switch focus to the object's code scripts and listeners.
+
+## [1.12.2] - 2026-05-09
+### Fixed
+- **Out-of-Bounds Culling & Static Solids Collision**:
+  - Resolved a critical engine bug where walking long distances on a straight line of solid blocks caused physical collisions to suddenly deactivate and the player to fall through.
+  - Fixed the game update loop's out-of-bounds physical Garbage Collector in GamePlayer.tsx to ignore static bodies (`d.body.isStatic`) entirely, ensuring placed solid blocks remain in the physical world permanently.
+  - Refactored room-instance dynamic body culling to only destroy editor-placed room instances if they fall deep into a pit (`py > roomH + 1000`), rather than being culled horizontally or above, so they remain fully interactive across large zoomable maps.
+
+## [1.12.1] - 2026-05-09
+### Fixed
+- **Expo SDK 55 Native Audio Compatibility (Migration to `expo-audio`)**:
+  - Migrated the audio engine from the deprecated/removed `expo-av` library to the modern high-performance `'expo-audio'` package.
+  - Resolved the critical crash `Cannot find native module 'ExponentAV'` by completely removing `expo-av` and installing the compatible SDK 55 `'expo-audio'` package.
+  - Refactored GamePlayer.tsx to use the synchronous, imperative `createAudioPlayer` API with native `playbackStatusUpdate` event listeners for sound effect playback and lifecycle release management.
+  - Refactored AudioScreen.tsx to utilize `'expo-audio'` for asset importing, preview testing, and automatic background cleanup.
+
 ## [1.12.0] - 2026-05-09
 ### Upgraded
 - **Expo SDK 55 & React Native 0.83 Core Platform Upgrade**:
