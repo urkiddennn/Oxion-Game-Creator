@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.12.11] - 2026-05-10
+### Fixed
+- **Multi-Touch Precision Upgrade**:
+  - Upgraded `GameButton` to use `Gesture.Manual()` with explicit touch event management. This bypasses the default gesture exclusivity in RNGH, allowing infinite simultaneous button presses without interference.
+  - Refactored background screen-tap detection from a legacy `Pressable` to a `GestureDetector` (`Gesture.Tap()`). This prevents the background from "stealing" the touch responder when buttons are being held.
+  - Unified the input processing layer to ensure `inputJump` and `inputShoot` are captured reliably even during continuous movement.
+
+## [1.12.10] - 2026-05-10
+### Fixed
+- **True Multi-Touch Controls Refactor**:
+  - Re-engineered the gameplay control buttons (`GameButton`) using the high-performance `GestureDetector` API from `react-native-gesture-handler`.
+  - Resolved the React Native responder lockout issue that prevented simultaneous touches. Players can now hold movement buttons (Left/Right) while concurrently tapping Jump or Shoot without input cancellation.
+  - Removed legacy responder system overrides (`onStartShouldSetResponder`) that were causing inter-component touch interference on mobile devices and Expo Go.
+  - Implemented mutual exclusivity for d-pad buttons to ensure clean state transitions when sliding between Left and Right inputs.
+
+## [1.12.9] - 2026-05-10
+### Fixed
+- **Systemic Collision & Event Logic Refactor**:
+  - Resolved a critical bug where `on_collision` events were hardcoded to only trigger for collisions involving the Player. They now trigger for any object-to-object or object-to-tile collision as intended.
+  - Fixed "once only" collision damage on **Sprite Repeater** and other objects by ensuring `otherBody` and `otherObj` are correctly propagated through the event bridge to conditional actions.
+  - Engineered a robust `collisionStart` handler that now correctly identifies collisions with non-GameObject bodies (tiles, walls, static floors), enabling `collision:tile` and generic hit detection to function reliably.
+  - Fixed a logic error in `executeListenerLogic` where the triggering object was being passed instead of the target object during `on_life_lost` and `on_zero_lives` triggers.
+  - Optimized the **Sprite Repeater** damage pipeline to ensure linked variables are updated atomically and the UI refresh nonce is synchronized with the global variable store.
+  - Eliminated a double-emission bug in the collision event bridge that was causing redundant script executions per frame.
+
 ## [1.12.7] - 2026-05-09
 ### Fixed
 - Fixed the spawning pipeline order-of-operations in `GamePlayer.tsx`. Shared values are now fully created and attached to the physical body's `gameInfo` *before* `'on_start'` scripts are executed, ensuring runtime scale changes (e.g. `self.scale = 4`) during spawn initialization are applied correctly to the visual sprite.

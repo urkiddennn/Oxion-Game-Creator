@@ -40,27 +40,30 @@ const GameButton = ({
   children: React.ReactNode;
 }) => {
   const [pressed, setPressed] = useState(false);
+
+  const gesture = useMemo(() => Gesture.Manual()
+    .onTouchesDown((e, manager) => {
+      manager.activate();
+      runOnJS(setPressed)(true);
+      runOnJS(onPressIn)();
+    })
+    .onTouchesUp((e, manager) => {
+      manager.end();
+      runOnJS(setPressed)(false);
+      runOnJS(onPressOut)();
+    })
+    .onTouchesCancelled((e, manager) => {
+      manager.fail();
+      runOnJS(setPressed)(false);
+      runOnJS(onPressOut)();
+    }), [onPressIn, onPressOut]);
+
   return (
-    <View
-      style={[style, pressed && pressedStyle]}
-      onStartShouldSetResponder={() => true}
-      onMoveShouldSetResponder={() => true}
-      onResponderTerminationRequest={() => false}
-      onTouchStart={() => {
-        setPressed(true);
-        onPressIn();
-      }}
-      onTouchEnd={() => {
-        setPressed(false);
-        onPressOut();
-      }}
-      onTouchCancel={() => {
-        setPressed(false);
-        onPressOut();
-      }}
-    >
-      {children}
-    </View>
+    <GestureDetector gesture={gesture}>
+      <Animated.View style={[style, pressed && pressedStyle]}>
+        {children}
+      </Animated.View>
+    </GestureDetector>
   );
 };
 
@@ -127,6 +130,7 @@ const VirtualJoystick = ({ settings, onMove, onRelease }: {
       }
       runOnJS(onRelease)();
     }), [baseRange, isPersistent, settings.dead_zone, onMove, onRelease]);
+
 
   const stickStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: stickX.value }, { translateY: stickY.value }]
@@ -1196,6 +1200,17 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
   const lastLoadTimeRef = useRef(0);
   const lastSaveTimeRef = useRef(0);
 
+  const screenTapGesture = useMemo(() => Gesture.Tap()
+    .onStart((e) => {
+      runOnJS(() => {
+        inputTap.current = 1;
+        variablesRef.current.tap_x = e.x;
+        variablesRef.current.tap_y = e.y;
+        DeviceEventEmitter.emit('builtin_tap', { x: e.x, y: e.y });
+        DeviceEventEmitter.emit('on_screen_tap', { x: e.x, y: e.y });
+      })();
+    }), []);
+
   // Calculate initial camera position based on target to avoid "jump" on first frame
   const initialCamPos = useMemo(() => {
     const cam = currentRoom?.settings?.camera;
@@ -1944,6 +1959,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             updateGlobalVar(newSr.linkedVariable, newSr.currentCount, true);
           }
           setNonce(n => n + 1);
+          variablesDirtyRef.current = true; // Ensure store sync
         }
 
         // 3. Update progress_bar – check BOTH info.progress_bar and info.obj.progress_bar
@@ -2211,26 +2227,26 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       return false;
     };
 
-    const executeListenerLogic = (listener: any, body: Matter.Body | null, obj: GameObject, source: string) => {
+    const executeListenerLogic = (listener: any, body: Matter.Body | null, obj: GameObject, source: string, otherBody?: Matter.Body, otherObj?: GameObject) => {
       // 1. Legacy support
       if (listener.parsedAction) {
-        executeAction(listener.parsedAction, body, obj, source);
+        executeAction(listener.parsedAction, body, obj, source, otherBody);
       } else if (listener.action) {
-        executeAction(listener.action, body, obj, source);
+        executeAction(listener.action, body, obj, source, otherBody);
       }
 
       if (listener.condition && checkCondition(listener.condition, body, obj)) {
-        if (listener.conditionAction) executeAction(listener.conditionAction, body, obj, source + ':Cond');
+        if (listener.conditionAction) executeAction(listener.conditionAction, body, obj, source + ':Cond', otherBody);
       }
 
       // 2. New Logic Editor support
       if (listener.parsedImmediate) {
         listener.parsedImmediate.forEach((act: any) => {
-          executeAction(act, body, obj, source + ':Imm');
+          executeAction(act, body, obj, source + ':Imm', otherBody);
         });
       } else if (listener.immediateActions) {
         listener.immediateActions.forEach((act: string) => {
-          if (act) executeAction(act, body, obj, source + ':Imm');
+          if (act) executeAction(act, body, obj, source + ':Imm', otherBody);
         });
       }
 
@@ -2239,18 +2255,18 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           const met = checkCondition(sc.condition, body, obj);
           if (met) {
             if (sc.parsedActions) {
-              sc.parsedActions.forEach((act: any) => executeAction(act, body, obj, source + ':IfT'));
+              sc.parsedActions.forEach((act: any) => executeAction(act, body, obj, source + ':IfT', otherBody));
             } else if (sc.actions) {
               sc.actions.forEach((act: string) => {
-                if (act) executeAction(act, body, obj, source + ':IfT');
+                if (act) executeAction(act, body, obj, source + ':IfT', otherBody);
               });
             }
           } else {
             if (sc.parsedElseActions) {
-              sc.parsedElseActions.forEach((act: any) => executeAction(act, body, obj, source + ':IfF'));
+              sc.parsedElseActions.forEach((act: any) => executeAction(act, body, obj, source + ':IfF', otherBody));
             } else if (sc.elseActions) {
               sc.elseActions.forEach((act: string) => {
-                if (act) executeAction(act, body, obj, source + ':IfF');
+                if (act) executeAction(act, body, obj, source + ':IfF', otherBody);
               });
             }
           }
@@ -2260,11 +2276,11 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           const met = checkCondition(sc.condition, body, obj);
           if (met) {
             if (sc.actions) sc.actions.forEach((act: string) => {
-              if (act) executeAction(act, body, obj, source + ':IfT');
+              if (act) executeAction(act, body, obj, source + ':IfT', otherBody);
             });
           } else {
             if (sc.elseActions) sc.elseActions.forEach((act: string) => {
-              if (act) executeAction(act, body, obj, source + ':IfF');
+              if (act) executeAction(act, body, obj, source + ':IfF', otherBody);
             });
           }
         });
@@ -2274,19 +2290,19 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     const attachListeners = (body: Matter.Body, obj: GameObject) => {
       obj.logic?.listeners?.forEach(l => {
         // Skip events handled elsewhere to prevent double-firing or handled by specialized loops
-        const skippedEvents = ['on_timer', 'on_tick', 'on_start', 'on_tap', 'when_self_tap', 'builtin_tap', 'on_screen_tap'];
+        const skippedEvents = ['on_timer', 'on_tick', 'on_start', 'on_tap', 'when_self_tap', 'builtin_tap', 'on_screen_tap', 'on_collision'];
         if (skippedEvents.some(se => l.eventId === se || l.eventId?.startsWith(se + ':'))) return;
 
         const sub = DeviceEventEmitter.addListener(l.eventId, (data: any) => {
           // If the event has a targetId, only react if it matches this body
           if (data?.targetId && String(data.targetId) !== String(body.label)) return;
 
-          // For on_collision events, only fire if the other object is the player
-          if (l.eventId === 'on_collision') {
-            if (data?.otherName !== 'Player' && data?.otherBehavior !== 'player') return;
-          }
+          // For on_collision events, we no longer restrict to Player only to allow generic collision scripts to work
+          // if (l.eventId === 'on_collision') {
+          //   if (data?.otherName !== 'Player' && data?.otherBehavior !== 'player') return;
+          // }
 
-          executeListenerLogic(l, body, obj, `Listener:${l.eventId}`);
+          executeListenerLogic(l, body, obj, `Listener:${l.eventId}`, data?.otherBody, data?.otherObj);
         });
         subscriptions.push(sub);
       });
@@ -2807,14 +2823,14 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
         const objA = infoA?.obj;
         const objB = infoB?.obj;
-        if (!objA || !objB) return;
 
-        const runCollisionLogic = (targetBody: Matter.Body, targetObj: GameObject, otherObj: GameObject, otherBody: Matter.Body) => {
+        // Even if one body isn't a GameObject (like a wall/tile), we still want to trigger logic for the one that is.
+        const runCollisionLogic = (targetBody: Matter.Body, targetObj: GameObject, otherObj?: GameObject, otherBody?: Matter.Body) => {
           const info = (targetBody as any).gameInfo;
           const parsedScripts = info?.scripts || [];
 
-          const otherNameLower = otherObj.name?.toLowerCase();
-          const otherBehaviorLower = otherObj.behavior?.toLowerCase();
+          const otherNameLower = otherObj?.name?.toLowerCase() || 'tile';
+          const otherBehaviorLower = otherObj?.behavior?.toLowerCase() || 'static';
 
           for (let i = 0; i < parsedScripts.length; i++) {
             const s = parsedScripts[i];
@@ -2825,65 +2841,69 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
               (otherBehaviorLower && s.parts[1]?.toLowerCase() === otherBehaviorLower)
             );
 
-            const isGenericCol = s.cmd === 'on_collision' && (
-              otherNameLower === 'player' ||
-              otherBehaviorLower === 'player' ||
-              isPlayer(otherObj)
-            );
+            // Generic on_collision now works for any object hit
+            const isGenericCol = s.cmd === 'on_collision';
 
             if (isColMatch || isGenericCol) {
               if (s.actionPart) {
                 collisionQueue.push(() =>
-                  executeAction(s.actionPart, targetBody, targetObj, `Collision:${otherObj.name}`, otherBody)
+                  executeAction(s.actionPart, targetBody, targetObj, `Collision:${otherNameLower}`, otherBody)
                 );
               }
             }
           }
         };
 
-        runCollisionLogic(pair.bodyA, objA, objB, pair.bodyB);
-        runCollisionLogic(pair.bodyB, objB, objA, pair.bodyA);
-
         // Also run visual logic listeners for on_collision
-        const fireCollisionListeners = (targetBody: Matter.Body, targetObj: GameObject, otherObj: GameObject, otherBody: Matter.Body) => {
+        const fireCollisionListeners = (targetBody: Matter.Body, targetObj: GameObject, otherObj?: GameObject, otherBody?: Matter.Body) => {
+          const otherName = otherObj?.name || 'Tile';
+          const otherBehavior = otherObj?.behavior || 'static';
+
           targetObj.logic?.listeners?.forEach((l: any) => {
             if (l.eventId === 'on_collision') {
-              // Only fire for player collisions by default
-              if (otherObj.name === 'Player' || otherObj.behavior === 'player' || isPlayer(otherObj)) {
-                collisionQueue.push(() => executeListenerLogic(l, targetBody, targetObj, 'CollisionListener'));
-              }
-            } else if (l.eventId === `collision:${otherObj.name}` || l.eventId === `collision:${otherObj.behavior}`) {
-              collisionQueue.push(() => executeListenerLogic(l, targetBody, targetObj, 'CollisionListener'));
+              collisionQueue.push(() => executeListenerLogic(l, targetBody, targetObj, 'CollisionListener', otherBody, otherObj));
+            } else if (l.eventId === `collision:${otherName}` || l.eventId === `collision:${otherBehavior}`) {
+              collisionQueue.push(() => executeListenerLogic(l, targetBody, targetObj, 'CollisionListener', otherBody, otherObj));
             }
           });
         };
-        fireCollisionListeners(pair.bodyA, objA, objB, pair.bodyB);
-        fireCollisionListeners(pair.bodyB, objB, objA, pair.bodyA);
 
-        // Keep events ONLY for non-critical systems
+        if (objA) {
+          runCollisionLogic(pair.bodyA, objA, objB, pair.bodyB);
+          fireCollisionListeners(pair.bodyA, objA, objB, pair.bodyB);
+        }
+        if (objB) {
+          runCollisionLogic(pair.bodyB, objB, objA, pair.bodyA);
+          fireCollisionListeners(pair.bodyB, objB, objA, pair.bodyA);
+        }
+
+        // Emit events for decoupled systems (HUDs, etc)
         const eventDataA = {
           targetId: pair.bodyA.label,
           otherId: pair.bodyB.label,
-          otherName: objB.name,
-          otherBehavior: objB.behavior
+          otherName: objB?.name || 'Tile',
+          otherBehavior: objB?.behavior || 'static',
+          otherBody: pair.bodyB,
+          otherObj: objB
         };
 
         const eventDataB = {
           targetId: pair.bodyB.label,
           otherId: pair.bodyA.label,
-          otherName: objA.name,
-          otherBehavior: objA.behavior
+          otherName: objA?.name || 'Tile',
+          otherBehavior: objA?.behavior || 'static',
+          otherBody: pair.bodyA,
+          otherObj: objA
         };
 
-        DeviceEventEmitter.emit(`collision:${objB.name}`, eventDataA);
+        if (objB) DeviceEventEmitter.emit(`collision:${objB.name}`, eventDataA);
         DeviceEventEmitter.emit('on_collision', eventDataA);
-
-        DeviceEventEmitter.emit(`collision:${objA.name}`, eventDataB);
+        if (objA) DeviceEventEmitter.emit(`collision:${objA.name}`, eventDataB);
         DeviceEventEmitter.emit('on_collision', eventDataB);
 
         // Automatic Sound Triggers for Collisions (e.g. Bullets Impact)
-        if (objA.behavior === 'bullet' && objA.sounds?.hit) playSoundEffect(objA.sounds.hit);
-        if (objB.behavior === 'bullet' && objB.sounds?.hit) playSoundEffect(objB.sounds.hit);
+        if (objA?.behavior === 'bullet' && objA.sounds?.hit) playSoundEffect(objA.sounds.hit);
+        if (objB?.behavior === 'bullet' && objB.sounds?.hit) playSoundEffect(objB.sounds.hit);
       });
     });
 
@@ -3291,14 +3311,14 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           if (info.lastCount === undefined) info.lastCount = count;
           if (count < info.lastCount) {
             info.scripts.filter((s: any) => s.cmd === 'on_life_lost').forEach((s: any) => {
-              if (s.listenerData) executeListenerLogic(s.listenerData, body, info, 'LifeLost');
+              if (s.listenerData) executeListenerLogic(s.listenerData, body, info.obj, 'LifeLost');
               s.triggerCount = (s.triggerCount || 0) + 1;
               s.lastAction = 'on_life_lost';
             });
           }
           if (count <= 0 && info.lastCount > 0) {
             info.scripts.filter((s: any) => s.cmd === 'on_zero_lives').forEach((s: any) => {
-              if (s.listenerData) executeListenerLogic(s.listenerData, body, info, 'ZeroLives');
+              if (s.listenerData) executeListenerLogic(s.listenerData, body, info.obj, 'ZeroLives');
               s.triggerCount = (s.triggerCount || 0) + 1;
               s.lastAction = 'on_zero_lives';
             });
@@ -3705,16 +3725,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                       cameraAnimStyle
                     ]}
                   >
-                    <Pressable
-                      style={StyleSheet.absoluteFill}
-                      onPress={(e) => {
-                        inputTap.current = 1;
-                        variablesRef.current.tap_x = e.nativeEvent.locationX;
-                        variablesRef.current.tap_y = e.nativeEvent.locationY;
-                        DeviceEventEmitter.emit('builtin_tap', { x: e.nativeEvent.locationX, y: e.nativeEvent.locationY });
-                        DeviceEventEmitter.emit('on_screen_tap', { x: e.nativeEvent.locationX, y: e.nativeEvent.locationY });
-                      }}
-                    />
+                    <GestureDetector gesture={screenTapGesture}>
+                      <View style={StyleSheet.absoluteFill} />
+                    </GestureDetector>
                     {staticElements}
                     {(dynamicElements || []).filter(d => d?.gameObject?.behavior !== 'gui_container').map(d => {
                       if (!d || !d.sv) return null;
@@ -3856,7 +3869,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                     <GameButton
                       style={styles.floatingBtn}
                       pressedStyle={{ opacity: 0.5 }}
-                      onPressIn={() => { inputLeft.current = 1; }}
+                      onPressIn={() => { inputRight.current = 0; inputLeft.current = 1; }}
                       onPressOut={() => { inputLeft.current = 0; }}
                     >
                       <ArrowLeft color="#fff" size={30} />
