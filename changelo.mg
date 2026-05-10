@@ -1,5 +1,14 @@
 # Changelog - Oxion Game Creator
 
+## [1.15.3] - 2026-05-10
+### Added
+- **Project Recovery System**:
+  - Implemented an automatic project recovery mechanism that scans the physical device storage (`FileSystem.documentDirectory`) for projects missing from the application state.
+  - Ensures that projects are restored even if the application's internal memory (`AsyncStorage`) is cleared during updates or system maintenance.
+  - Added versioned persistence logic (Version 1) to the global store for safer state migrations in future updates.
+- **Enhanced Storage Management**:
+  - Added `listProjects` and `loadProject` utilities to the `FileSystemManager` to decouple project indexing from the main application state.
+
 ## [1.15.0] - 2026-05-10
 ### Added
 - **Dynamic Text Support (`set_text` Action)**:

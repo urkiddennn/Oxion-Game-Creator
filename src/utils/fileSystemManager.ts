@@ -63,6 +63,49 @@ export const FileSystemManager = {
   getAssetsDir: (projectId: string) => PROJECTS_DIR + projectId + '/assets/',
 
   /**
+   * Lists all projects on disk
+   */
+  listProjects: async () => {
+    try {
+      const info = await FileSystem.getInfoAsync(PROJECTS_DIR);
+      if (!info.exists) return [];
+      
+      const folders = await FileSystem.readDirectoryAsync(PROJECTS_DIR);
+      const projects: any[] = [];
+      
+      for (const folder of folders) {
+        const projectFile = PROJECTS_DIR + folder + '/project.json';
+        const fileInfo = await FileSystem.getInfoAsync(projectFile);
+        if (fileInfo.exists) {
+          const content = await FileSystem.readAsStringAsync(projectFile);
+          try {
+            projects.push(JSON.parse(content));
+          } catch (e) {
+            console.error(`Failed to parse project.json for ${folder}`, e);
+          }
+        }
+      }
+      return projects;
+    } catch (e) {
+      console.error('Failed to list projects from disk', e);
+      return [];
+    }
+  },
+
+  /**
+   * Loads a specific project from disk
+   */
+  loadProject: async (projectId: string) => {
+    const projectFile = PROJECTS_DIR + projectId + '/project.json';
+    const info = await FileSystem.getInfoAsync(projectFile);
+    if (info.exists) {
+      const content = await FileSystem.readAsStringAsync(projectFile);
+      return JSON.parse(content);
+    }
+    return null;
+  },
+
+  /**
    * Deletes a project folder
    */
   deleteProjectFolder: async (projectId: string) => {

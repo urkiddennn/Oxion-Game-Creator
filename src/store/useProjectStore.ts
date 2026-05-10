@@ -358,6 +358,7 @@ interface ProjectState {
   streamedSprites: Map<string, any>;
   addStreamedSprite: (id: string, sprite: any) => void;
   exportToWeb: () => Promise<{ success: boolean, error?: string }>;
+  recoverProjects: () => Promise<void>;
 }
 
 const generateUUID = () => {
@@ -1445,14 +1446,49 @@ export const useProjectStore = create<ProjectState>()(
           console.error('Export Error:', err);
           return { success: false, error: err.message };
         }
+      },
+      recoverProjects: async () => {
+        try {
+          await FileSystemManager.init();
+          const diskProjects = await FileSystemManager.listProjects();
+          const { projects } = get();
+          
+          let updatedCount = 0;
+          const mergedProjects = [...projects];
+          
+          for (const diskProj of diskProjects) {
+            if (!mergedProjects.some(p => p.id === diskProj.id)) {
+              mergedProjects.push(diskProj);
+              updatedCount++;
+            }
+          }
+          
+          if (updatedCount > 0) {
+            console.log(`Recovered ${updatedCount} projects from disk.`);
+            set({ projects: mergedProjects });
+          }
+        } catch (e) {
+          console.error('Project recovery failed:', e);
+        }
       }
     }),
     {
       name: 'oxion-project-storage',
+      version: 1, // Added versioning for safer updates
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => {
         const { streamedSprites, ...rest } = state;
         return rest;
+      },
+      onRehydrateStorage: (state) => {
+        // When the store is rehydrated, check for missing projects on disk
+        return (rehydratedState, error) => {
+          if (error) {
+            console.error('Rehydration Error:', error);
+          } else if (rehydratedState) {
+            rehydratedState.recoverProjects();
+          }
+        };
       },
     }
   )
