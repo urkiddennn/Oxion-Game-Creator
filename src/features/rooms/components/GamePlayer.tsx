@@ -25,6 +25,116 @@ import { useWindowDimensions } from 'react-native';
 import base64js from 'base64-js';
 
 const SPRITE_CACHE = new Map<string, string>();
+const parsedImmediateCache = new WeakMap<any, any>();
+const parsedSubConditionsCache = new WeakMap<any, any>();
+
+// --- Raycast Geometry Helpers ---
+function getLineIntersection(
+  x1: number, y1: number, x2: number, y2: number,
+  x3: number, y3: number, x4: number, y4: number
+): { x: number; y: number; fraction: number } | null {
+  const denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
+  if (denom === 0) return null; // Parallel
+
+  const ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom;
+  const ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denom;
+
+  if (ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1) {
+    return {
+      x: x1 + ua * (x2 - x1),
+      y: y1 + ua * (y2 - y1),
+      fraction: ua
+    };
+  }
+  return null;
+}
+
+function getCircleIntersection(
+  startX: number, startY: number, endX: number, endY: number,
+  cx: number, cy: number, r: number
+): { x: number; y: number; fraction: number } | null {
+  const dx = endX - startX;
+  const dy = endY - startY;
+  const fx = startX - cx;
+  const fy = startY - cy;
+
+  const a = dx * dx + dy * dy;
+  if (a === 0) return null; // Prevent division by zero if ray has 0 length
+  const b = 2 * (fx * dx + fy * dy);
+  const c = fx * fx + fy * fy - r * r;
+
+  const discriminant = b * b - 4 * a * c;
+  if (discriminant < 0) {
+    return null;
+  }
+
+  const t1 = (-b - Math.sqrt(discriminant)) / (2 * a);
+  const t2 = (-b + Math.sqrt(discriminant)) / (2 * a);
+
+  let t = -1;
+  if (t1 >= 0 && t1 <= 1) {
+    t = t1;
+  } else if (t2 >= 0 && t2 <= 1) {
+    t = t2;
+  }
+
+  if (t >= 0 && t <= 1) {
+    return {
+      x: startX + t * dx,
+      y: startY + t * dy,
+      fraction: t
+    };
+  }
+  return null;
+}
+
+function getBodyIntersection(
+  body: Matter.Body,
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number
+): { x: number; y: number; fraction: number } | null {
+  let closest: { x: number; y: number; fraction: number } | null = null;
+  const parts = body.parts || [body];
+  const startIdx = parts.length > 1 ? 1 : 0;
+
+  for (let p = startIdx; p < parts.length; p++) {
+    const part = parts[p];
+
+    if (part.circleRadius && part.circleRadius > 0) {
+      const hit = getCircleIntersection(
+        startX, startY, endX, endY,
+        part.position.x, part.position.y, part.circleRadius
+      );
+      if (hit) {
+        if (!closest || hit.fraction < closest.fraction) {
+          closest = hit;
+        }
+      }
+    } else {
+      const vertices = part.vertices;
+      if (vertices && vertices.length > 0) {
+        for (let j = 0; j < vertices.length; j++) {
+          const v1 = vertices[j];
+          const v2 = vertices[(j + 1) % vertices.length];
+
+          const hit = getLineIntersection(
+            startX, startY, endX, endY,
+            v1.x, v1.y, v2.x, v2.y
+          );
+          if (hit) {
+            if (!closest || hit.fraction < closest.fraction) {
+              closest = hit;
+            }
+          }
+        }
+      }
+    }
+  }
+  return closest;
+}
+
 
 const GameButton = ({
   style,
@@ -274,35 +384,106 @@ const pixelsToBmp = (pixels: string[][], spriteId: string, displayWidth?: number
 };
 
 // --- Isolated Dynamic Text Component to prevent global re-renders ---
-const DynamicTextNode = React.memo(({ content, variables, localVariables, lowerMap, style }: any) => {
+const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
+
+// --- Isolated Dynamic Text Component to prevent global re-renders ---
+const resolveTextWorklet = (text: string, v_tapX: number, v_tapY: number) => {
+  'worklet';
+  if (!text) return '';
+  let resolved = text;
+  const lower = text.trim().toLowerCase();
+
+  // Support bare names for simple cases
+  if (lower === 'tap_x' || lower === 'get_drag_x') return String(Math.round(v_tapX));
+  if (lower === 'tap_y' || lower === 'get_drag_y') return String(Math.round(v_tapY));
+
+  // Support expression replacement
+  resolved = resolved.replace(/\{tap_x\}/g, String(Math.round(v_tapX)));
+  resolved = resolved.replace(/\{tap_y\}/g, String(Math.round(v_tapY)));
+  resolved = resolved.replace(/\{get_drag_x\}/g, String(Math.round(v_tapX)));
+  resolved = resolved.replace(/\{get_drag_y\}/g, String(Math.round(v_tapY)));
+  
+  return resolved;
+};
+
+// --- Isolated Dynamic Text Component to prevent global re-renders ---
+const DynamicTextNode = React.memo(({ content, variables, localVariables, lowerMap, tapX, tapY, style }: any) => {
+  const animatedProps = useAnimatedProps(() => {
+    if (!content) return {};
+    const lower = content.toLowerCase();
+    if (lower.includes('tap_x') || lower.includes('tap_y') || lower.includes('drag_x') || lower.includes('drag_y')) {
+      const nextText = resolveTextWorklet(content, tapX.value, tapY.value);
+      return { 
+        text: nextText,
+        value: nextText 
+      } as any;
+    }
+    return {};
+  }, [content]);
+
   const resolveTextLocal = (text: string) => {
     if (!text) return '';
-    if (!lowerMap) return text;
 
-    // Direct variable match
+    let resolved = text;
+
+    // 1. Check if it's a bare variable or built-in (e.g. "tap_x")
     const trimmed = text.trim().toLowerCase();
-    if (lowerMap[trimmed] && variables) return String(variables[lowerMap[trimmed]]);
+    if (trimmed === 'tap_x') return String(Math.round(tapX.value || 0));
+    if (trimmed === 'tap_y') return String(Math.round(tapY.value || 0));
 
-    // Template match {var}
-    return text.replace(/\{([\w\s]+)\}/g, (match, varName) => {
-      const name = varName.trim().toLowerCase();
-      const globalKey = lowerMap[name];
-      if (globalKey !== undefined && variables) return variables[globalKey].toString();
-      // Try local
-      if (localVariables?.[name] !== undefined) return localVariables[name].toString();
-      return '0';
+    if (lowerMap && lowerMap[trimmed] !== undefined && variables) {
+      return String(variables[lowerMap[trimmed]]);
+    }
+
+    if (localVariables && localVariables[trimmed] !== undefined) {
+      return String(localVariables[trimmed]);
+    }
+
+    // 2. Handle expressions in brackets {tap_x} or {score}
+    resolved = resolved.replace(/\{([^}]+)\}/g, (match, expr) => {
+      const e = expr.trim().toLowerCase();
+      if (e === 'tap_x') return String(Math.round(tapX.value || 0));
+      if (e === 'tap_y') return String(Math.round(tapY.value || 0));
+
+      if (lowerMap && lowerMap[e] !== undefined && variables) {
+        return String(variables[lowerMap[e]]);
+      }
+      if (localVariables && localVariables[e] !== undefined) {
+        return String(localVariables[e]);
+      }
+      return match;
     });
+
+    return resolved;
   };
 
-  return <Text style={style}>{resolveTextLocal(content)}</Text>;
+  return (
+    <View style={{
+      backgroundColor: style.backgroundColor || 'transparent',
+      paddingHorizontal: style.paddingX || 0,
+      paddingVertical: style.paddingY || 0,
+      borderRadius: style.borderRadius || 0,
+    }}>
+      <AnimatedTextInput
+        editable={false}
+        multiline={false}
+        pointerEvents="none"
+        style={[style, { padding: 0, margin: 0, borderBottomWidth: 0 }]}
+        defaultValue={resolveTextLocal(content)}
+        animatedProps={animatedProps}
+        underlineColorAndroid="transparent"
+      />
+    </View>
+  );
 });
 
 const PhysicsBodyInner = ({
-  sprite, spriteId, sv, width, height, name, variables, nonce, localVariables, varKeysMap,
+  instanceId, sprite, spriteId, sv, width, height, name, variables, nonce, localVariables, varKeysMap,
   obj, sprites, override, onTap, globalFrameTimer, cameraX, cameraY, cameraZoom,
   gameWidth, gameHeight, onFetch, isRemote, ySort, ySortAmount, layerIndex, forceNoHUD,
-  liveOverride, debug
+  liveOverride, tapX, tapY, debug
 }: {
+  instanceId?: string,
   sprite: any,
   spriteId?: string,
   sv: any,
@@ -315,12 +496,14 @@ const PhysicsBodyInner = ({
   varKeysMap?: Record<string, string>,
   obj: GameObject,
   sprites?: any[],
-  override?: { spriteId?: string, animName?: string },
+  override?: { spriteId?: string, animName?: string, text?: any },
   onTap?: () => void,
   globalFrameTimer: SharedValue<number>,
   cameraX: SharedValue<number>,
   cameraY: SharedValue<number>,
   cameraZoom: SharedValue<number>,
+  tapX: SharedValue<number>,
+  tapY: SharedValue<number>,
   gameWidth: number,
   gameHeight: number,
   onFetch?: (id: string, type: 'sprite' | 'animation') => void | Promise<void>,
@@ -629,6 +812,41 @@ const PhysicsBodyInner = ({
     return pixelsToBmp(currentSprite.pixels, currentSprite.id, width, height);
   }, [currentSprite?.id, currentSprite?.uri, width, height]);
 
+  // ── Gesture refs & gesture object MUST be declared here, BEFORE any
+  // ── conditional hooks (useAnimatedStyle inside progress_bar block) to
+  // ── keep React hook ordering stable across all render paths.
+  const startDragX = useRef(0);
+  const startDragY = useRef(0);
+
+  const hasDrag = obj?.logic?.listeners?.some((l: any) => l.eventId === 'on_drag') ?? false;
+  const hasGesture = !!onTap || hasDrag;
+
+  const bodyGesture = useMemo(() => {
+    const pan = Gesture.Pan()
+      .runOnJS(true)
+      .onStart((_e) => {
+        if (startDragX) startDragX.current = sv?.x?.value ?? 0;
+        if (startDragY) startDragY.current = sv?.y?.value ?? 0;
+      })
+      .onUpdate((e) => {
+        const tx = (startDragX?.current ?? 0) + e.translationX;
+        const ty = (startDragY?.current ?? 0) + e.translationY;
+        DeviceEventEmitter.emit('builtin_drag', {
+          targetId: instanceId || sv?.id || obj?.id,
+          x: tx + width / 2,
+          y: ty + height / 2
+        });
+      });
+
+    const tap = Gesture.Tap()
+      .runOnJS(true)
+      .onStart(() => {
+        if (onTap) onTap();
+      });
+
+    return Gesture.Simultaneous(pan, tap);
+  }, [sv, width, height, onTap, obj?.id, instanceId]);
+
   let content: React.ReactNode = null;
   const livePb = liveOverride?.progress_bar || obj?.progress_bar;
   if (obj?.behavior === 'progress_bar' && livePb) {
@@ -763,19 +981,31 @@ const PhysicsBodyInner = ({
         resizeMethod="scale"
       />
     );
-  } else if (obj?.text) {
+  } else if (obj?.text || override?.text) {
+    const textData = override?.text || obj.text;
     content = (
-      <View style={{ width, height, justifyContent: 'center', alignItems: obj.text.textAlign === 'center' ? 'center' : obj.text.textAlign === 'right' ? 'flex-end' : 'flex-start' }}>
+      <View style={{
+        width,
+        height,
+        justifyContent: 'center',
+        alignItems: textData.textAlign === 'center' ? 'center' : textData.textAlign === 'right' ? 'flex-end' : 'flex-start'
+      }}>
         <DynamicTextNode
-          content={obj.text.content}
+          content={textData.content}
           variables={variables}
           localVariables={localVariables}
           lowerMap={varKeysMap}
+          tapX={tapX}
+          tapY={tapY}
           style={{
-            color: obj.text.color || '#FFF',
-            fontSize: obj.text.fontSize || 16,
-            fontFamily: obj.text.fontFamily === 'pixel' ? 'Pixel' : undefined,
-            textAlign: obj.text.textAlign
+            color: textData.color || '#FFF',
+            fontSize: textData.fontSize || 16,
+            fontFamily: textData.fontFamily === 'pixel' ? 'Pixel' : undefined,
+            textAlign: textData.textAlign,
+            backgroundColor: textData.backgroundColor,
+            paddingX: textData.paddingX,
+            paddingY: textData.paddingY,
+            borderRadius: textData.borderRadius,
           }}
         />
       </View>
@@ -788,13 +1018,9 @@ const PhysicsBodyInner = ({
     );
   }
 
-  return (
-    <Animated.View style={[styles.instance, animatedStyle, { width, height }]} pointerEvents={onTap ? 'auto' : 'none'}>
-      {onTap ? (
-        <TouchableOpacity activeOpacity={0.8} onPress={onTap} style={{ flex: 1 }}>
-          {content}
-        </TouchableOpacity>
-      ) : content}
+  const innerView = (
+    <Animated.View style={[styles.instance, animatedStyle, { width, height }]} pointerEvents={hasGesture ? 'auto' : 'none'}>
+      {content}
       {debug && (
         <Animated.View
           style={[
@@ -829,10 +1055,21 @@ const PhysicsBodyInner = ({
       )}
     </Animated.View>
   );
+
+  if (hasGesture) {
+    return (
+      <GestureDetector gesture={bodyGesture}>
+        {innerView}
+      </GestureDetector>
+    );
+  }
+
+  return innerView;
 };
 
 const PhysicsBody = React.memo(PhysicsBodyInner, (prev, next) => {
   // 1. Check if it's a new object or structure
+  if (prev.instanceId !== next.instanceId) return false;
   if (prev.obj?.id !== next.obj?.id) return false;
   if (prev.nonce !== next.nonce) return false;
   if (prev.spriteId !== next.spriteId) return false;
@@ -886,7 +1123,7 @@ const GUIRenderer = React.memo(({
   nodes, objectMap, spriteMap, allSprites, parentX = 0, parentY = 0,
   variables, localVariables, varKeysMap, nonce, globalFrameTimer,
   cameraX, cameraY, cameraZoom, gameWidth, gameHeight, handleFetchAsset, restartKey,
-  debug
+  tapX, tapY, debug
 }: any) => {
   return (
     <>
@@ -910,6 +1147,7 @@ const GUIRenderer = React.memo(({
         return (
           <React.Fragment key={node.id}>
             <PhysicsBody
+              instanceId={node.id}
               sprite={spriteMap.get(obj.appearance?.spriteId || '')}
               spriteId={obj.appearance?.spriteId}
               sv={sv}
@@ -941,8 +1179,9 @@ const GUIRenderer = React.memo(({
               cameraZoom={cameraZoom}
               gameWidth={gameWidth}
               gameHeight={gameHeight}
-              debug={debug}
-            />
+              tapX={tapX}
+              tapY={tapY}
+              debug={debug} />
             {node.children && node.children.length > 0 && (
               <GUIRenderer
                 nodes={node.children}
@@ -963,6 +1202,8 @@ const GUIRenderer = React.memo(({
                 gameHeight={gameHeight}
                 handleFetchAsset={handleFetchAsset}
                 restartKey={restartKey}
+                tapX={tapX}
+                tapY={tapY}
                 debug={debug}
               />
             )}
@@ -987,7 +1228,7 @@ const GUIRenderer = React.memo(({
   return true;
 });
 
-const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
+
 
 const MicroSparkline = React.memo(({ history, color = '#00ff66', max = 5 }: { history: number[], color?: string, max?: number }) => {
   return (
@@ -1180,6 +1421,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
   const [isPlaying, setIsPlaying] = useState(true);
   const [showDebugSidebar, setShowDebugSidebar] = useState(false);
   const [nonce, setNonce] = useState(0);
+  const [lasers, setLasers] = useState<Array<{ id: string; startX: number; startY: number; endX: number; endY: number; color: string }>>([]);
   const [physicsStats, setPhysicsStats] = useState({
     partCount: 0,
     bodyCount: 0,
@@ -1198,19 +1440,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
   const varCooldowns = useRef<Record<string, number>>({});
   const lastRestartRef = useRef(0);
   const pendingLoadRef = useRef<any>(null);
+  const lasersRef = useRef<any[]>([]);
   const lastLoadTimeRef = useRef(0);
   const lastSaveTimeRef = useRef(0);
-
-  const screenTapGesture = useMemo(() => Gesture.Tap()
-    .onStart((e) => {
-      runOnJS(() => {
-        inputTap.current = 1;
-        variablesRef.current.tap_x = e.x;
-        variablesRef.current.tap_y = e.y;
-        DeviceEventEmitter.emit('builtin_tap', { x: e.x, y: e.y });
-        DeviceEventEmitter.emit('on_screen_tap', { x: e.x, y: e.y });
-      })();
-    }), []);
 
   // Calculate initial camera position based on target to avoid "jump" on first frame
   const initialCamPos = useMemo(() => {
@@ -1255,6 +1487,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
   const cameraY = useSharedValue(initialCamPos.y);
   const cameraZoom = useSharedValue(currentRoom?.settings?.camera?.zoom || 1);
   const cameraRef = useRef({ x: initialCamPos.x, y: initialCamPos.y });
+  const tapX = useSharedValue(0);
+  const tapY = useSharedValue(0);
 
   // Keep cameraZoom in sync with component state
   useEffect(() => {
@@ -1398,6 +1632,36 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
   const allSprites = useMemo(() => [...(currentProject?.sprites || []), ...Array.from(streamedSprites.values())], [currentProject?.sprites, streamedSprites.size]);
   const allAnimations = useMemo(() => [...(currentProject?.animations || []), ...Array.from(streamedAnimations.values())], [currentProject?.animations, streamedAnimations.size]);
 
+  const screenTapGesture = useMemo(() => Gesture.Tap()
+    .runOnJS(true)
+    .onStart((e) => {
+      inputTap.current = 1;
+      variablesRef.current.tap_x = e.x;
+      variablesRef.current.tap_y = e.y;
+      tapX.value = e.x;
+      tapY.value = e.y;
+      DeviceEventEmitter.emit('builtin_tap', { x: e.x, y: e.y });
+      DeviceEventEmitter.emit('on_screen_tap', { x: e.x, y: e.y });
+    }), [tapX, tapY]);
+
+  const updateTapVars = useCallback((x: number, y: number) => {
+    variablesRef.current.tap_x = x;
+    variablesRef.current.tap_y = y;
+  }, []);
+
+  const screenPanGesture = useMemo(() => Gesture.Pan()
+    .minDistance(0)
+    .onStart((e) => {
+      tapX.value = e.x;
+      tapY.value = e.y;
+      runOnJS(updateTapVars)(e.x, e.y);
+    })
+    .onUpdate((e) => {
+      tapX.value = e.x;
+      tapY.value = e.y;
+      runOnJS(updateTapVars)(e.x, e.y);
+    }), [tapX, tapY, updateTapVars]);
+
   useEffect(() => {
     variablesRef.current = variables;
   }, [variables]);
@@ -1420,6 +1684,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     const newVal = isSet ? numAmount : currentVal + numAmount;
     variablesRef.current = { ...variablesRef.current, [name]: newVal };
     variablesDirtyRef.current = true;
+
+    if (name === 'tap_x') tapX.value = newVal;
+    if (name === 'tap_y') tapY.value = newVal;
 
     // Throttled UI flush: batch updates, max 30 renders/sec
     if (!pendingVarFlush.current) {
@@ -1450,6 +1717,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       [bodyId]: { ...current, [name]: newVal }
     };
     variablesDirtyRef.current = true;
+
+    if (name === 'tap_x') tapX.value = newVal;
+    if (name === 'tap_y') tapY.value = newVal;
 
     // Throttled flush — same as global
     if (!pendingVarFlush.current) {
@@ -1654,7 +1924,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             if (prop === 'scale') return actualObj.physics?.scale || 1;
             if (prop === 'visible') return actualObj.visible !== false ? 1 : 0;
           }
-        } else if (target === 'tap') {
+        } else if (target === 'tap' || target === 'drag') {
           if (prop === 'x') return variablesRef.current.tap_x || 0;
           if (prop === 'y') return variablesRef.current.tap_y || 0;
           return 0;
@@ -1702,6 +1972,40 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           if (pb) {
             if (prop === 'value') return pb.currentValue;
           }
+
+          // Raycast Properties
+          const raycastResults = (targetBody as any).gameInfo?.raycastResults;
+          if (raycastResults) {
+            // Check if prop starts with a specific plugin name (e.g. "Laser_hit")
+            const match = prop.match(/^(.+?)_(hit|distance|hitX|hitY|hitObject)$/);
+            if (match) {
+              const pluginName = match[1].toLowerCase();
+              const attr = match[2];
+              const result = raycastResults[pluginName];
+              if (result) {
+                if (attr === 'hit') return result.hit ? 1 : 0;
+                if (attr === 'distance') return result.distance;
+                if (attr === 'hitX') return result.hitX;
+                if (attr === 'hitY') return result.hitY;
+                if (attr === 'hitObject') return result.hitObject ? 1 : 0;
+              }
+            }
+
+            // Also support standard/default "raycast_hit" style properties
+            const defaultMatch = prop.match(/^raycast_(hit|distance|hitX|hitY|hitObject)$/);
+            if (defaultMatch) {
+              const attr = defaultMatch[1];
+              const keys = Object.keys(raycastResults);
+              const result = keys.length > 0 ? raycastResults[keys[0]] : null;
+              if (result) {
+                if (attr === 'hit') return result.hit ? 1 : 0;
+                if (attr === 'distance') return result.distance;
+                if (attr === 'hitX') return result.hitX;
+                if (attr === 'hitY') return result.hitY;
+                if (attr === 'hitObject') return result.hitObject ? 1 : 0;
+              }
+            }
+          }
         }
       }
 
@@ -1712,6 +2016,10 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       const bodyId = currentBody ? (currentBody as any).label : (currentObj as any)?._guiNodeId;
       if (bodyId && localVariablesRef.current[bodyId]?.[valStr] !== undefined) return localVariablesRef.current[bodyId][valStr];
       if (actualObj?.variables?.local?.[valStr] !== undefined) return actualObj.variables.local[valStr];
+
+      // Alias for drag coordinates
+      if (valStr === 'get_drag_x') return variablesRef.current.tap_x || 0;
+      if (valStr === 'get_drag_y') return variablesRef.current.tap_y || 0;
 
       return num || 0;
     };
@@ -1832,12 +2140,12 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
       // --- Action Targeting (e.g. "player:jump" or "enemy:damage:10") ---
       const knownCommands = [
-        'jump', 'move_left', 'move_right', 'stop_x', 'set_vx', 'set_vy', 'set_x', 'set_y', 'add_x', 'add_y',
+        'jump', 'move_left', 'move_right', 'move_towards', 'stop_x', 'set_vx', 'set_vy', 'set_x', 'set_y', 'add_x', 'add_y',
         'set_angle', 'add_angle', 'point_towards', 'var_add', 'var_set', 'lvar_add', 'lvar_set',
         'set_value', 'tween_to', 'add_value', 'bind_to_variable', 'set_health', 'add_health',
         'damage', 'heal', 'set_count', 'restart_room', 'go_to_room', 'create_instance',
         'animation', 'set_animation', 'start_sound', 'stop_sound', 'target_other',
-        'save_game', 'load_game', 'set_scale', 'add_scale', 'destroy', 'set_visible'
+        'save_game', 'load_game', 'set_scale', 'add_scale', 'destroy', 'set_visible', 'set_text'
       ];
 
       if (!knownCommands.includes(cmd)) {
@@ -1858,6 +2166,12 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         }
       }
 
+      // Clear move_towards tracking if we issue other direct movement commands
+      if (body && ['move_left', 'move_right', 'stop_x', 'set_vx', 'set_vy', 'set_x', 'set_y', 'add_x', 'add_y'].includes(cmd)) {
+        const info = (body as any).gameInfo;
+        if (info) info.moveTowards = undefined;
+      }
+
       // Handle 'other' target redirection for pre-parsed actions
       if (cmd === 'target_other') {
         if (otherBody) {
@@ -1873,20 +2187,20 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           Matter.World.remove(engine.world, body);
           const info = (body as any).gameInfo;
           if (info && info.sv && info.sv.visible) {
-             info.sv.visible.value = 0; // Hide the renderer
+            info.sv.visible.value = 0; // Hide the renderer
           }
           setNonce(n => n + 1);
         }
         return;
       }
-      
+
       if (cmd === 'set_visible') {
         const val = parts[1] === 'true' || parts[1] === '1';
         const info = body ? (body as any).gameInfo : (obj as any);
         if (info) {
           if (info.obj) info.obj.visible = val;
           if (info.sv && info.sv.visible) {
-             info.sv.visible.value = val ? 1 : 0;
+            info.sv.visible.value = val ? 1 : 0;
           }
           setNonce(n => n + 1);
         }
@@ -2036,13 +2350,64 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       } else if (cmd === 'point_towards') {
         if (body) {
           const target = parts[1];
+          const targetLower = target?.toLowerCase();
           const targetBody = cachedBodies.find(b => {
             const info = (b as any).gameInfo;
-            return info?.obj?.behavior === target || info?.obj?.name === target;
+            return b !== body && (
+              info?.obj?.behavior?.toLowerCase() === targetLower ||
+              info?.obj?.name?.toLowerCase() === targetLower
+            );
           });
           if (targetBody) {
             const ang = Math.atan2(targetBody.position.y - body.position.y, targetBody.position.x - body.position.x);
             Matter.Body.setAngle(body, ang);
+          }
+        }
+      } else if (cmd === 'move_towards') {
+        if (body) {
+          const info = (body as any).gameInfo;
+          if (info) {
+            const target = parts[1];
+            // Check if we have X, Y, and Speed coordinates (e.g., move_towards:400:300:5)
+            if (parts.length >= 4) {
+              const tx = resolveValue(parts[1], body, obj);
+              const ty = resolveValue(parts[2], body, obj);
+              const sp = resolveValue(parts[3], body, obj);
+              info.moveTowards = { target: { x: tx, y: ty }, speed: sp };
+            } else {
+              // Target Object Name / Behavior (e.g., move_towards:Player:3)
+              const sp = parts[2] ? resolveValue(parts[2], body, obj) : 5;
+              info.moveTowards = { target, speed: sp };
+            }
+          }
+        }
+      } else if (cmd === 'go_to') {
+        if (body) {
+          const target = parts[1];
+          const targetLower = target?.toLowerCase();
+
+          if (targetLower === 'touch' || targetLower === 'tap' || targetLower === 'drag') {
+            const tx = variablesRef.current.tap_x ?? body.position.x;
+            const ty = variablesRef.current.tap_y ?? body.position.y;
+            Matter.Body.setPosition(body, { x: tx, y: ty });
+            Matter.Body.setVelocity(body, { x: 0, y: 0 });
+          } else if (parts.length >= 3) {
+            const tx = resolveValue(parts[1], body, obj);
+            const ty = resolveValue(parts[2], body, obj);
+            Matter.Body.setPosition(body, { x: tx, y: ty });
+            Matter.Body.setVelocity(body, { x: 0, y: 0 });
+          } else if (target) {
+            const targetBody = cachedBodies.find(b => {
+              const info = (b as any).gameInfo;
+              return b !== body && (
+                info?.obj?.behavior?.toLowerCase() === targetLower ||
+                info?.obj?.name?.toLowerCase() === targetLower
+              );
+            });
+            if (targetBody) {
+              Matter.Body.setPosition(body, { x: targetBody.position.x, y: targetBody.position.y });
+              Matter.Body.setVelocity(body, { x: 0, y: 0 });
+            }
           }
         }
       } else if (cmd === 'var_add') {
@@ -2056,11 +2421,53 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       } else if (cmd === 'lvar_add') {
         const name = parts[1];
         const amount = resolveValue(parts[2], body, obj);
+
+        // Intercept plugin updates
+        const pluginMatch = name.match(/^(.+?)_(range|angle)$/i);
+        if (pluginMatch && obj?.plugins) {
+          const pluginName = pluginMatch[1].toLowerCase();
+          const attr = pluginMatch[2].toLowerCase();
+          const plugin = obj.plugins.find(p => p.name?.toLowerCase() === pluginName);
+          if (plugin) {
+            if (attr === 'range') {
+              plugin.settings.range = (plugin.settings.range || 0) + amount;
+            } else if (attr === 'angle') {
+              plugin.settings.angleOffset = (plugin.settings.angleOffset || 0) + amount;
+            }
+            setNonce(n => n + 1);
+            return;
+          }
+        }
+
         const lId = body ? body.label : (obj as any)?._guiNodeId;
         if (lId) updateLocalVar(lId, name, amount, obj?.variables?.local);
       } else if (cmd === 'lvar_set') {
         const name = parts[1];
         const val = resolveValue(parts[2], body, obj);
+
+        // Intercept plugin updates
+        const pluginMatch = name.match(/^(.+?)_(range|angle|enabled|visualize|color)$/i);
+        if (pluginMatch && obj?.plugins) {
+          const pluginName = pluginMatch[1].toLowerCase();
+          const attr = pluginMatch[2].toLowerCase();
+          const plugin = obj.plugins.find(p => p.name?.toLowerCase() === pluginName);
+          if (plugin) {
+            if (attr === 'range') {
+              plugin.settings.range = val;
+            } else if (attr === 'angle') {
+              plugin.settings.angleOffset = val;
+            } else if (attr === 'enabled') {
+              plugin.enabled = (val as any) === 'true' || (val as any) === '1' || val === 1 || !!val;
+            } else if (attr === 'visualize') {
+              plugin.settings.visualize = (val as any) === 'true' || (val as any) === '1' || val === 1 || !!val;
+            } else if (attr === 'color') {
+              plugin.settings.laserColor = String(val);
+            }
+            setNonce(n => n + 1);
+            return;
+          }
+        }
+
         const lId = body ? body.label : (obj as any)?._guiNodeId;
         if (lId) updateLocalVar(lId, name, val, obj?.variables?.local, true);
       } else if (cmd === 'set_value' || cmd === 'tween_to' || cmd === 'add_value') {
@@ -2243,6 +2650,72 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           DeviceEventEmitter.emit('on_stop_sound', { name: soundName });
           DeviceEventEmitter.emit(`on_stop_sound:${soundName}`, { name: soundName });
         }
+      } else if (cmd === 'set_text') {
+        const textVal = parts.slice(1).join(':');
+        const lId = body ? body.label : (obj as any)?._guiNodeId;
+        if (lId) {
+          const lower = textVal.toLowerCase();
+          const isReactive = ['tap_x', 'tap_y', 'get_drag_x', 'get_drag_y'].some(v => lower.includes(v));
+          
+          let resolved: string;
+          if (isReactive) {
+            // Convert bare names to bracketed templates for the worklet to pick up
+            resolved = textVal.replace(/(tap_x|tap_y|get_drag_x|get_drag_y)/gi, '{$1}');
+            resolved = resolved.replace(/\{\{/g, '{').replace(/\}\}/g, '}'); // Clean up double brackets
+          } else {
+            resolved = String(resolveValue(textVal, body, obj));
+          }
+
+          // Optimization: If content is same (e.g. still the same template string), 
+          // skip setInstanceOverrides to avoid React re-render choke.
+          if (instanceOverridesRef.current[lId]?.text?.content === resolved) return;
+
+          setInstanceOverrides(prev => {
+            const current = prev[lId] || {};
+            const text = { ...(current.text || obj?.text || { content: '', color: '#fff', fontSize: 16 }), content: resolved };
+            return { ...prev, [lId]: { ...current, text } };
+          });
+        }
+      } else if (cmd === 'set_text_color') {
+        const color = parts[1];
+        const lId = body ? body.label : (obj as any)?._guiNodeId;
+        if (lId) {
+          setInstanceOverrides(prev => {
+            const current = prev[lId] || {};
+            const text = { ...(current.text || obj?.text || {}), color };
+            return { ...prev, [lId]: { ...current, text } };
+          });
+        }
+      } else if (cmd === 'set_bg_color') {
+        const backgroundColor = parts[1];
+        const lId = body ? body.label : (obj as any)?._guiNodeId;
+        if (lId) {
+          setInstanceOverrides(prev => {
+            const current = prev[lId] || {};
+            const text = { ...(current.text || obj?.text || {}), backgroundColor };
+            return { ...prev, [lId]: { ...current, text } };
+          });
+        }
+      } else if (cmd === 'set_text_size') {
+        const fontSize = resolveValue(parts[1], body, obj);
+        const lId = body ? body.label : (obj as any)?._guiNodeId;
+        if (lId) {
+          setInstanceOverrides(prev => {
+            const current = prev[lId] || {};
+            const text = { ...(current.text || obj?.text || {}), fontSize };
+            return { ...prev, [lId]: { ...current, text } };
+          });
+        }
+      } else if (cmd === 'set_text_align') {
+        const textAlign = parts[1];
+        const lId = body ? body.label : (obj as any)?._guiNodeId;
+        if (lId) {
+          setInstanceOverrides(prev => {
+            const current = prev[lId] || {};
+            const text = { ...(current.text || obj?.text || {}), textAlign };
+            return { ...prev, [lId]: { ...current, text } };
+          });
+        }
       }
     };
 
@@ -2273,8 +2746,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       }
 
       // 2. New Logic Editor support
-      if (listener.parsedImmediate) {
-        listener.parsedImmediate.forEach((act: any) => {
+      const pImm = listener.parsedImmediate || parsedImmediateCache.get(listener);
+      if (pImm) {
+        pImm.forEach((act: any) => {
           executeAction(act, body, obj, source + ':Imm', otherBody);
         });
       } else if (listener.immediateActions) {
@@ -2283,8 +2757,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         });
       }
 
-      if (listener.parsedSubConditions) {
-        listener.parsedSubConditions.forEach((sc: any) => {
+      const pSub = listener.parsedSubConditions || parsedSubConditionsCache.get(listener);
+      if (pSub) {
+        pSub.forEach((sc: any) => {
           const met = checkCondition(sc.condition, body, obj);
           if (met) {
             if (sc.parsedActions) {
@@ -2323,7 +2798,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     const attachListeners = (body: Matter.Body, obj: GameObject) => {
       obj.logic?.listeners?.forEach(l => {
         // Skip events handled elsewhere to prevent double-firing or handled by specialized loops
-        const skippedEvents = ['on_timer', 'on_tick', 'on_start', 'on_tap', 'when_self_tap', 'builtin_tap', 'on_screen_tap', 'on_collision'];
+        const skippedEvents = ['on_timer', 'on_tick', 'on_start', 'on_tap', 'when_self_tap', 'builtin_tap', 'on_screen_tap', 'on_collision', 'on_drag'];
         if (skippedEvents.some(se => l.eventId === se || l.eventId?.startsWith(se + ':'))) return;
 
         const sub = DeviceEventEmitter.addListener(l.eventId, (data: any) => {
@@ -2363,6 +2838,24 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         });
       });
       subscriptions.push(tapSub);
+
+      // Dedicated drag listener for 'on_drag' visual logic
+      const dragSub = DeviceEventEmitter.addListener('builtin_drag', (data: any) => {
+        // Check targetId
+        if (data?.targetId && String(data.targetId) !== String(body.label)) return;
+
+        // Sync world-space coordinates in global variables for expressions (e.g. self.x = tap.x)
+        variablesRef.current.tap_x = data.x;
+        variablesRef.current.tap_y = data.y;
+
+        // Trigger object's on_drag visual logic listeners
+        obj.logic?.listeners?.forEach((l: any) => {
+          if (l.eventId === 'on_drag') {
+            executeListenerLogic(l, body, obj, 'DragListener');
+          }
+        });
+      });
+      subscriptions.push(dragSub);
 
       // Dedicated screen tap listener
       const screenTapSub = DeviceEventEmitter.addListener('on_screen_tap', (data: any) => {
@@ -2413,7 +2906,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
       const width = isParticle ? 16 : (isGrid ? fw : (pObj.width || fw || 32));
       const height = isParticle ? 16 : (isGrid ? fh : (pObj.height || fh || 32));
-      
+
       const currentType = physics.bodyType || (physics.isStatic ? 'static' : 'dynamic');
       const isStatic = !isParticle && (currentType === 'static' || currentType === 'kinematic' || !physics.enabled);
       const isSensor = !physics.enabled || currentType === 'kinematic' || !!physics.ignoreCollision;
@@ -2465,15 +2958,25 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
       // Pre-parse ALL other Visual Logic Editor listeners
       pObj.logic?.listeners?.forEach((l: any) => {
-        if (!l.parsedImmediate && l.immediateActions) {
-          l.parsedImmediate = l.immediateActions.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean);
+        if (!l.parsedImmediate && !parsedImmediateCache.has(l) && l.immediateActions) {
+          const parsed = l.immediateActions.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean);
+          try {
+            l.parsedImmediate = parsed;
+          } catch (e) {
+            parsedImmediateCache.set(l, parsed);
+          }
         }
-        if (!l.parsedSubConditions && l.subConditions) {
-          l.parsedSubConditions = l.subConditions.map((sc: any) => ({
+        if (!l.parsedSubConditions && !parsedSubConditionsCache.has(l) && l.subConditions) {
+          const parsed = l.subConditions.map((sc: any) => ({
             ...sc,
             parsedActions: sc.actions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean),
             parsedElseActions: sc.elseActions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean),
           }));
+          try {
+            l.parsedSubConditions = parsed;
+          } catch (e) {
+            parsedSubConditionsCache.set(l, parsed);
+          }
         }
       });
 
@@ -2627,15 +3130,25 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
       // Pre-parse ALL other Visual Logic Editor listeners
       obj.logic?.listeners?.forEach((l: any) => {
-        if (!l.parsedImmediate && l.immediateActions) {
-          l.parsedImmediate = l.immediateActions.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean);
+        if (!l.parsedImmediate && !parsedImmediateCache.has(l) && l.immediateActions) {
+          const parsed = l.immediateActions.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean);
+          try {
+            l.parsedImmediate = parsed;
+          } catch (e) {
+            parsedImmediateCache.set(l, parsed);
+          }
         }
-        if (!l.parsedSubConditions && l.subConditions) {
-          l.parsedSubConditions = l.subConditions.map((sc: any) => ({
+        if (!l.parsedSubConditions && !parsedSubConditionsCache.has(l) && l.subConditions) {
+          const parsed = l.subConditions.map((sc: any) => ({
             ...sc,
             parsedActions: sc.actions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean),
             parsedElseActions: sc.elseActions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean),
           }));
+          try {
+            l.parsedSubConditions = parsed;
+          } catch (e) {
+            parsedSubConditionsCache.set(l, parsed);
+          }
         }
       });
 
@@ -3419,6 +3932,57 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           Matter.Body.setVelocity(body, { x: info.constantVx, y: body.velocity.y });
         }
 
+        if (info.moveTowards !== undefined) {
+          const { target, speed } = info.moveTowards;
+          let targetX = 0;
+          let targetY = 0;
+          let foundTarget = false;
+
+          if (typeof target === 'object' && target !== null && typeof (target as any).x === 'number') {
+            targetX = (target as any).x;
+            targetY = (target as any).y;
+            foundTarget = true;
+          } else if (typeof target === 'string') {
+            const targetLower = target.toLowerCase();
+            const targetBody = cachedBodies.find(b => {
+              const bInfo = (b as any).gameInfo;
+              return b !== body && (
+                bInfo?.obj?.behavior?.toLowerCase() === targetLower ||
+                bInfo?.obj?.name?.toLowerCase() === targetLower
+              );
+            });
+            if (targetBody) {
+              targetX = targetBody.position.x;
+              targetY = targetBody.position.y;
+              foundTarget = true;
+            }
+          }
+
+          if (foundTarget) {
+            const mDx = targetX - body.position.x;
+            const mDy = targetY - body.position.y;
+            const mDist = Math.sqrt(mDx * mDx + mDy * mDy);
+            let moveSpeed = 1;
+            if (speed !== undefined && speed !== null && speed !== '') {
+              const parsed = Number(speed);
+              if (!isNaN(parsed)) {
+                moveSpeed = parsed;
+              }
+            }
+
+            if (mDist > 8) {
+              const vx = (mDx / mDist) * moveSpeed;
+              const vy = (mDy / mDist) * moveSpeed;
+              Matter.Body.setVelocity(body, { x: vx, y: vy });
+            } else {
+              Matter.Body.setVelocity(body, { x: 0, y: 0 });
+              if (typeof target === 'object') {
+                info.moveTowards = undefined; // Arrived at coordinate
+              }
+            }
+          }
+        }
+
         // Position Sync Optimization: Only update SV if body moved
         if (body.isStatic && body.position.x === (body as any).lastX && body.position.y === (body as any).lastY) continue;
 
@@ -3435,6 +3999,144 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           (body as any).lastX = body.position.x;
           (body as any).lastY = body.position.y;
         }
+      }
+
+      // A2. Raycasting Engine (Plugins System)
+      const activeLasers: any[] = [];
+      for (let i = 0; i < bodyCount; i++) {
+        const body = cachedBodies[i];
+        const info = (body as any).gameInfo;
+        if (!info || !info.obj) continue;
+
+        const plugins = info.obj.plugins || [];
+        if (plugins.length === 0) continue;
+
+        if (!info.raycastResults) info.raycastResults = {};
+
+        plugins.forEach((plugin: any) => {
+          if (plugin.type !== 'raycast' || !plugin.enabled) return;
+
+          const range = plugin.settings?.range ?? 200;
+          const direction = plugin.settings?.direction ?? 'forward';
+          const flipX = info.sv?.flipX?.value ?? 1;
+
+          let baseAngle = body.angle;
+          if (flipX === -1) {
+            baseAngle += Math.PI;
+          }
+
+          let targetAngle = baseAngle;
+          if (direction === 'backward') {
+            targetAngle += Math.PI;
+          } else if (direction === 'down') {
+            targetAngle = body.angle + Math.PI / 2;
+          } else if (direction === 'up') {
+            targetAngle = body.angle - Math.PI / 2;
+          } else if (direction === 'angle') {
+            const radOffset = (plugin.settings?.angleOffset ?? 0) * Math.PI / 180;
+            targetAngle = baseAngle + (flipX === -1 ? -radOffset : radOffset);
+          }
+
+          const startX = body.position.x;
+          const startY = body.position.y;
+          const endX = startX + Math.cos(targetAngle) * range;
+          const endY = startY + Math.sin(targetAngle) * range;
+
+          let closestHit: { x: number; y: number } | null = null;
+          let closestDist = range;
+          let closestBody: Matter.Body | null = null;
+
+          // Optimization: Pre-filter bodies according to detectType & isSensor
+          const eligibleBodies = cachedBodies.filter(targetBody => {
+            if (targetBody.id === body.id) return false;
+            if (targetBody.isSensor) return false;
+
+            const targetInfo = (targetBody as any).gameInfo;
+            const detectType = plugin.settings?.detectType ?? 'any';
+
+            if (detectType === 'solid' && !targetBody.isStatic) return false;
+            if (detectType === 'player' && !isPlayer(targetInfo?.obj)) return false;
+            if (detectType === 'enemy' && targetInfo?.obj?.behavior?.toLowerCase() !== 'enemy') return false;
+            if (detectType === 'behavior' && targetInfo?.obj?.behavior?.toLowerCase() !== plugin.settings?.targetValue?.toLowerCase()) return false;
+            if (detectType === 'name' && targetInfo?.obj?.name?.toLowerCase() !== plugin.settings?.targetValue?.toLowerCase()) return false;
+
+            return true;
+          });
+
+          // Use Matter.js native, highly optimized spatial-grid raycast query
+          const collisions = Matter.Query.ray(eligibleBodies, { x: startX, y: startY }, { x: endX, y: endY }, plugin.settings?.rayWidth || 1);
+
+          let minFraction = 1.01;
+
+          for (let cIdx = 0; cIdx < collisions.length; cIdx++) {
+            const col = collisions[cIdx];
+            const hitBody = (col as any).body;
+            if (!hitBody) continue;
+
+            const intersection = getBodyIntersection(hitBody, startX, startY, endX, endY);
+            if (intersection && intersection.fraction < minFraction) {
+              minFraction = intersection.fraction;
+              closestHit = { x: intersection.x, y: intersection.y };
+              closestDist = intersection.fraction * range;
+              closestBody = hitBody;
+            }
+          }
+
+          const lowerName = plugin.name.toLowerCase();
+          const prevResult = info.raycastResults[lowerName];
+
+          const isHit = closestHit !== null;
+          const currentResult = {
+            hit: isHit,
+            distance: closestDist,
+            hitX: closestHit ? closestHit.x : endX,
+            hitY: closestHit ? closestHit.y : endY,
+            hitObject: closestBody ? (closestBody as any).gameInfo?.obj : null
+          };
+
+          info.raycastResults[lowerName] = currentResult;
+
+          if (prevResult) {
+            if (currentResult.hit && !prevResult.hit) {
+              info.obj.logic?.listeners?.forEach((l: any) => {
+                if (l.eventId === 'on_raycast_hit' || l.eventId === `on_raycast_hit:${plugin.name}`) {
+                  collisionQueue.push(() => executeListenerLogic(l, body, info.obj, `RaycastHit:${plugin.name}`, closestBody || undefined, closestBody ? (closestBody as any).gameInfo?.obj : undefined));
+                }
+              });
+            } else if (!currentResult.hit && prevResult.hit) {
+              info.obj.logic?.listeners?.forEach((l: any) => {
+                if (l.eventId === 'on_raycast_clear' || l.eventId === `on_raycast_clear:${plugin.name}`) {
+                  collisionQueue.push(() => executeListenerLogic(l, body, info.obj, `RaycastClear:${plugin.name}`));
+                }
+              });
+            }
+          } else {
+            // Edge case: first frame of hitting
+            if (currentResult.hit) {
+              info.obj.logic?.listeners?.forEach((l: any) => {
+                if (l.eventId === 'on_raycast_hit' || l.eventId === `on_raycast_hit:${plugin.name}`) {
+                  collisionQueue.push(() => executeListenerLogic(l, body, info.obj, `RaycastHit:${plugin.name}`, closestBody || undefined, closestBody ? (closestBody as any).gameInfo?.obj : undefined));
+                }
+              });
+            }
+          }
+
+          if (plugin.settings?.visualize && debug) {
+            activeLasers.push({
+              id: `${body.id}_${plugin.id}`,
+              startX,
+              startY,
+              endX: currentResult.hitX,
+              endY: currentResult.hitY,
+              color: plugin.settings?.laserColor || '#FF0000'
+            });
+          }
+        });
+      }
+
+      if (activeLasers.length > 0 || lasersRef.current.length > 0) {
+        setLasers(activeLasers);
+        lasersRef.current = activeLasers;
       }
 
       // B. Process GUI Logic (Hierarchical)
@@ -3698,6 +4400,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         return (
           <PhysicsBody
             key={`${inst.id}-${restartKey}`}
+            instanceId={inst.id}
             sprite={sprite}
             spriteId={appearance.spriteId || undefined}
             sprites={allSprites}
@@ -3728,6 +4431,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             gameHeight={gameHeight}
             ySort={currentRoom?.settings?.ySort}
             ySortAmount={currentRoom?.settings?.ySortAmount}
+            tapX={tapX}
+            tapY={tapY}
           />
         );
       });
@@ -3763,7 +4468,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                       cameraAnimStyle
                     ]}
                   >
-                    <GestureDetector gesture={screenTapGesture}>
+                    <GestureDetector gesture={Gesture.Exclusive(screenTapGesture, screenPanGesture)}>
                       <View style={StyleSheet.absoluteFill} />
                     </GestureDetector>
                     {staticElements}
@@ -3772,6 +4477,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                       return (
                         <PhysicsBody
                           key={`${d.id}-${restartKey}`}
+                          instanceId={d.id}
                           sprite={spriteMap.get(d.sprite?.id) || d.sprite}
                           spriteId={d.sprite?.id}
                           isRemote={!!(currentProject as any)?.isRemote}
@@ -3802,7 +4508,37 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                           ySort={currentRoom?.settings?.ySort}
                           ySortAmount={currentRoom?.settings?.ySortAmount}
                           layerIndex={d.layerIndex}
+                          tapX={tapX}
+                          tapY={tapY}
                           debug={debug}
+                        />
+                      );
+                    })}
+                    {lasers.map((laser) => {
+                      const dx = laser.endX - laser.startX;
+                      const dy = laser.endY - laser.startY;
+                      const dist = Math.sqrt(dx * dx + dy * dy);
+                      const angle = Math.atan2(dy, dx);
+
+                      return (
+                        <View
+                          key={laser.id}
+                          style={{
+                            position: 'absolute',
+                            left: laser.startX,
+                            top: laser.startY,
+                            width: dist,
+                            height: 2,
+                            backgroundColor: laser.color,
+                            transform: [
+                              { translateX: 0 },
+                              { translateY: -1 },
+                              { rotate: `${angle}rad` }
+                            ],
+                            transformOrigin: '0% 50%',
+                            zIndex: 9999,
+                            pointerEvents: 'none'
+                          }}
                         />
                       );
                     })}
@@ -3840,6 +4576,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                         gameHeight={gameHeight}
                         handleFetchAsset={handleFetchAsset}
                         restartKey={restartKey}
+                        tapX={tapX}
+                        tapY={tapY}
                         debug={debug}
                       />
                     ))}
@@ -3956,7 +4694,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           {debug && showDebugSidebar && (
             <View style={styles.debugSidebar}>
               <View style={styles.debugSidebarHeader}>
-                <Text style={styles.debugTitle}>ENGINE DEBUG</Text>
+                <Text style={styles.debugTitle}>OXION ENGINE v1.15.0</Text>
                 <TouchableOpacity onPress={() => setShowDebugSidebar(false)} style={styles.debugCloseBtn}>
                   <X color="#fff" size={14} />
                 </TouchableOpacity>

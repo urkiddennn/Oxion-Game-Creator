@@ -219,6 +219,23 @@ export interface GameObject {
   gui_hierarchy?: {
     root: GUINode[];
   };
+  plugins?: GameObjectPlugin[];
+}
+
+export interface GameObjectPlugin {
+  id: string;
+  type: 'raycast';
+  name: string;
+  enabled: boolean;
+  settings: {
+    range: number;
+    direction: 'forward' | 'backward' | 'down' | 'up' | 'angle';
+    angleOffset: number;
+    visualize: boolean;
+    laserColor: string;
+    detectType: 'any' | 'solid' | 'player' | 'enemy' | 'behavior' | 'name';
+    targetValue: string;
+  };
 }
 export interface RoomLayer {
   id: string;

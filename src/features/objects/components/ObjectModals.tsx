@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput } from 'react-native';
-import { X, Image as ImageIcon, Film, ArrowLeft, ArrowRight, Pause, ArrowUp, Layout, Zap, Settings, Activity, ChevronUp, MousePointer2, Bolt, Clock, GitBranch, Heart, Volume2, VolumeX, Search, Database, PlayIcon, Eye, EyeOff } from 'lucide-react-native';
+import { X, Image as ImageIcon, Film, ArrowLeft, ArrowRight, Pause, ArrowUp, Layout, Zap, Settings, Activity, ChevronUp, MousePointer2, Bolt, Clock, GitBranch, Heart, Volume2, VolumeX, Search, Database, PlayIcon, Eye, EyeOff, Target, Type, Palette } from 'lucide-react-native';
 import ObjectCreatorModal from './modals/ObjectCreatorModal';
 import ObjectInspectorModal from './modals/ObjectInspectorModal';
 import { theme } from '../../../theme';
@@ -495,6 +495,63 @@ export default function ObjectModals({
                 </>
               )}
 
+              {/* Raycast Trigger Events */}
+              {(matchesSearch('raycast') || matchesSearch('hit') || matchesSearch('clear') || (selectedObject?.plugins || []).some((p: any) => p.type === 'raycast')) && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Raycasting Triggers</Text>
+                  {[
+                    { id: 'on_raycast_hit', label: 'On Raycast Hit (Any)', color: theme.colors.primary },
+                    { id: 'on_raycast_clear', label: 'On Raycast Clear (Any)', color: theme.colors.secondary }
+                  ].filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).map(ev => (
+                    <TouchableOpacity
+                      key={ev.id}
+                      style={styles.actionPresetItem}
+                      onPress={() => {
+                        if (handleEventSelect) handleEventSelect(ev.id);
+                        else if ((global as any).handleEventSelect) (global as any).handleEventSelect(ev.id);
+                        setEventPickerVisible(false);
+                        setSearchQuery('');
+                      }}
+                    >
+                      <Target size={14} color={ev.color} />
+                      <Text style={[styles.actionPresetText, { color: ev.color, fontWeight: 'bold' }]}>{ev.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+
+                  {/* Specific raycast plugins */}
+                  {(selectedObject?.plugins || []).filter((p: any) => p.type === 'raycast' && matchesSearch(p.name)).map((plugin: any) => (
+                    <View key={plugin.id} style={{ marginTop: 8, paddingHorizontal: 10 }}>
+                      <Text style={{ color: theme.colors.textMuted, fontSize: 9, marginBottom: 4 }}>PLUGIN: {plugin.name?.toUpperCase()}</Text>
+                      <View style={[styles.pickerRowSmall, { gap: 8 }]}>
+                        <TouchableOpacity
+                          style={styles.pickerChipSecondary}
+                          onPress={() => {
+                            if (handleEventSelect) handleEventSelect(`on_raycast_hit:${plugin.name}`);
+                            else if ((global as any).handleEventSelect) (global as any).handleEventSelect(`on_raycast_hit:${plugin.name}`);
+                            setEventPickerVisible(false);
+                            setSearchQuery('');
+                          }}
+                        >
+                          <Text style={[styles.pickerChipTextSmall, { color: theme.colors.primary }]}>HIT: {plugin.name?.toUpperCase()}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.pickerChipSecondary}
+                          onPress={() => {
+                            if (handleEventSelect) handleEventSelect(`on_raycast_clear:${plugin.name}`);
+                            else if ((global as any).handleEventSelect) (global as any).handleEventSelect(`on_raycast_clear:${plugin.name}`);
+                            setEventPickerVisible(false);
+                            setSearchQuery('');
+                          }}
+                        >
+                          <Text style={[styles.pickerChipTextSmall, { color: theme.colors.secondary }]}>CLEAR: {plugin.name?.toUpperCase()}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
+                </>
+              )}
+
               {/* Dynamic Comparisons */}
               {([
                 'self.x', 'self.y', 'self.width', 'self.height', 'room_width', 'room_height'
@@ -538,11 +595,11 @@ export default function ObjectModals({
                 </>
               )}
 
-              {/* Object Comparison Triggers */}
+              {/* Object Triggers */}
               {((currentProject?.objects || []).filter((o: any) => o.id !== selectedObject?.id && matchesSearch(o.name)).length > 0) && (
                 <>
                   <View style={styles.divider} />
-                  <Text style={styles.subSectionTitleCompact}>Object Comparison Triggers</Text>
+                  <Text style={styles.subSectionTitleCompact}>Object Triggers</Text>
                   {(currentProject?.objects || []).filter((o: any) => o.id !== selectedObject?.id && matchesSearch(o.name)).map((obj: any) => (
                     <View key={obj.id} style={{ marginBottom: 12 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
@@ -718,7 +775,7 @@ export default function ObjectModals({
                   <View style={styles.divider} />
                   <Text style={styles.subSectionTitleCompact}>Room & Environment</Text>
                   <View style={styles.pickerRowSmall}>
-                    {['room_width', 'room_height', 'time', 'tap_x', 'tap_y'].filter(p => matchesSearch(p)).map(p => (
+                    {['room_width', 'room_height', 'time', 'tap_x', 'tap_y', 'get_drag_x', 'get_drag_y'].filter(p => matchesSearch(p)).map(p => (
                       <TouchableOpacity key={p} style={[styles.pickerChip, { backgroundColor: '#111' }]} onPress={() => {
                         if (handlePropertySelect) handlePropertySelect(p);
                         else if ((global as any).handlePropertySelect) (global as any).handlePropertySelect(p);
@@ -983,9 +1040,44 @@ export default function ObjectModals({
                 )}
 
               {([
+                { id: 'set_text:Hello', label: 'Set Text to "Hello"', icon: Type, color: theme.colors.primary },
+                { id: 'set_text:Global.var_0', label: 'Set Text to Variable', icon: Type, color: theme.colors.secondary },
+              ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).length > 0) && (
+                  <>
+                    <View style={styles.divider} />
+                    <Text style={styles.subSectionTitleCompact}>UI & Text</Text>
+                    {[
+                      { id: 'set_text:Hello', label: 'Set Text', icon: Type, color: theme.colors.primary },
+                      { id: 'set_text_color:#FF0000', label: 'Set Text Color', icon: Palette, color: theme.colors.error },
+                      { id: 'set_bg_color:rgba(0,0,0,0.5)', label: 'Set Background', icon: Layout, color: theme.colors.secondary },
+                      { id: 'set_text_size:24', label: 'Set Text Size', icon: Type, color: theme.colors.warning },
+                      { id: 'set_text_align:center', label: 'Set Text Align', icon: Type, color: theme.colors.info },
+                    ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
+                      <TouchableOpacity
+                        key={act.id}
+                        style={styles.actionPresetItem}
+                        onPress={() => {
+                          if (handleActionSelect) handleActionSelect(act.id);
+                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
+                          setActionPickerVisible(false);
+                          setSearchQuery('');
+                        }}
+                      >
+                        <act.icon size={14} color={act.color} />
+                        <Text style={styles.actionPresetText}>{act.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </>
+                )}
+
+              {([
                 { id: 'jump', label: 'Jump', icon: ChevronUp, color: theme.colors.primary },
                 { id: 'move_left', label: 'Move Left', icon: ArrowLeft, color: theme.colors.secondary },
                 { id: 'move_right', label: 'Move Right', icon: ArrowRight, color: theme.colors.secondary },
+                { id: 'move_towards:Player:1', label: 'Move Towards Player (Speed 1)', icon: ArrowRight, color: theme.colors.success },
+                { id: 'move_towards:400:300:1', label: 'Move Towards Coordinates 400,300 (Speed 1)', icon: ArrowRight, color: theme.colors.success },
+                { id: 'go_to:touch', label: 'Go To Touch (Teleport to Drag/Tap)', icon: MousePointer2, color: theme.colors.warning },
+                { id: 'go_to:Player', label: 'Go To Player (Teleport to Object)', icon: Target, color: theme.colors.primary },
                 { id: 'stop_x', label: 'Stop Horizontal', icon: Pause, color: theme.colors.error },
               ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).length > 0) && (
                   <>
@@ -995,6 +1087,10 @@ export default function ObjectModals({
                       { id: 'jump', label: 'Jump', icon: ChevronUp, color: theme.colors.primary },
                       { id: 'move_left', label: 'Move Left', icon: ArrowLeft, color: theme.colors.secondary },
                       { id: 'move_right', label: 'Move Right', icon: ArrowRight, color: theme.colors.secondary },
+                      { id: 'move_towards:Player:1', label: 'Move Towards Player (Speed 1)', icon: ArrowRight, color: theme.colors.success },
+                      { id: 'move_towards:400:300:1', label: 'Move Towards Coordinates 400,300 (Speed 1)', icon: ArrowRight, color: theme.colors.success },
+                      { id: 'go_to:touch', label: 'Go To Touch (Teleport to Drag/Tap)', icon: MousePointer2, color: theme.colors.warning },
+                      { id: 'go_to:Player', label: 'Go To Player (Teleport to Object)', icon: Target, color: theme.colors.primary },
                       { id: 'stop_x', label: 'Stop Horizontal', icon: Pause, color: theme.colors.error },
                     ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
                       <TouchableOpacity
@@ -1228,12 +1324,13 @@ export default function ObjectModals({
                 </>
               )}
 
-              {['tap_x', 'tap_y', 'room_width', 'room_height', 'time', 'self.x', 'self.y', 'self.vx', 'self.vy', 'self.rot', 'self.scale', 'self.visible'].filter(p => matchesSearch(p)).length > 0 && (
+
+              {['tap_x', 'tap_y', 'get_drag_x', 'get_drag_y', 'room_width', 'room_height', 'time', 'self.x', 'self.y', 'self.vx', 'self.vy', 'self.rot', 'self.scale', 'self.visible'].filter(p => matchesSearch(p)).length > 0 && (
                 <>
                   <View style={styles.divider} />
                   <Text style={styles.subSectionTitleCompact}>Values & Environment</Text>
                   <View style={styles.pickerRowSmall}>
-                    {['tap_x', 'tap_y', 'room_width', 'room_height', 'time', 'self.x', 'self.y', 'self.vx', 'self.vy', 'self.rot', 'self.scale', 'self.visible'].filter(p => matchesSearch(p)).map(p => (
+                    {['tap_x', 'tap_y', 'get_drag_x', 'get_drag_y', 'room_width', 'room_height', 'time', 'self.x', 'self.y', 'self.vx', 'self.vy', 'self.rot', 'self.scale', 'self.visible'].filter(p => matchesSearch(p)).map(p => (
                       <TouchableOpacity key={p} style={[styles.pickerChip, { backgroundColor: '#111' }]} onPress={() => {
                         if (handleActionSelect) handleActionSelect(p);
                         else if ((global as any).handleActionSelect) (global as any).handleActionSelect(p);

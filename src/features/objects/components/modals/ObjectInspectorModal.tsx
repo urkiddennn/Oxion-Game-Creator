@@ -273,6 +273,51 @@ const ViewportPreview = ({ obj, renderSpritePreview, currentProject, onSwitchToC
           }}
         />
 
+        {/* Raycast preview lasers */}
+        <View pointerEvents="none" style={{ position: 'absolute', left: '50%', top: '50%', width: 0, height: 0, overflow: 'visible', zIndex: 5 }}>
+          {(obj.plugins || []).map((plugin: any) => {
+            if (plugin.type !== 'raycast' || !plugin.enabled) return null;
+
+            const direction = plugin.settings?.direction ?? 'forward';
+            const range = plugin.settings?.range ?? 200;
+            const color = plugin.settings?.laserColor || '#FF0000';
+
+            let rad = 0;
+            if (direction === 'backward') {
+              rad = Math.PI;
+            } else if (direction === 'down') {
+              rad = Math.PI / 2;
+            } else if (direction === 'up') {
+              rad = -Math.PI / 2;
+            } else if (direction === 'angle') {
+              rad = (plugin.settings?.angleOffset ?? 0) * Math.PI / 180;
+            }
+
+            const lineW = range * scale;
+
+            return (
+              <View
+                key={plugin.id}
+                style={{
+                  position: 'absolute',
+                  width: lineW,
+                  height: 2,
+                  backgroundColor: color,
+                  left: 0,
+                  top: 0,
+                  transformOrigin: '0% 50%',
+                  transform: [
+                    { translateX: 0 },
+                    { translateY: -1 },
+                    { rotate: `${rad}rad` }
+                  ],
+                  opacity: 0.85,
+                }}
+              />
+            );
+          })}
+        </View>
+
         {/* Pivot orange crosshair at center */}
         <View pointerEvents="none" style={{ position: 'absolute', width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: '#FF8C00', backgroundColor: '#0D0F12', justifyContent: 'center', alignItems: 'center' }}>
           <View style={{ width: 2, height: 2, borderRadius: 1, backgroundColor: '#FF8C00' }} />
@@ -425,13 +470,14 @@ export default function ObjectInspectorModal({
     const allKeywords = [
       'self', 'other', 'Global', 'room_width', 'room_height', 'time',
       'clamp(', 'min(', 'max(', 'abs(', 'floor(', 'random(',
-      'jump', 'move_left', 'move_right', 'stop_x', 'restart_room', 'go_to_room:',
+      'jump', 'move_left', 'move_right', 'move_towards', 'move_towards:', 'go_to:', 'go_to:touch', 'stop_x', 'restart_room', 'go_to_room:',
       'set_value', 'add_value', 'tween_to', 'bind_to_variable', 'on_empty', 'on_full',
       'damage', 'heal', 'set_count', 'on_life_lost', 'on_zero_lives',
       'save_game', 'load_game',
       'current_count', 'max_count', 'value', 'health',
       'start_sound:', 'stop_sound:', 'on_start_sound', 'on_start_sound:', 'on_stop_sound', 'on_stop_sound:',
-      'on_start', 'on_tick', 'on_timer:', 'on_collision', 'on_tap',
+      'on_start', 'on_tick', 'on_timer:', 'on_collision', 'on_tap', 'on_drag',
+      'on_raycast_hit', 'on_raycast_clear', 'on_raycast_hit:', 'on_raycast_clear:',
       ...(currentProject?.objects?.map((o: any) => o.name) || []),
       ...(Object.keys(currentProject?.variables?.global || {}).map((v: any) => v)),
       ...(currentProject?.sounds?.map((s: any) => s.name) || [])
@@ -565,6 +611,54 @@ export default function ObjectInspectorModal({
       direction: 'horizontal',
       ...selectedObject.progress_bar,
     },
+    plugins: selectedObject.plugins || [],
+  };
+
+  const addPlugin = () => {
+    const plugins = [...(safeObject.plugins || [])];
+    const newPlugin = {
+      id: Math.random().toString(36).substring(2, 9),
+      type: 'raycast' as const,
+      name: `Laser${plugins.length + 1}`,
+      enabled: true,
+      settings: {
+        range: 200,
+        direction: 'forward' as const,
+        angleOffset: 0,
+        visualize: true,
+        laserColor: '#FF0000',
+        detectType: 'any' as const,
+        targetValue: ''
+      }
+    };
+    plugins.push(newPlugin);
+    updateObject(safeObject.id, { plugins });
+  };
+
+  const removePlugin = (pluginId: string) => {
+    const plugins = (safeObject.plugins || []).filter((p: any) => p.id !== pluginId);
+    updateObject(safeObject.id, { plugins });
+  };
+
+  const updatePluginField = (pluginId: string, path: string, value: any) => {
+    const plugins = (safeObject.plugins || []).map((p: any) => {
+      if (p.id !== pluginId) return p;
+      if (path.startsWith('settings.')) {
+        const key = path.split('.')[1];
+        return {
+          ...p,
+          settings: {
+            ...p.settings,
+            [key]: value
+          }
+        };
+      }
+      return {
+        ...p,
+        [path]: value
+      };
+    });
+    updateObject(safeObject.id, { plugins });
   };
 
   const openSoundPicker = (type: string) => {
@@ -1340,6 +1434,178 @@ export default function ObjectInspectorModal({
                       </View>
                     </Section>
                   )}
+
+                  <Section
+                    title="Plugins"
+                    icon={<Zap size={14} color="#EAB308" />}
+                    expanded={expandedSections.plugins ?? false}
+                    onToggle={() => toggleSection('plugins')}
+                  >
+                    <View style={{ gap: 12 }}>
+                      {(safeObject.plugins || []).map((plugin: any) => {
+                        const isRaycast = plugin.type === 'raycast';
+                        return (
+                          <View key={plugin.id} style={{ backgroundColor: '#13151A', borderRadius: 6, padding: 10, borderWidth: 1, borderColor: '#222', gap: 8 }}>
+                            {/* Header with Title and Enable/Delete */}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                                <Zap size={12} color="#EAB308" />
+                                <TextInput
+                                  style={{ color: '#FFF', fontSize: 11, fontWeight: 'bold', padding: 2, backgroundColor: '#0D0F12', borderRadius: 4, flex: 1, borderWidth: 1, borderColor: '#333', paddingHorizontal: 6 }}
+                                  value={plugin.name}
+                                  onChangeText={(v) => updatePluginField(plugin.id, 'name', v)}
+                                  placeholder="Plugin Name"
+                                  placeholderTextColor="#555"
+                                />
+                              </View>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 8 }}>
+                                <Switch
+                                  value={plugin.enabled}
+                                  onValueChange={(v) => updatePluginField(plugin.id, 'enabled', v)}
+                                  thumbColor={plugin.enabled ? theme.colors.primary : '#555'}
+                                  trackColor={{ false: '#333', true: theme.colors.primary + '40' }}
+                                  style={{ transform: [{ scaleX: 0.7 }, { scaleY: 0.7 }] }}
+                                />
+                                <TouchableOpacity onPress={() => removePlugin(plugin.id)} style={{ padding: 4 }}>
+                                  <Trash2 size={12} color="#EF4444" />
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+
+                            {isRaycast && (
+                              <View style={{ gap: 8, borderTopWidth: 1, borderTopColor: '#222', paddingTop: 8 }}>
+                                {/* Range & Direction */}
+                                <PropertyRow label="Range">
+                                  <InputGroup
+                                    label="PX"
+                                    value={(plugin.settings?.range ?? 200).toString()}
+                                    onChange={(v) => updatePluginField(plugin.id, 'settings.range', parseInt(v) || 0)}
+                                    keyboardType="numeric"
+                                  />
+                                </PropertyRow>
+
+                                <PropertyRow label="Direction">
+                                  <View style={{ flex: 1, flexWrap: 'wrap', flexDirection: 'row', gap: 4 }}>
+                                    {['forward', 'backward', 'down', 'up', 'angle'].map((dir) => (
+                                      <TouchableOpacity
+                                        key={dir}
+                                        onPress={() => updatePluginField(plugin.id, 'settings.direction', dir)}
+                                        style={{
+                                          paddingVertical: 4,
+                                          paddingHorizontal: 6,
+                                          borderRadius: 4,
+                                          backgroundColor: (plugin.settings?.direction ?? 'forward') === dir ? theme.colors.primary : '#1A1D24',
+                                          borderWidth: 1,
+                                          borderColor: '#333'
+                                        }}
+                                      >
+                                        <Text style={{ color: (plugin.settings?.direction ?? 'forward') === dir ? '#000' : '#888', fontSize: 8, fontWeight: 'bold' }}>
+                                          {dir.toUpperCase()}
+                                        </Text>
+                                      </TouchableOpacity>
+                                    ))}
+                                  </View>
+                                </PropertyRow>
+
+                                {(plugin.settings?.direction === 'angle') && (
+                                  <PropertyRow label="Angle Deg">
+                                    <InputGroup
+                                      label="DEG"
+                                      value={(plugin.settings?.angleOffset ?? 0).toString()}
+                                      onChange={(v) => updatePluginField(plugin.id, 'settings.angleOffset', parseInt(v) || 0)}
+                                      keyboardType="numeric"
+                                    />
+                                  </PropertyRow>
+                                )}
+
+                                {/* Laser Visualization & Color */}
+                                <PropertyRow label="Laser Sight">
+                                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                      <Switch
+                                        value={plugin.settings?.visualize ?? true}
+                                        onValueChange={(v) => updatePluginField(plugin.id, 'settings.visualize', v)}
+                                        thumbColor={(plugin.settings?.visualize ?? true) ? theme.colors.primary : '#555'}
+                                        trackColor={{ false: '#333', true: theme.colors.primary + '40' }}
+                                        style={{ transform: [{ scaleX: 0.7 }, { scaleY: 0.7 }] }}
+                                      />
+                                      <Text style={{ color: '#888', fontSize: 9 }}>RENDER LASER</Text>
+                                    </View>
+                                    {plugin.settings?.visualize && (
+                                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                        <TextInput
+                                          style={{ color: '#FFF', fontSize: 9, fontFamily: 'monospace', width: 60, backgroundColor: '#0D0F12', borderRadius: 4, borderWidth: 1, borderColor: '#333', paddingHorizontal: 4, paddingVertical: 2, textAlign: 'center' }}
+                                          value={plugin.settings?.laserColor ?? '#FF0000'}
+                                          onChangeText={(v) => updatePluginField(plugin.id, 'settings.laserColor', v)}
+                                          placeholder="#FF0000"
+                                          placeholderTextColor="#555"
+                                        />
+                                        <View style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: plugin.settings?.laserColor ?? '#FF0000', borderWidth: 1, borderColor: '#FFF2' }} />
+                                      </View>
+                                    )}
+                                  </View>
+                                </PropertyRow>
+
+                                {/* Target Filter Type & Value */}
+                                <PropertyRow label="Detect Type">
+                                  <View style={{ flex: 1, flexWrap: 'wrap', flexDirection: 'row', gap: 4 }}>
+                                    {['any', 'solid', 'player', 'enemy', 'behavior', 'name'].map((det) => (
+                                      <TouchableOpacity
+                                        key={det}
+                                        onPress={() => updatePluginField(plugin.id, 'settings.detectType', det)}
+                                        style={{
+                                          paddingVertical: 4,
+                                          paddingHorizontal: 6,
+                                          borderRadius: 4,
+                                          backgroundColor: (plugin.settings?.detectType ?? 'any') === det ? theme.colors.primary : '#1A1D24',
+                                          borderWidth: 1,
+                                          borderColor: '#333'
+                                        }}
+                                      >
+                                        <Text style={{ color: (plugin.settings?.detectType ?? 'any') === det ? '#000' : '#888', fontSize: 8, fontWeight: 'bold' }}>
+                                          {det.toUpperCase()}
+                                        </Text>
+                                      </TouchableOpacity>
+                                    ))}
+                                  </View>
+                                </PropertyRow>
+
+                                {(plugin.settings?.detectType === 'behavior' || plugin.settings?.detectType === 'name') && (
+                                  <PropertyRow label="Target Value">
+                                    <InputGroup
+                                      label="VALUE"
+                                      value={plugin.settings?.targetValue ?? ''}
+                                      onChange={(v) => updatePluginField(plugin.id, 'settings.targetValue', v)}
+                                    />
+                                  </PropertyRow>
+                                )}
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })}
+
+                      {/* Add Plugin Button */}
+                      <TouchableOpacity
+                        onPress={addPlugin}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          backgroundColor: '#1E2330',
+                          borderWidth: 1,
+                          borderColor: theme.colors.primary + '30',
+                          borderRadius: 6,
+                          padding: 8,
+                          marginTop: 4
+                        }}
+                      >
+                        <Plus size={12} color={theme.colors.primary} />
+                        <Text style={{ color: theme.colors.primary, fontSize: 10, fontWeight: 'bold' }}>ADD RAYCAST PLUGIN</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </Section>
                 </ScrollView>
               </View>
 
@@ -2057,24 +2323,40 @@ export default function ObjectInspectorModal({
                           />
                         </PropertyRow>
 
+                        <PropertyRow label="Dimensions">
+                          <View style={{ flex: 1, flexDirection: 'row', gap: 4 }}>
+                            <InputGroup label="WIDTH" value={safeObject.width?.toString() || '100'} onChange={(v: string) => updateField('width', parseInt(v) || 0)} keyboardType="numeric" />
+                            <InputGroup label="HEIGHT" value={safeObject.height?.toString() || '40'} onChange={(v: string) => updateField('height', parseInt(v) || 0)} keyboardType="numeric" />
+                          </View>
+                        </PropertyRow>
+
                         <PropertyRow label="Font">
                           <View style={{ flex: 1, flexDirection: 'row', gap: 4 }}>
+                            <InputGroup label="SIZE" value={safeObject.text?.fontSize?.toString() || '24'} onChange={(v: string) => updateField('text.fontSize', parseInt(v) || 12)} keyboardType="numeric" />
                             {['default', 'pixel'].map(f => (
                               <TouchableOpacity
                                 key={f}
                                 style={{ flex: 1, padding: 6, borderRadius: 4, backgroundColor: safeObject.text?.fontFamily === f ? theme.colors.primary : '#16191E', borderWidth: 1, borderColor: '#333' }}
                                 onPress={() => updateField('text.fontFamily', f)}
                               >
-                                <Text style={{ color: safeObject.text?.fontFamily === f ? '#000' : '#888', fontSize: 9, textAlign: 'center', fontWeight: 'bold' }}>{f.toUpperCase()}</Text>
+                                <Text style={{ color: safeObject.text?.fontFamily === f ? '#000' : '#888', fontSize: 8, textAlign: 'center', fontWeight: 'bold' }}>{f.toUpperCase()}</Text>
                               </TouchableOpacity>
                             ))}
                           </View>
                         </PropertyRow>
 
-                        <PropertyRow label="Style">
+                        <PropertyRow label="Colors">
                           <View style={{ flex: 1, flexDirection: 'row', gap: 4 }}>
-                            <InputGroup label="SIZE" value={safeObject.text?.fontSize?.toString() || '24'} onChange={(v: string) => updateField('text.fontSize', parseInt(v) || 12)} keyboardType="numeric" />
-                            <InputGroup label="COLOR" value={safeObject.text?.color || '#FFFFFF'} onChange={(v: string) => updateField('text.color', v)} />
+                            <InputGroup label="TEXT" value={safeObject.text?.color || '#FFFFFF'} onChange={(v: string) => updateField('text.color', v)} />
+                            <InputGroup label="BG" value={safeObject.text?.backgroundColor || 'transparent'} onChange={(v: string) => updateField('text.backgroundColor', v)} />
+                          </View>
+                        </PropertyRow>
+
+                        <PropertyRow label="Container">
+                          <View style={{ flex: 1, flexDirection: 'row', gap: 4 }}>
+                            <InputGroup label="PAD X" value={safeObject.text?.paddingX?.toString() || '0'} onChange={(v: string) => updateField('text.paddingX', parseInt(v) || 0)} keyboardType="numeric" />
+                            <InputGroup label="PAD Y" value={safeObject.text?.paddingY?.toString() || '0'} onChange={(v: string) => updateField('text.paddingY', parseInt(v) || 0)} keyboardType="numeric" />
+                            <InputGroup label="RADIUS" value={safeObject.text?.borderRadius?.toString() || '0'} onChange={(v: string) => updateField('text.borderRadius', parseInt(v) || 0)} keyboardType="numeric" />
                           </View>
                         </PropertyRow>
 
