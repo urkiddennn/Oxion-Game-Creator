@@ -388,6 +388,7 @@ const PhysicsBodyInner = ({
 
   const isVisible = useDerivedValue(() => {
     'worklet';
+    if (sv?.visible?.value === 0) return false;
     if (isHUD || forceNoHUD) return true;
 
     const camX = cameraX.value;
@@ -1357,6 +1358,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         flipX: makeMutable(1),
         pbValue: makeMutable(0),
         scale: makeMutable(defaultScale),
+        visible: makeMutable(obj?.visible !== false ? 1 : 0),
       };
     });
   }, [currentRoom?.id, currentRoom?.instances, objectMap, restartKey]);
@@ -1650,6 +1652,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             if (prop === 'value' && actualObj.progress_bar) return actualObj.progress_bar.currentValue;
             if (prop === 'health' && actualObj.health) return actualObj.health.current;
             if (prop === 'scale') return actualObj.physics?.scale || 1;
+            if (prop === 'visible') return actualObj.visible !== false ? 1 : 0;
           }
         } else if (target === 'tap') {
           if (prop === 'x') return variablesRef.current.tap_x || 0;
@@ -1680,6 +1683,11 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             const sv = (targetBody as any).gameInfo?.sv;
             if (sv && sv.scale) return sv.scale.value;
             return (targetBody as any).gameInfo?.obj?.physics?.scale || 1;
+          }
+          if (prop === 'visible') {
+            const sv = (targetBody as any).gameInfo?.sv;
+            if (sv && sv.visible) return sv.visible.value;
+            return (targetBody as any).gameInfo?.obj?.visible !== false ? 1 : 0;
           }
 
           // Sprite Repeater Properties
@@ -1829,7 +1837,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         'set_value', 'tween_to', 'add_value', 'bind_to_variable', 'set_health', 'add_health',
         'damage', 'heal', 'set_count', 'restart_room', 'go_to_room', 'create_instance',
         'animation', 'set_animation', 'start_sound', 'stop_sound', 'target_other',
-        'save_game', 'load_game', 'set_scale', 'add_scale'
+        'save_game', 'load_game', 'set_scale', 'add_scale', 'destroy', 'set_visible'
       ];
 
       if (!knownCommands.includes(cmd)) {
@@ -1856,6 +1864,31 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           const actualCmd = parts[1];
           const actualParts = [actualCmd, parts[2], parts[3]];
           executeAction({ cmd: actualCmd, parts: actualParts }, otherBody, (otherBody as any).gameInfo?.obj, `${source}:TargetOther`);
+        }
+        return;
+      }
+
+      if (cmd === 'destroy') {
+        if (body) {
+          Matter.World.remove(engine.world, body);
+          const info = (body as any).gameInfo;
+          if (info && info.sv && info.sv.visible) {
+             info.sv.visible.value = 0; // Hide the renderer
+          }
+          setNonce(n => n + 1);
+        }
+        return;
+      }
+      
+      if (cmd === 'set_visible') {
+        const val = parts[1] === 'true' || parts[1] === '1';
+        const info = body ? (body as any).gameInfo : (obj as any);
+        if (info) {
+          if (info.obj) info.obj.visible = val;
+          if (info.sv && info.sv.visible) {
+             info.sv.visible.value = val ? 1 : 0;
+          }
+          setNonce(n => n + 1);
         }
         return;
       }
@@ -2380,12 +2413,15 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
       const width = isParticle ? 16 : (isGrid ? fw : (pObj.width || fw || 32));
       const height = isParticle ? 16 : (isGrid ? fh : (pObj.height || fh || 32));
-      const isStatic = !isParticle && (physics.isStatic || !physics.enabled);
+      
+      const currentType = physics.bodyType || (physics.isStatic ? 'static' : 'dynamic');
+      const isStatic = !isParticle && (currentType === 'static' || currentType === 'kinematic' || !physics.enabled);
+      const isSensor = !physics.enabled || currentType === 'kinematic' || !!physics.ignoreCollision;
 
       const spawnId = `${isParticle ? 'p' : 'dyn'}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
       const body = isParticle
         ? Matter.Bodies.circle(x, y, 8, { frictionAir: 0.02, restitution: 0.5, density: 0.0005, label: spawnId })
-        : createBodyForObject(x, y, width, height, pObj, { isStatic, friction: physics.friction || 0.1, restitution: physics.restitution || 0.1, label: spawnId });
+        : createBodyForObject(x, y, width, height, pObj, { isStatic, isSensor, friction: physics.friction || 0.1, restitution: physics.restitution || 0.1, label: spawnId });
 
       if (isParticle && settings) {
         const spread = settings.spread !== undefined ? settings.spread : 45;
@@ -2627,7 +2663,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       });
 
       const physics = obj.physics || {};
-      const isStatic = (physics.isStatic || !physics.enabled || obj.behavior === 'emitter') && obj.behavior !== 'player';
+      const currentType = physics.bodyType || (physics.isStatic ? 'static' : 'dynamic');
+      const isStatic = (currentType === 'static' || currentType === 'kinematic' || !physics.enabled || obj.behavior === 'emitter') && obj.behavior !== 'player';
+      const isSensor = !physics.enabled || currentType === 'kinematic' || !!physics.ignoreCollision;
 
       const pObj = objectMap.get(inst.objectId);
       if (!pObj) return;
@@ -2688,7 +2726,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
       const body = createBodyForObject(inst.x + width / 2, inst.y + height / 2, width, height, obj, {
         isStatic,
-        isSensor: !physics.enabled,
+        isSensor,
         collisionFilter: physics.enabled ? { category: 0x0001, mask: 0xFFFFFFFF, group: 0 } : { category: 0x0000, mask: 0x0000, group: 0 },
         friction: obj.behavior === 'player' ? 0.001 : (physics.friction || 0.1),
         frictionAir: obj.behavior === 'player' ? 0.02 : 0.01,
@@ -3564,8 +3602,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           cameraRef.current.x += (targetCamX - cameraRef.current.x) * smooth;
           cameraRef.current.y += (targetCamY - cameraRef.current.y) * smooth;
 
-          cameraX.value = cameraRef.current.x;
-          cameraY.value = cameraRef.current.y;
+          cameraX.value = Math.round(cameraRef.current.x);
+          cameraY.value = Math.round(cameraRef.current.y);
           cameraZoom.value = zoom;
           cameraInitialized = true;
         } else {

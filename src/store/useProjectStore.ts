@@ -74,6 +74,7 @@ export interface GameObject {
   type: string;
   behavior: string;
   isHUD?: boolean;
+  visible?: boolean;
   width?: number;
   height?: number;
   health: {
@@ -103,6 +104,7 @@ export interface GameObject {
 
   physics: {
     enabled: boolean;
+    bodyType?: 'dynamic' | 'static' | 'kinematic';
     isStatic: boolean;
     applyGravity: boolean;
     friction: number;

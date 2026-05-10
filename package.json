@@ -1,6 +1,6 @@
 {
   "name": "oxion2d",
-  "version": "1.12.11",
+  "version": "1.12.13",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",

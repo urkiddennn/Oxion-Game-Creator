@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.12.13] - 2026-05-10
+### Fixed
+- **Sub-Pixel Camera Shake & Static Solids Jitter Fix**:
+  - Resolved a visual bug where solid blocks (static objects placed on the grid) appeared to vibrate or shake when the player was moving.
+  - Implemented exact pixel rounding for Reanimated `cameraX.value` and `cameraY.value` in the 60 FPS camera follow logic. This forces the viewport canvas to align exactly with pixel boundaries, completely eliminating sub-pixel rasterization shimmering and visual jitter.
+
+## [1.12.12] - 2026-05-10
+### Added
+- **Kinematic Physics Body Selection & UI Optimization**:
+  - Implemented a gorgeous, sleek inline dropdown selection for physics **Type** (DYNAMIC, STATIC, KINEMATIC), replacing row segments and maximizing interaction consistency.
+  - Grouped the main General property toggles (**Physics Enabled**, **HUD Sticky**, and **Visibility**) inside a zero-gap vertical container. This eliminates the giant vertical layout gaps between them, making them extremely compact and cohesive.
+  - Correctly resolved icon reference errors in logic selector modals to restore robust workspace loading.
+
 ## [1.12.11] - 2026-05-10
 ### Fixed
 - **Multi-Touch Precision Upgrade**:

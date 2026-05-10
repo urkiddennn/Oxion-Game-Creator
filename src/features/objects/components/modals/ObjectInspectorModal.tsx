@@ -389,6 +389,7 @@ export default function ObjectInspectorModal({
   const [activeActionIndex, setActiveActionIndex] = useState<number | null>(null);
   const [isAddingSubForIndex, setIsAddingSubForIndex] = useState<number | null>(null);
   const [activeCenterTab, setActiveCenterTab] = useState<'preview' | 'code'>('preview');
+  const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
 
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     about: true,
@@ -888,13 +889,16 @@ export default function ObjectInspectorModal({
                   </Section>
 
                   <Section
-                    title="Physics"
+                    title="Physics & General"
                     icon={<Zap size={14} color={theme.colors.warning} />}
                     expanded={expandedSections.physics}
                     onToggle={() => toggleSection('physics')}
                   >
-                    <SwitchRow label="Enabled" value={safeObject.physics.enabled} onToggle={(v: boolean) => updateField('physics.enabled', v)} />
-                    <SwitchRow label="Sticky HUD" value={safeObject.isHUD || false} onToggle={(v: boolean) => updateField('isHUD', v)} />
+                    <View style={{ gap: 0, marginVertical: -2 }}>
+                      <SwitchRow label="Enabled" value={safeObject.physics.enabled} onToggle={(v: boolean) => updateField('physics.enabled', v)} />
+                      <SwitchRow label="Sticky HUD" value={safeObject.isHUD || false} onToggle={(v: boolean) => updateField('isHUD', v)} />
+                      <SwitchRow label="Visible" value={safeObject.visible !== false} onToggle={(v: boolean) => updateField('visible', v)} />
+                    </View>
 
                     {safeObject.physics.enabled && (
                       <>
@@ -940,20 +944,74 @@ export default function ObjectInspectorModal({
                         </PropertyRow>
 
                         <PropertyRow label="Type">
-                          <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
+                          <View style={{ flex: 1, position: 'relative' }}>
                             <TouchableOpacity
-                              onPress={() => updateField('physics.isStatic', !safeObject.physics.isStatic)}
-                              style={{ flex: 1, padding: 6, borderRadius: 4, backgroundColor: safeObject.physics.isStatic ? theme.colors.primary : '#16191E', borderWidth: 1, borderColor: '#333' }}
+                              onPress={() => setTypeDropdownOpen(!typeDropdownOpen)}
+                              style={{
+                                flexDirection: 'row',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                backgroundColor: '#16191E',
+                                paddingHorizontal: 10,
+                                paddingVertical: 6,
+                                borderRadius: 4,
+                                borderWidth: 1,
+                                borderColor: '#333',
+                                minHeight: 28
+                              }}
                             >
-                              <Text style={{ color: safeObject.physics.isStatic ? '#000' : '#888', fontSize: 9, textAlign: 'center', fontWeight: 'bold' }}>STATIC</Text>
+                              <Text style={{ color: theme.colors.primary, fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase' }}>
+                                {safeObject.physics.bodyType || (safeObject.physics.isStatic ? 'static' : 'dynamic')}
+                              </Text>
+                              <ChevronDown size={12} color={theme.colors.textMuted} />
                             </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={() => updateField('physics.applyGravity', !safeObject.physics.applyGravity)}
-                              style={{ flex: 1, padding: 6, borderRadius: 4, backgroundColor: safeObject.physics.applyGravity ? theme.colors.primary : '#16191E', borderWidth: 1, borderColor: '#333' }}
-                            >
-                              <Text style={{ color: safeObject.physics.applyGravity ? '#000' : '#888', fontSize: 9, textAlign: 'center', fontWeight: 'bold' }}>GRAVITY</Text>
-                            </TouchableOpacity>
+
+                            {typeDropdownOpen && (
+                              <View style={{
+                                backgroundColor: '#1F232B',
+                                borderRadius: 4,
+                                borderWidth: 1,
+                                borderColor: '#333',
+                                marginTop: 4,
+                                overflow: 'hidden',
+                                zIndex: 10
+                              }}>
+                                {['dynamic', 'static', 'kinematic'].map(t => {
+                                  const currentType = safeObject.physics.bodyType || (safeObject.physics.isStatic ? 'static' : 'dynamic');
+                                  const isActive = currentType === t;
+                                  return (
+                                    <TouchableOpacity
+                                      key={t}
+                                      onPress={() => {
+                                        updateField('physics.bodyType', t);
+                                        setTypeDropdownOpen(false);
+                                      }}
+                                      style={{
+                                        paddingHorizontal: 10,
+                                        paddingVertical: 6,
+                                        backgroundColor: isActive ? 'rgba(0, 209, 255, 0.1)' : 'transparent',
+                                        borderBottomWidth: t !== 'kinematic' ? 1 : 0,
+                                        borderBottomColor: '#2C313C'
+                                      }}
+                                    >
+                                      <Text style={{ color: isActive ? theme.colors.primary : '#AAA', fontSize: 10, fontWeight: isActive ? 'bold' : 'normal', textTransform: 'uppercase' }}>
+                                        {t}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+                            )}
                           </View>
+                        </PropertyRow>
+
+                        <PropertyRow label="Gravity">
+                          <TouchableOpacity
+                            onPress={() => updateField('physics.applyGravity', !safeObject.physics.applyGravity)}
+                            style={{ flex: 1, padding: 6, borderRadius: 4, backgroundColor: safeObject.physics.applyGravity ? theme.colors.primary : '#16191E', borderWidth: 1, borderColor: '#333' }}
+                          >
+                            <Text style={{ color: safeObject.physics.applyGravity ? '#000' : '#888', fontSize: 9, textAlign: 'center', fontWeight: 'bold' }}>APPLY GRAVITY</Text>
+                          </TouchableOpacity>
                         </PropertyRow>
 
                         <PropertyRow label="Collision">

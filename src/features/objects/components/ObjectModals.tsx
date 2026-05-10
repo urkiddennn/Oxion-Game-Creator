@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput } from 'react-native';
-import { X, Image as ImageIcon, Film, ArrowLeft, ArrowRight, Pause, ArrowUp, Layout, Zap, Settings, Activity, ChevronUp, MousePointer2, Bolt, Clock, GitBranch, Heart, Volume2, VolumeX, Search, Database } from 'lucide-react-native';
+import { X, Image as ImageIcon, Film, ArrowLeft, ArrowRight, Pause, ArrowUp, Layout, Zap, Settings, Activity, ChevronUp, MousePointer2, Bolt, Clock, GitBranch, Heart, Volume2, VolumeX, Search, Database, PlayIcon, Eye, EyeOff } from 'lucide-react-native';
 import ObjectCreatorModal from './modals/ObjectCreatorModal';
 import ObjectInspectorModal from './modals/ObjectInspectorModal';
 import { theme } from '../../../theme';
@@ -693,12 +693,12 @@ export default function ObjectModals({
                 </>
               )}
 
-              {['x', 'y', 'vx', 'vy', 'width', 'height', 'health', 'angle', 'scale', 'value', 'current_count', 'max_count'].filter(p => matchesSearch(p)).length > 0 && (
+              {['x', 'y', 'vx', 'vy', 'width', 'height', 'health', 'angle', 'scale', 'visible', 'value', 'current_count', 'max_count'].filter(p => matchesSearch(p)).length > 0 && (
                 <>
                   <View style={styles.divider} />
                   <Text style={styles.subSectionTitleCompact}>Current Object (this/self)</Text>
                   <View style={styles.pickerRowSmall}>
-                    {['x', 'y', 'vx', 'vy', 'width', 'height', 'health', 'angle', 'scale', 'value', 'current_count', 'max_count'].filter(p => matchesSearch(p)).map(p => (
+                    {['x', 'y', 'vx', 'vy', 'width', 'height', 'health', 'angle', 'scale', 'visible', 'value', 'current_count', 'max_count'].filter(p => matchesSearch(p)).map(p => (
                       <TouchableOpacity key={p} style={styles.pickerChip} onPress={() => {
                         const val = `self.${p}`;
                         if (handlePropertySelect) handlePropertySelect(val);
@@ -818,7 +818,7 @@ export default function ObjectModals({
                           ))}
                         </View>
                         <View style={[styles.pickerRowSmall, { marginTop: 4 }]}>
-                          {['physics.ignoreCollision', 'physics.isStatic', 'visible'].map(p => {
+                          {['physics.ignoreCollision', 'physics.bodyType', 'visible'].map(p => {
                             const label = p.includes('ignoreCollision') ? 'SOLID' : p.split('.')[1]?.toUpperCase() || p.toUpperCase();
                             const val = p.includes('ignoreCollision') ? `!${targetId}.${p}` : `${targetId}.${p}`;
                             return (
@@ -947,6 +947,36 @@ export default function ObjectModals({
                       >
                         <act.icon size={14} color={act.color} />
                         <Text style={[styles.actionPresetText, { color: act.color }]}>{act.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </>
+                )}
+
+              {([
+                { id: 'destroy', label: 'Destroy Object', icon: X, color: theme.colors.error },
+                { id: 'set_visible:true', label: 'Show Object', icon: Eye, color: theme.colors.success },
+                { id: 'set_visible:false', label: 'Hide Object', icon: EyeOff, color: theme.colors.warning },
+              ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).length > 0) && (
+                  <>
+                    <View style={styles.divider} />
+                    <Text style={styles.subSectionTitleCompact}>Object State & Visibility</Text>
+                    {[
+                      { id: 'destroy', label: 'Destroy Object', icon: X, color: theme.colors.error },
+                      { id: 'set_visible:true', label: 'Show Object', icon: Eye, color: theme.colors.success },
+                      { id: 'set_visible:false', label: 'Hide Object', icon: EyeOff, color: theme.colors.warning },
+                    ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
+                      <TouchableOpacity
+                        key={act.id}
+                        style={styles.actionPresetItem}
+                        onPress={() => {
+                          if (handleActionSelect) handleActionSelect(act.id);
+                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
+                          setActionPickerVisible(false);
+                          setSearchQuery('');
+                        }}
+                      >
+                        <act.icon size={14} color={act.color} />
+                        <Text style={styles.actionPresetText}>{act.label}</Text>
                       </TouchableOpacity>
                     ))}
                   </>
@@ -1198,12 +1228,12 @@ export default function ObjectModals({
                 </>
               )}
 
-              {['tap_x', 'tap_y', 'room_width', 'room_height', 'time', 'self.x', 'self.y', 'self.vx', 'self.vy', 'self.rot', 'self.scale'].filter(p => matchesSearch(p)).length > 0 && (
+              {['tap_x', 'tap_y', 'room_width', 'room_height', 'time', 'self.x', 'self.y', 'self.vx', 'self.vy', 'self.rot', 'self.scale', 'self.visible'].filter(p => matchesSearch(p)).length > 0 && (
                 <>
                   <View style={styles.divider} />
                   <Text style={styles.subSectionTitleCompact}>Values & Environment</Text>
                   <View style={styles.pickerRowSmall}>
-                    {['tap_x', 'tap_y', 'room_width', 'room_height', 'time', 'self.x', 'self.y', 'self.vx', 'self.vy', 'self.rot', 'self.scale'].filter(p => matchesSearch(p)).map(p => (
+                    {['tap_x', 'tap_y', 'room_width', 'room_height', 'time', 'self.x', 'self.y', 'self.vx', 'self.vy', 'self.rot', 'self.scale', 'self.visible'].filter(p => matchesSearch(p)).map(p => (
                       <TouchableOpacity key={p} style={[styles.pickerChip, { backgroundColor: '#111' }]} onPress={() => {
                         if (handleActionSelect) handleActionSelect(p);
                         else if ((global as any).handleActionSelect) (global as any).handleActionSelect(p);
