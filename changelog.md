@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.16.1] - 2026-05-10
+### Updated
+- Contributions Page: Data is now fetched dynamically from Supabase database instead of being hardcoded.
+
+
+## [1.16.0] - 2026-05-10
+### Added
+- Contributions Page: A new section in the Launchpad to showcase project contributors and donators.
+
+
 ## [1.15.9] - 2026-05-10
 ### Fixed
 - Stability: Added null checks in `DynamicTextNode` and fixed closure issues in `screenPanGesture` to prevent crashes.

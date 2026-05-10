@@ -9,9 +9,10 @@ import CommunityScreen from '../community/CommunityScreen';
 import AuthModal from '../auth/AuthModal';
 import ProfileScreen from '../profile/ProfileScreen';
 import TutorialsScreen from '../tutorials/TutorialsScreen';
+import ContributionsScreen from '../community/ContributionsScreen';
 
 export default function LaunchpadScreen() {
-  const [activeTab, setActiveTab] = useState<'Projects' | 'Community' | 'Tutorials' | 'Profile'>('Projects');
+  const [activeTab, setActiveTab] = useState<'Projects' | 'Community' | 'Tutorials' | 'Contributions' | 'Profile'>('Projects');
   const [authModalVisible, setAuthModalVisible] = useState(false);
   const [namingModalVisible, setNamingModalVisible] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
@@ -51,6 +52,12 @@ export default function LaunchpadScreen() {
           >
             <Text style={[styles.tabText, activeTab === 'Tutorials' && styles.tabTextActive]}>Tutorials</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'Contributions' && styles.tabActive]}
+            onPress={() => setActiveTab('Contributions')}
+          >
+            <Text style={[styles.tabText, activeTab === 'Contributions' && styles.tabTextActive]}>Contributions</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.tabBarRight}>
@@ -72,6 +79,8 @@ export default function LaunchpadScreen() {
         <CommunityScreen />
       ) : activeTab === 'Tutorials' ? (
         <TutorialsScreen />
+      ) : activeTab === 'Contributions' ? (
+        <ContributionsScreen />
       ) : activeTab === 'Profile' ? (
         <ProfileScreen />
       ) : (
