@@ -4,7 +4,7 @@ import { createAudioPlayer } from 'expo-audio';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { styles } from './GamePlayer.styles';
 import Matter from 'matter-js';
-import { X, RotateCcw, Play as PlayIcon, Pause, ArrowLeft, ArrowRight, ChevronUp, Bolt, Database } from 'lucide-react-native';
+import { X, RotateCcw, Play as PlayIcon, Pause, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, ChevronUp, Bolt, Database } from 'lucide-react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { theme } from '../../../theme';
 import { useProjectStore, GameObject, RoomLayer } from '../../../store/useProjectStore';
@@ -1888,8 +1888,12 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     // Cached once per frame — avoids repeated O(n) Matter.Composite.allBodies() allocations
     let cachedBodies: Matter.Body[] = [];
 
-    const resolveValue = (valStr: string, currentBody: Matter.Body | null, currentObj?: GameObject): number => {
+    const resolveValue = (valStr: string, currentBody: Matter.Body | null, currentObj?: GameObject): any => {
       if (!valStr) return 0;
+
+      const lowerVal = valStr.trim().toLowerCase();
+      if (lowerVal === 'true') return true;
+      if (lowerVal === 'false') return false;
 
       // LogicState awareness: Extract real GameObject if we received a logic state superset
       const actualObj: GameObject | undefined = (currentObj as any)?.obj || currentObj;
@@ -2798,8 +2802,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
     const attachListeners = (body: Matter.Body, obj: GameObject) => {
       obj.logic?.listeners?.forEach(l => {
         // Skip events handled elsewhere to prevent double-firing or handled by specialized loops
-        const skippedEvents = ['on_timer', 'on_tick', 'on_start', 'on_tap', 'when_self_tap', 'builtin_tap', 'on_screen_tap', 'on_collision', 'on_drag'];
-        if (skippedEvents.some(se => l.eventId === se || l.eventId?.startsWith(se + ':'))) return;
+        const skippedEvents = ['on_timer', 'on_tick', 'on_start', 'on_tap', 'when_self_tap', 'builtin_tap', 'on_screen_tap', 'on_collision', 'on_drag', 'when:'];
+        if (skippedEvents.some(se => l.eventId === se || l.eventId?.startsWith(se))) return;
 
         const sub = DeviceEventEmitter.addListener(l.eventId, (data: any) => {
           // If the event has a targetId, only react if it matches this body
@@ -2981,8 +2985,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       });
 
       pObj.logic?.listeners?.forEach((l: any) => {
-        if (l.eventId?.startsWith('on_timer') || l.eventId === 'on_tick' || l.eventId === 'on_start' || l.eventId === 'on_empty' || l.eventId === 'on_full' || l.eventId === 'on_life_lost' || l.eventId === 'on_zero_lives') {
-          const cmd = l.eventId.startsWith('on_timer') ? 'on_timer' : l.eventId;
+        if (l.eventId?.startsWith('on_timer') || l.eventId === 'on_tick' || l.eventId === 'on_start' || l.eventId === 'on_empty' || l.eventId === 'on_full' || l.eventId === 'on_life_lost' || l.eventId === 'on_zero_lives' || l.eventId?.startsWith('when:')) {
+          const cmd = l.eventId.startsWith('on_timer') ? 'on_timer' : (l.eventId.startsWith('when:') ? 'when' : l.eventId);
           const p = l.eventId.split(':');
           let timerMs = 1000;
           if (cmd === 'on_timer' && p.length > 1) {
@@ -2995,6 +2999,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             actionPart: '',
             timerMs,
             lastTrigger: Date.now(),
+            conditionStr: l.eventId.startsWith('when:') ? l.eventId.slice(5).trim() : '',
+            wasTrue: false,
             listenerData: l
           });
         }
@@ -3154,9 +3160,10 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
       // Process Visual Logic Editor listeners
       obj.logic?.listeners?.forEach(l => {
-        if (l.eventId?.startsWith('on_timer') || l.eventId === 'on_tick' || l.eventId === 'on_start' || l.eventId === 'on_empty' || l.eventId === 'on_full' || l.eventId === 'on_life_lost' || l.eventId === 'on_zero_lives') {
+        if (l.eventId?.startsWith('on_timer') || l.eventId === 'on_tick' || l.eventId === 'on_start' || l.eventId === 'on_empty' || l.eventId === 'on_full' || l.eventId === 'on_life_lost' || l.eventId === 'on_zero_lives' || l.eventId?.startsWith('when:')) {
           let cmd = l.eventId;
           if (l.eventId.startsWith('on_timer')) cmd = 'on_timer';
+          else if (l.eventId.startsWith('when:')) cmd = 'when';
           const p = l.eventId.split(':');
           let timerMs = 1000;
           if (cmd === 'on_timer' && p.length > 1) {
@@ -3170,6 +3177,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             timerMs,
             lastRun: performance.now(),
             triggerCount: 0,
+            conditionStr: l.eventId.startsWith('when:') ? l.eventId.slice(5).trim() : '',
+            wasTrue: false,
             listenerData: l
           });
         }
@@ -3221,6 +3230,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             scripts: parsedScripts,
             tickScripts: parsedScripts.filter((s: any) => s && s.cmd === 'on_tick'),
             timerScripts: parsedScripts.filter((s: any) => s && s.cmd === 'on_timer' && s.timerMs > 0),
+            whenScripts: parsedScripts.filter((s: any) => s && s.cmd === 'when'),
             health: instObj.health,
             progress_bar: instObj.progress_bar,
             sprite_repeater: instObj.sprite_repeater
@@ -3273,6 +3283,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         scripts: parsedScripts,
         tickScripts: parsedScripts.filter((s: any) => s && s.cmd === 'on_tick'),
         timerScripts: parsedScripts.filter((s: any) => s && s.cmd === 'on_timer' && s.timerMs > 0),
+        whenScripts: parsedScripts.filter((s: any) => s && s.cmd === 'when'),
         constantVx: obj.logic?.constantVelocityX,
         obj: instObj,
         nameLower: obj.name?.toLowerCase(),
@@ -3902,6 +3913,48 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             script.lastAction = script.actionPart || 'Listener';
           }
         }
+
+        // Stateful edge-triggered variable comparison checks (WHEN...)
+        const whenScripts = info.whenScripts || [];
+        const whenLen = whenScripts.length;
+        if (whenLen > 0) {
+          const evaluateCondition = (cond: string, curBody: Matter.Body | null, curObj: any): boolean => {
+            if (!cond) return false;
+            const match = cond.match(/^(.+?)\s*(>=|<=|==|!=|>|<)\s*(.+)$/);
+            if (!match) {
+              const resolved = resolveValue(cond, curBody, curObj?.obj || curObj);
+              return Boolean(resolved);
+            }
+            const lhsStr = match[1].trim();
+            const op = match[2].trim();
+            const rhsStr = match[3].trim();
+
+            const lhsVal = resolveValue(lhsStr, curBody, curObj?.obj || curObj);
+            const rhsVal = resolveValue(rhsStr, curBody, curObj?.obj || curObj);
+
+            switch (op) {
+              case '>': return Number(lhsVal) > Number(rhsVal);
+              case '<': return Number(lhsVal) < Number(rhsVal);
+              case '==': return lhsVal == rhsVal;
+              case '!=': return lhsVal != rhsVal;
+              case '>=': return Number(lhsVal) >= Number(rhsVal);
+              case '<=': return Number(lhsVal) <= Number(rhsVal);
+              default: return false;
+            }
+          };
+
+          for (let i = 0; i < whenLen; i++) {
+            const script = whenScripts[i];
+            const isTrue = evaluateCondition(script.conditionStr, body, info);
+            if (isTrue && !script.wasTrue) {
+              if (script.listenerData) executeListenerLogic(script.listenerData, body, info, 'WhenTrigger');
+              else if (script.actionPart) executeAction(script.actionPart, body, info, 'WhenTrigger');
+              script.triggerCount = (script.triggerCount || 0) + 1;
+              script.lastAction = script.actionPart || 'Listener';
+            }
+            script.wasTrue = isTrue;
+          }
+        }
       };
 
       // A. Process World Body Logic
@@ -4173,18 +4226,22 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
               // Also add Action Builder listeners
               obj.logic?.listeners?.forEach((l: any) => {
-                if (l.eventId === 'on_tick' || l.eventId?.startsWith('on_timer')) {
+                if (l.eventId === 'on_tick' || l.eventId?.startsWith('on_timer') || l.eventId?.startsWith('when:')) {
                   let cmd = l.eventId;
                   let timerMs = 1000;
                   if (l.eventId.startsWith('on_timer')) {
                     cmd = 'on_timer';
                     timerMs = parseInt(l.eventId.split(':')[1]) || 1000;
+                  } else if (l.eventId.startsWith('when:')) {
+                    cmd = 'when';
                   }
                   scripts.push({
                     cmd,
                     timerMs,
                     lastRun: performance.now(),
                     triggerCount: 0,
+                    conditionStr: l.eventId.startsWith('when:') ? l.eventId.slice(5).trim() : '',
+                    wasTrue: false,
                     listenerData: {
                       ...l,
                       parsedImmediate: l.immediateActions?.map((act: string) => act ? parseScriptAction(act) : null).filter(Boolean),
@@ -4209,6 +4266,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                 scripts: filteredScripts,
                 tickScripts: filteredScripts.filter((s: any) => s && s.cmd === 'on_tick'),
                 timerScripts: filteredScripts.filter((s: any) => s && s.cmd === 'on_timer' && s.timerMs > 0),
+                whenScripts: filteredScripts.filter((s: any) => s && s.cmd === 'when'),
                 health: liveObj.health,
                 sprite_repeater: liveObj.sprite_repeater,
                 progress_bar: liveObj.progress_bar
@@ -4640,28 +4698,53 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                   onRelease={handleJoystickRelease}
                 />
               ) : (
-                <>
-                  {currentRoom?.settings?.showControls?.left !== false && (
+                <View style={{ alignItems: 'center', gap: 5 }}>
+                  {currentRoom?.settings?.showControls?.up === true && (
                     <GameButton
                       style={styles.floatingBtn}
                       pressedStyle={{ opacity: 0.5 }}
-                      onPressIn={() => { inputRight.current = 0; inputLeft.current = 1; }}
-                      onPressOut={() => { inputLeft.current = 0; }}
+                      onPressIn={() => { inputDown.current = 0; inputUp.current = 1; }}
+                      onPressOut={() => { inputUp.current = 0; }}
                     >
-                      <ArrowLeft color="#fff" size={30} />
+                      <ArrowUp color="#fff" size={30} />
                     </GameButton>
                   )}
-                  {currentRoom?.settings?.showControls?.right !== false && (
+                  <View style={{ flexDirection: 'row', gap: 15 }}>
+                    {currentRoom?.settings?.showControls?.left !== false && (
+                      <GameButton
+                        style={styles.floatingBtn}
+                        pressedStyle={{ opacity: 0.5 }}
+                        onPressIn={() => { inputRight.current = 0; inputLeft.current = 1; }}
+                        onPressOut={() => { inputLeft.current = 0; }}
+                      >
+                        <ArrowLeft color="#fff" size={30} />
+                      </GameButton>
+                    )}
+                    {currentRoom?.settings?.showControls?.up === true && currentRoom?.settings?.showControls?.down === true && (
+                       <View style={{ width: 10 }} />
+                    )}
+                    {currentRoom?.settings?.showControls?.right !== false && (
+                      <GameButton
+                        style={styles.floatingBtn}
+                        pressedStyle={{ opacity: 0.5 }}
+                        onPressIn={() => { inputLeft.current = 0; inputRight.current = 1; }}
+                        onPressOut={() => { inputRight.current = 0; }}
+                      >
+                        <ArrowRight color="#fff" size={30} />
+                      </GameButton>
+                    )}
+                  </View>
+                  {currentRoom?.settings?.showControls?.down === true && (
                     <GameButton
                       style={styles.floatingBtn}
                       pressedStyle={{ opacity: 0.5 }}
-                      onPressIn={() => { inputLeft.current = 0; inputRight.current = 1; }}
-                      onPressOut={() => { inputRight.current = 0; }}
+                      onPressIn={() => { inputUp.current = 0; inputDown.current = 1; }}
+                      onPressOut={() => { inputDown.current = 0; }}
                     >
-                      <ArrowRight color="#fff" size={30} />
+                      <ArrowDown color="#fff" size={30} />
                     </GameButton>
                   )}
-                </>
+                </View>
               )}
             </View>
             <View style={styles.actions}>

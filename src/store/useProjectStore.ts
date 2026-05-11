@@ -266,6 +266,8 @@ export interface Room {
     showControls: {
       left: boolean;
       right: boolean;
+      up?: boolean;
+      down?: boolean;
       jump: boolean;
       shoot: boolean;
       joystick?: {
@@ -343,7 +345,7 @@ interface ProjectState {
   removeObject: (id: string) => void;
   removeProject: (id: string) => void;
   closeProject: () => void;
-  publishProject: (description?: string) => Promise<{ success: boolean, error?: string }>;
+  publishProject: (description?: string, previews?: string[]) => Promise<{ success: boolean, error?: string }>;
   fetchRemoteProject: (id: string) => Promise<any>;
   fetchRemoteAsset: (id: string) => Promise<any>;
   setRemoteProject: (project: Project) => void;
@@ -407,6 +409,8 @@ export const useProjectStore = create<ProjectState>()(
               showControls: { 
                 left: true, 
                 right: true, 
+                up: false,
+                down: false,
                 jump: true, 
                 shoot: false,
                 joystick: { enabled: false, dead_zone: 10, stick_range: 50, output_mode: 'vector', persistence: false }
@@ -940,7 +944,7 @@ export const useProjectStore = create<ProjectState>()(
         ...state,
         activeProject: null
       })),
-      publishProject: async (description?: string) => {
+      publishProject: async (description?: string, previews?: string[]) => {
         const sourceProject = get().selectedProject || get().activeProject;
         if (!sourceProject) return { success: false, error: 'No active project selected' };
 
@@ -1043,6 +1047,20 @@ export const useProjectStore = create<ProjectState>()(
             if (obj.combat?.explosionSpriteId) {
               obj.combat.explosionSpriteId = ensureUUID(obj.combat.explosionSpriteId);
             }
+            if (obj.combat?.explosionParticleId) {
+              obj.combat.explosionParticleId = ensureUUID(obj.combat.explosionParticleId);
+            }
+
+            if (obj.emitter?.particleObjectId) {
+              obj.emitter.particleObjectId = ensureUUID(obj.emitter.particleObjectId);
+            }
+
+            if (obj.button?.clickSpriteId) {
+              obj.button.clickSpriteId = ensureUUID(obj.button.clickSpriteId);
+            }
+            if (obj.button?.releaseSpriteId) {
+              obj.button.releaseSpriteId = ensureUUID(obj.button.releaseSpriteId);
+            }
 
             // Sound references
             if (obj.sounds) {
@@ -1106,6 +1124,29 @@ export const useProjectStore = create<ProjectState>()(
                 }))
               }));
             }
+            if (obj.logic?.scripts) {
+              obj.logic.scripts = obj.logic.scripts.map((s: string) => {
+                if (!s) return s;
+                const doSplit = s.split(/ DO | do /);
+                if (doSplit.length > 1) {
+                  const eventPart = doSplit[0];
+                  const actionPart = doSplit[1].trim();
+                  return `${eventPart} DO ${extendedMigrateAction(actionPart)}`;
+                } else {
+                  const p = s.split(':');
+                  const cmd = p[0].trim();
+                  if (cmd === 'on_timer') {
+                    const actionPart = p.slice(2).join(':').trim();
+                    if (!actionPart) return s;
+                    return `on_timer:${p[1]}:${extendedMigrateAction(actionPart)}`;
+                  } else {
+                    const actionPart = p.slice(1).join(':').trim();
+                    if (!actionPart) return s;
+                    return `${cmd}:${extendedMigrateAction(actionPart)}`;
+                  }
+                }
+              });
+            }
           });
 
           // 3. Prepare Payloads
@@ -1121,6 +1162,10 @@ export const useProjectStore = create<ProjectState>()(
                 pixels: iconSprite.pixels
               };
             }
+          }
+
+          if (previews) {
+            (logic as any).previews = previews;
           }
 
           // 4. Upload Logic
@@ -1476,6 +1521,18 @@ export const useProjectStore = create<ProjectState>()(
       name: 'oxion-project-storage',
       version: 1, // Added versioning for safer updates
       storage: createJSONStorage(() => AsyncStorage),
+      migrate: (persistedState: any, version: number) => {
+        // Version 0 to 1 migration: ensure basic structure if missing
+        if (version === 0) {
+          return {
+            ...persistedState,
+            projects: persistedState.projects || [],
+            activeProject: persistedState.activeProject || null,
+            selectedProject: persistedState.selectedProject || null,
+          };
+        }
+        return persistedState;
+      },
       partialize: (state) => {
         const { streamedSprites, ...rest } = state;
         return rest;

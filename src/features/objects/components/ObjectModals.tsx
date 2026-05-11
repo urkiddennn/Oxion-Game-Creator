@@ -318,6 +318,83 @@ export default function ObjectModals({
                   </>
                 )}
 
+              {/* Variables & Comparisons (WHEN...) */}
+              {(((Object.keys(currentProject?.variables?.global || {}).length > 0 || Object.keys(selectedObject?.variables?.local || {}).length > 0)) && 
+                (matchesSearch('when') || matchesSearch('compare') || matchesSearch('boolean') || matchesSearch('variable') || 
+                 Object.keys(currentProject?.variables?.global || {}).some(v => matchesSearch(v)) || 
+                 Object.keys(selectedObject?.variables?.local || {}).some(v => matchesSearch(v)))) && (
+                  <>
+                    <View style={styles.divider} />
+                    <Text style={[styles.subSectionTitleCompact, { color: '#FBBF24', fontSize: 9, letterSpacing: 0.5, marginBottom: 4 }]}>Variables & Comparisons (WHEN...)</Text>
+                    
+                    {/* List Global Variable Comparisons */}
+                    {Object.keys(currentProject?.variables?.global || {}).map(v => (
+                      <View key={`when-global-${v}`} style={{ marginVertical: 4, paddingHorizontal: 4 }}>
+                        <Text style={{ color: theme.colors.textMuted, fontSize: 8, textTransform: 'uppercase', marginBottom: 2 }}>GLOBAL VAR: {v}</Text>
+                        <View style={[styles.pickerRowSmall, { marginTop: 0, flexDirection: 'row', gap: 6, flexWrap: 'wrap' }]}>
+                          <TouchableOpacity
+                            style={[styles.pickerChipSecondary, { paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#1E2228', borderRadius: 2, borderWidth: 1, borderColor: '#333' }]}
+                            onPress={() => {
+                              const val = `when: Global.${v} > 0`;
+                              if (handleEventSelect) handleEventSelect(val);
+                              else if ((global as any).handleEventSelect) (global as any).handleEventSelect(val);
+                              setEventPickerVisible(false);
+                              setSearchQuery('');
+                            }}
+                          >
+                            <Text style={{ fontSize: 9, fontWeight: 'bold', color: theme.colors.primary }}>WHEN Global.{v} &gt; 0</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.pickerChipSecondary, { paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#1E2228', borderRadius: 2, borderWidth: 1, borderColor: '#333' }]}
+                            onPress={() => {
+                              const val = `when: Global.${v} == true`;
+                              if (handleEventSelect) handleEventSelect(val);
+                              else if ((global as any).handleEventSelect) (global as any).handleEventSelect(val);
+                              setEventPickerVisible(false);
+                              setSearchQuery('');
+                            }}
+                          >
+                            <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#FBBF24' }}>WHEN Global.{v} is TRUE</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+
+                    {/* List Local Variable Comparisons */}
+                    {Object.keys(selectedObject?.variables?.local || {}).map(v => (
+                      <View key={`when-local-${v}`} style={{ marginVertical: 4, paddingHorizontal: 4 }}>
+                        <Text style={{ color: theme.colors.textMuted, fontSize: 8, textTransform: 'uppercase', marginBottom: 2 }}>LOCAL VAR: {v}</Text>
+                        <View style={[styles.pickerRowSmall, { marginTop: 0, flexDirection: 'row', gap: 6, flexWrap: 'wrap' }]}>
+                          <TouchableOpacity
+                            style={[styles.pickerChipSecondary, { paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#1E2228', borderRadius: 2, borderWidth: 1, borderColor: '#333' }]}
+                            onPress={() => {
+                              const val = `when: self.${v} > 0`;
+                              if (handleEventSelect) handleEventSelect(val);
+                              else if ((global as any).handleEventSelect) (global as any).handleEventSelect(val);
+                              setEventPickerVisible(false);
+                              setSearchQuery('');
+                            }}
+                          >
+                            <Text style={{ fontSize: 9, fontWeight: 'bold', color: theme.colors.secondary }}>WHEN self.{v} &gt; 0</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.pickerChipSecondary, { paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#1E2228', borderRadius: 2, borderWidth: 1, borderColor: '#333' }]}
+                            onPress={() => {
+                              const val = `when: self.${v} == true`;
+                              if (handleEventSelect) handleEventSelect(val);
+                              else if ((global as any).handleEventSelect) (global as any).handleEventSelect(val);
+                              setEventPickerVisible(false);
+                              setSearchQuery('');
+                            }}
+                          >
+                            <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#FBBF24' }}>WHEN self.{v} is TRUE</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                  </>
+                )}
+
               {/* Built-in Movements */}
               {([
                 { id: 'builtin_jump', label: 'When Player Jumps (Built-in)' },

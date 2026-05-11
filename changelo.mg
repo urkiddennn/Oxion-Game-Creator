@@ -1,5 +1,36 @@
 # Changelog - Oxion Game Creator
 
+## [1.16.1] - 2026-05-11
+### Added
+- **Typed Variables Support (Number, String, Boolean)**:
+  - Upgraded the Variable Editor (`VariableRow`) inside the Object Inspector Modal into an elegant card layout.
+  - Placed the variable name at the top of the card, with the type selector chips, value widgets, and promotion globe icon stacked neatly below.
+  - Implemented a standard double-check deletion gesture: hold/long-press any variable card for 600ms to instantly delete it, completely removing cluttered cluttering action bars.
+  - Supports automatic casting to proper types (`number`, `string`, `boolean`) on change or edit.
+- **Dynamic Event Comparisons (WHEN...)**:
+  - Integrated a new **Variables & Comparisons (WHEN...)** category in the Event Trigger Picker scroll list.
+  - Dynamically populates custom compare variable trigger suggestions (e.g. `when: Global.variable > 0` or `when: self.variable == true`) for both local variables of the selected object and all project-wide global variables.
+  - Engineered an edge-triggered, stateful evaluation loop running inside the `runScriptLogic` ticks that parses, monitors, and executes trigger actions exactly once upon false-to-true condition transitions.
+
+## [1.16.0] - 2026-05-11
+### Added
+- **Play Store Game View Experience**:
+  - Redesigned the community game modal to closely resemble a modern Play Store app view page, featuring large, rounded game icon displays, free-tier labels, play metrics, and likes stats.
+- **Upload Screenshots / Previews support**:
+  - Enhanced the "Publish to Community" process by allowing creators to pick up to 5 game screenshots/preview pictures from their device gallery using an interactive horizontal scrollbar.
+  - Automatically serializes and attaches picked previews to the published game's remote record.
+  - Rendered horizontal screenshot scrollbars inside the Play Store-inspired game detail pages.
+- **Built-in Up & Down Buttons**:
+  - Introduced customizable built-in vertical movement controls (Up & Down buttons) under Room settings, aligning them seamlessly with horizontal, jump, and shoot control styles.
+
+## [1.15.4] - 2026-05-11
+### Fixed
+- **State Migration Bug**:
+  - Resolved "State loaded from storage couldn't be migrated" error by implementing a proper `migrate` function for the Zustand persistence middleware.
+- **Upload Object ID Serialization**:
+  - Fixed an issue where legacy object scripts containing object references (e.g., `create_instance`, `spawn`) were not properly migrated to UUIDs when publishing a project to the community, causing them to fail when loaded from the server.
+  - Added upload migrations for nested object property references including `explosionParticleId`, `particleObjectId`, `clickSpriteId`, and `releaseSpriteId`.
+
 ## [1.15.3] - 2026-05-10
 ### Added
 - **Project Recovery System**:

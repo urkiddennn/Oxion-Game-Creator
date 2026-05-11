@@ -1,8 +1,16 @@
 # Changelog
 
-## [1.16.1] - 2026-05-10
-### Updated
-- Contributions Page: Data is now fetched dynamically from Supabase database instead of being hardcoded.
+## [1.16.1] - 2026-05-11
+### Added
+- **Typed Variables Support (Number, String, Boolean)**:
+  - Upgraded the Variable Editor (`VariableRow`) inside the Object Inspector Modal into an elegant card layout.
+  - Placed the variable name at the top of the card, with the type selector chips, value widgets, and promotion globe icon stacked neatly below.
+  - Implemented a standard double-check deletion gesture: hold/long-press any variable card for 600ms to instantly delete it, completely removing cluttered cluttering action bars.
+  - Supports automatic casting to proper types (`number`, `string`, `boolean`) on change or edit.
+- **Dynamic Event Comparisons (WHEN...)**:
+  - Integrated a new **Variables & Comparisons (WHEN...)** category in the Event Trigger Picker scroll list.
+  - Dynamically populates custom compare variable trigger suggestions (e.g. `when: Global.variable > 0` or `when: self.variable == true`) for both local variables of the selected object and all project-wide global variables.
+  - Engineered an edge-triggered, stateful evaluation loop running inside the `runScriptLogic` ticks that parses, monitors, and executes trigger actions exactly once upon false-to-true condition transitions.
 
 
 ## [1.16.0] - 2026-05-10

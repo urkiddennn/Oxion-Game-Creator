@@ -6,7 +6,8 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { useProjectStore } from '../../store/useProjectStore';
 import AuthModal from '../auth/AuthModal';
 import GamePlayer from '../rooms/components/GamePlayer';
-import { Download, Play, MessageSquare, Heart, Search, UploadCloud, User, Award, Gamepad2 } from 'lucide-react-native';
+import { Download, Play, MessageSquare, Heart, Search, UploadCloud, User, Award, Gamepad2, Plus, Trash2, Star, Eye, ArrowLeft } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
 
 interface CommunityGame {
   id: string;
@@ -23,6 +24,7 @@ interface CommunityGame {
     uri?: string,
     pixels?: string[][]
   };
+  previews?: string[];
 }
 
 export default function CommunityScreen({ navigation }: any) {
@@ -36,6 +38,7 @@ export default function CommunityScreen({ navigation }: any) {
   const { session, user, signOut } = useAuthStore();
   const { projects, selectedProject, fetchRemoteProject, publishProject, selectProject } = useProjectStore();
   const [uploadStage, setUploadStage] = useState<'project' | 'info'>('project');
+  const [pickedPreviews, setPickedPreviews] = useState<string[]>([]);
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
   const [loadingComments, setLoadingComments] = useState(false);
@@ -80,7 +83,8 @@ export default function CommunityScreen({ navigation }: any) {
         comments_count: p.comments_count || 0,
         created_at: p.created_at,
         description: p.description,
-        icon_preview: p.project_data?.iconPreview
+        icon_preview: p.project_data?.iconPreview,
+        previews: p.project_data?.previews || []
       }));
 
       setGames(formattedGames);
@@ -98,6 +102,8 @@ export default function CommunityScreen({ navigation }: any) {
       return;
     }
     setUploadStage('project');
+    setGameDescription('');
+    setPickedPreviews([]);
     setUploadModalVisible(true);
   };
 
@@ -116,7 +122,7 @@ export default function CommunityScreen({ navigation }: any) {
 
       // 2. Increment play count in background
       const { error: rpcError } = await supabase.rpc('increment_play_count', { game_id: gameId });
-      
+
       if (rpcError) {
         // Fallback if RPC doesn't exist
         const { data } = await supabase.from('games').select('play_count').eq('id', gameId).single();
@@ -166,7 +172,8 @@ export default function CommunityScreen({ navigation }: any) {
         comments_count: p.comments_count || 0,
         created_at: p.created_at,
         description: p.description,
-        icon_preview: p.project_data?.iconPreview
+        icon_preview: p.project_data?.iconPreview,
+        previews: p.project_data?.previews || []
       }));
 
       setCreatorGames(formatted);
@@ -245,7 +252,7 @@ export default function CommunityScreen({ navigation }: any) {
 
       setComments(prev => [comment, ...prev]);
       setNewComment('');
-      
+
       // Update comment count in games table
       const { data: gameData } = await supabase.from('games').select('comments_count').eq('id', selectedGame.id).single();
       if (gameData) {
@@ -262,6 +269,21 @@ export default function CommunityScreen({ navigation }: any) {
     }
   }, [selectedGame]);
 
+  const pickPreviewImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [16, 9],
+      quality: 0.5,
+      base64: true,
+    });
+
+    if (!result.canceled && result.assets && result.assets[0].base64) {
+      const base64Uri = `data:image/jpeg;base64,${result.assets[0].base64}`;
+      setPickedPreviews([...pickedPreviews, base64Uri]);
+    }
+  };
+
   const confirmUpload = async () => {
     if (!selectedProject) {
       Alert.alert('Selection Required', 'Please select a project to publish.');
@@ -270,11 +292,12 @@ export default function CommunityScreen({ navigation }: any) {
     setUploading(true);
     setUploadModalVisible(false);
     try {
-      const result = await publishProject(gameDescription);
+      const result = await publishProject(gameDescription, pickedPreviews);
       if (!result.success) throw new Error(result.error);
 
       Alert.alert('Success', 'Game uploaded to community!');
       setGameDescription('');
+      setPickedPreviews([]);
       fetchGames();
     } catch (err: any) {
       Alert.alert('Upload Error', err.message);
@@ -319,7 +342,7 @@ export default function CommunityScreen({ navigation }: any) {
       </View>
       <View style={styles.gameInfo}>
         <Text style={styles.gameTitle} numberOfLines={1}>{item.title}</Text>
-        <TouchableOpacity 
+        <TouchableOpacity
           onPress={() => item.author_id && handleOpenCreatorProfile(item.author_id, item.author_name)}
           activeOpacity={0.7}
           style={{ alignSelf: 'flex-start' }}
@@ -368,20 +391,20 @@ export default function CommunityScreen({ navigation }: any) {
 
       <View style={styles.filterRow}>
         <View style={styles.tabsContainer}>
-          <TouchableOpacity 
-            style={[styles.sortTab, sortTab === 'new' && styles.sortTabActive]} 
+          <TouchableOpacity
+            style={[styles.sortTab, sortTab === 'new' && styles.sortTabActive]}
             onPress={() => setSortTab('new')}
           >
             <Text style={[styles.sortTabText, sortTab === 'new' && styles.sortTabTextActive]}>New</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.sortTab, sortTab === 'played' && styles.sortTabActive]} 
+          <TouchableOpacity
+            style={[styles.sortTab, sortTab === 'played' && styles.sortTabActive]}
             onPress={() => setSortTab('played')}
           >
             <Text style={[styles.sortTabText, sortTab === 'played' && styles.sortTabTextActive]}>Played</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.sortTab, sortTab === 'hearts' && styles.sortTabActive]} 
+          <TouchableOpacity
+            style={[styles.sortTab, sortTab === 'hearts' && styles.sortTabActive]}
             onPress={() => setSortTab('hearts')}
           >
             <Text style={[styles.sortTabText, sortTab === 'hearts' && styles.sortTabTextActive]}>Hearts</Text>
@@ -428,14 +451,14 @@ export default function CommunityScreen({ navigation }: any) {
         <View style={styles.modalOverlay}>
           <View style={styles.uploadModalContent}>
             <Text style={styles.modalTitle}>Publish to Community</Text>
-            
+
             {uploadStage === 'project' ? (
               <>
                 <Text style={styles.modalSubtitle}>Select a project to share:</Text>
                 <ScrollView style={{ maxHeight: 200, marginBottom: 12 }}>
                   {projects.map(p => (
-                    <TouchableOpacity 
-                      key={p.id} 
+                    <TouchableOpacity
+                      key={p.id}
                       style={[styles.projectSelectRow, selectedProject?.id === p.id && styles.projectSelectRowActive]}
                       onPress={() => selectProject(p.name)}
                     >
@@ -451,8 +474,8 @@ export default function CommunityScreen({ navigation }: any) {
                   <TouchableOpacity style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setUploadModalVisible(false)}>
                     <Text style={styles.modalBtnText}>Cancel</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[styles.modalBtn, styles.publishBtn, !selectedProject && { opacity: 0.5 }]} 
+                  <TouchableOpacity
+                    style={[styles.modalBtn, styles.publishBtn, !selectedProject && { opacity: 0.5 }]}
                     onPress={() => selectedProject && setUploadStage('info')}
                     disabled={!selectedProject}
                   >
@@ -472,6 +495,26 @@ export default function CommunityScreen({ navigation }: any) {
                   value={gameDescription}
                   onChangeText={setGameDescription}
                 />
+                <Text style={{ color: theme.colors.text, fontSize: 12, fontWeight: '700', marginBottom: 6 }}>Game Preview Pictures (Max 5):</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 12, minHeight: 90 }}>
+                  {pickedPreviews.map((uri, idx) => (
+                    <View key={idx} style={styles.pickedPreviewContainer}>
+                      <Image source={{ uri }} style={styles.pickedPreviewImage} />
+                      <TouchableOpacity
+                        style={styles.pickedPreviewDelete}
+                        onPress={() => setPickedPreviews(pickedPreviews.filter((_, i) => i !== idx))}
+                      >
+                        <Trash2 size={12} color="#fff" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  {pickedPreviews.length < 5 && (
+                    <TouchableOpacity style={styles.addPreviewBtn} onPress={pickPreviewImage}>
+                      <Plus size={18} color={theme.colors.primary} />
+                      <Text style={{ color: theme.colors.textMuted, fontSize: 8, marginTop: 2 }}>Add Picture</Text>
+                    </TouchableOpacity>
+                  )}
+                </ScrollView>
                 <View style={styles.modalActions}>
                   <TouchableOpacity style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setUploadStage('project')}>
                     <Text style={styles.modalBtnText}>Back</Text>
@@ -486,125 +529,154 @@ export default function CommunityScreen({ navigation }: any) {
         </View>
       </Modal>
 
-      {/* Game Details Full-Screen Native Modal */}
+      {/* Game Details Full-Screen Playstore-style Modal */}
       <Modal visible={!!selectedGame} animationType="slide" transparent={false} onRequestClose={() => setSelectedGame(null)}>
         {selectedGame && (
           <View style={styles.detailsModal}>
-            <View style={styles.detailsHeader}>
+            <View style={styles.playstoreHeader}>
               <TouchableOpacity
-                style={styles.backButton}
+                style={styles.playstoreBackBtn}
                 onPress={() => setSelectedGame(null)}
               >
-                <Text style={styles.backButtonText}>← Back</Text>
+                <ArrowLeft color={theme.colors.text} size={24} />
               </TouchableOpacity>
+              <Text style={styles.playstoreHeaderTitle} numberOfLines={1}>{selectedGame.title}</Text>
             </View>
 
             <ScrollView style={styles.detailsScroll} contentContainerStyle={styles.detailsScrollContent}>
-              <View style={styles.detailsSplitContent}>
-                {/* Left Column: Preview & Play */}
-                <View style={styles.detailsLeftCol}>
-                  <View style={styles.detailsHeroImage}>
-                    <Play color={theme.colors.primary} size={60} fill={theme.colors.primary} opacity={0.1} />
-                  </View>
-
+              {/* Play Store App Info Section */}
+              <View style={styles.playstoreHero}>
+                <View style={styles.playstoreIconContainer}>
+                  {renderIcon(selectedGame.icon_preview, 90)}
+                </View>
+                <View style={styles.playstoreInfo}>
+                  <Text style={styles.playstoreTitle}>{selectedGame.title}</Text>
                   <TouchableOpacity
-                    style={styles.bigPlayButton}
-                    onPress={() => handlePlay(selectedGame.id)}
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <ActivityIndicator color={theme.colors.background} />
-                    ) : (
-                      <>
-                        <Play size={20} color={theme.colors.background} fill={theme.colors.background} />
-                        <Text style={styles.bigPlayButtonText}>PLAY</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-
-                    <TouchableOpacity 
-                      style={styles.detailsStatItem}
-                      onPress={() => handleLike(selectedGame.id)}
-                    >
-                      <Heart size={14} color={'#ff4b4b'} fill={'#ff4b4b'} />
-                      <Text style={styles.detailsStatVal}>{selectedGame.likes}</Text>
-                    </TouchableOpacity>
-                    <View style={styles.detailsStatItem}>
-                      <Play size={14} color={theme.colors.primary} />
-                      <Text style={styles.detailsStatVal}>{selectedGame.play_count}</Text>
-                    </View>
-                  </View>
-
-                {/* Right Column: Info & Social */}
-                <View style={styles.detailsRightCol}>
-                  <View style={styles.detailsTitleRow}>
-                    <Text style={styles.detailsTitle}>{selectedGame.title}</Text>
-                    <View style={styles.versionTag}>
-                      <Text style={styles.versionTagText}>v1.0.0</Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity 
                     onPress={() => selectedGame.author_id && handleOpenCreatorProfile(selectedGame.author_id, selectedGame.author_name)}
                     activeOpacity={0.7}
-                    style={{ alignSelf: 'flex-start' }}
                   >
-                    <Text style={styles.detailsAuthor}>
-                      Created by <Text style={{ color: theme.colors.primary, textDecorationLine: 'underline' }}>@{selectedGame.author_name}</Text>
-                    </Text>
+                    <Text style={styles.playstoreAuthor}>@{selectedGame.author_name}</Text>
                   </TouchableOpacity>
-
-                  <View style={styles.descriptionBox}>
-                    <Text style={styles.descriptionTitle}>Description</Text>
-                    <Text style={styles.descriptionText}>
-                      {selectedGame.description || "No description provided for this game. Get ready for an adventure in the Oxion Engine!"}
-                    </Text>
-                  </View>
-
-                  <View style={styles.commentsSection}>
-                    <View style={styles.commentsHeader}>
-                      <MessageSquare size={14} color={theme.colors.text} />
-                      <Text style={styles.commentsTitle}>Comments ({selectedGame.comments_count})</Text>
-                    </View>
-
-                    <View style={styles.commentInputContainer}>
-                      <TextInput
-                        style={styles.commentInput}
-                        placeholder="Add a comment..."
-                        placeholderTextColor={theme.colors.textMuted}
-                        value={newComment}
-                        onChangeText={setNewComment}
-                        multiline
-                      />
-                      <TouchableOpacity 
-                        style={[styles.postCommentBtn, !newComment.trim() && { opacity: 0.5 }]} 
-                        onPress={handlePostComment}
-                        disabled={!newComment.trim()}
-                      >
-                        <Text style={styles.postCommentBtnText}>Post</Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    {loadingComments ? (
-                      <ActivityIndicator size="small" color={theme.colors.primary} style={{ marginTop: 20 }} />
-                    ) : comments.length > 0 ? (
-                      <View style={styles.commentsList}>
-                        {comments.map((c, i) => (
-                          <View key={i} style={styles.commentItem}>
-                            <View style={styles.commentHeader}>
-                              <Text style={styles.commentAuthor}>@{c.author_name}</Text>
-                              <Text style={styles.commentDate}>{new Date(c.created_at).toLocaleDateString()}</Text>
-                            </View>
-                            <Text style={styles.commentContent}>{c.content}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    ) : (
-                      <View style={styles.commentPlaceholder}>
-                        <Text style={styles.commentPlaceholderText}>No comments yet. Be the first!</Text>
-                      </View>
-                    )}
-                  </View>
+                  <Text style={styles.playstoreCategory}>Oxion Arcade • Free</Text>
                 </View>
+              </View>
+
+              {/* Play Store Stats Section */}
+              <View style={styles.playstoreStatsRow}>
+                <TouchableOpacity
+                  style={styles.playstoreStatItem}
+                  onPress={() => handleLike(selectedGame.id)}
+                  activeOpacity={0.8}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Heart size={16} color="#ff4b4b" fill="#ff4b4b" />
+                    <Text style={styles.playstoreStatVal}>{selectedGame.likes}</Text>
+                  </View>
+                  <Text style={styles.playstoreStatLabel}>Likes</Text>
+                </TouchableOpacity>
+
+                <View style={styles.playstoreStatDivider} />
+
+                <View style={styles.playstoreStatItem}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Play size={16} color={theme.colors.primary} fill={theme.colors.primary} />
+                    <Text style={styles.playstoreStatVal}>{selectedGame.play_count}</Text>
+                  </View>
+                  <Text style={styles.playstoreStatLabel}>Plays</Text>
+                </View>
+
+                <View style={styles.playstoreStatDivider} />
+
+                <View style={styles.playstoreStatItem}>
+                  <Text style={styles.playstoreStatVal}>v1.0.0</Text>
+                  <Text style={styles.playstoreStatLabel}>Version</Text>
+                </View>
+              </View>
+
+              {/* Huge Play/Install Button */}
+              <View style={{ paddingHorizontal: 24, marginVertical: 16 }}>
+                <TouchableOpacity
+                  style={styles.playstoreBigBtn}
+                  onPress={() => handlePlay(selectedGame.id)}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color={theme.colors.background} />
+                  ) : (
+                    <>
+                      <Gamepad2 size={20} color={theme.colors.background} />
+                      <Text style={styles.playstoreBigBtnText}>Play Game</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              {/* Screenshots Carousel */}
+              {selectedGame.previews && selectedGame.previews.length > 0 && (
+                <View style={styles.playstoreSection}>
+                  <Text style={styles.playstoreSectionTitle}>Screenshots</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingHorizontal: 24, paddingBottom: 10 }}>
+                    {selectedGame.previews.map((uri: string, idx: number) => (
+                      <View key={idx} style={styles.playstoreScreenshotWrapper}>
+                        <Image source={{ uri }} style={styles.playstoreScreenshot} resizeMode="cover" />
+                      </View>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
+              {/* Description Box */}
+              <View style={styles.playstoreSection}>
+                <Text style={styles.playstoreSectionTitle}>About this game</Text>
+                <Text style={styles.playstoreDescription}>
+                  {selectedGame.description || "No description provided for this game. Get ready for an adventure in the Oxion Engine!"}
+                </Text>
+              </View>
+
+              {/* Reviews and Comments Section */}
+              <View style={[styles.playstoreSection, { borderBottomWidth: 0 }]}>
+                <View style={styles.commentsHeader}>
+                  <MessageSquare size={16} color={theme.colors.text} />
+                  <Text style={styles.playstoreSectionTitle}>Ratings & Reviews ({selectedGame.comments_count})</Text>
+                </View>
+
+                <View style={styles.commentInputContainer}>
+                  <TextInput
+                    style={styles.commentInput}
+                    placeholder="Add a public review..."
+                    placeholderTextColor={theme.colors.textMuted}
+                    value={newComment}
+                    onChangeText={setNewComment}
+                    multiline
+                  />
+                  <TouchableOpacity
+                    style={[styles.postCommentBtn, !newComment.trim() && { opacity: 0.5 }]}
+                    onPress={handlePostComment}
+                    disabled={!newComment.trim()}
+                  >
+                    <Text style={styles.postCommentBtnText}>Post</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {loadingComments ? (
+                  <ActivityIndicator size="small" color={theme.colors.primary} style={{ marginTop: 20 }} />
+                ) : comments.length > 0 ? (
+                  <View style={styles.commentsList}>
+                    {comments.map((c, i) => (
+                      <View key={i} style={styles.commentItem}>
+                        <View style={styles.commentHeader}>
+                          <Text style={styles.commentAuthor}>@{c.author_name}</Text>
+                          <Text style={styles.commentDate}>{new Date(c.created_at).toLocaleDateString()}</Text>
+                        </View>
+                        <Text style={styles.commentContent}>{c.content}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <View style={styles.commentPlaceholder}>
+                    <Text style={styles.commentPlaceholderText}>No reviews yet. Write the first review!</Text>
+                  </View>
+                )}
               </View>
             </ScrollView>
           </View>
@@ -860,7 +932,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   gameCard: {
-    flex: 1/5,
+    flex: 1 / 5,
     backgroundColor: '#1E2228',
     borderRadius: 8,
     marginBottom: 8,
@@ -1405,4 +1477,181 @@ const styles = StyleSheet.create({
     fontSize: 6,
     fontWeight: '900',
   },
+  pickedPreviewContainer: {
+    width: 120,
+    height: 68,
+    borderRadius: 6,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: '#16191E',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  pickedPreviewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  pickedPreviewDelete: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addPreviewBtn: {
+    width: 120,
+    height: 68,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: theme.colors.border,
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#16191E',
+  },
+  playstoreHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 50,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    backgroundColor: '#16191E',
+  },
+  playstoreBackBtn: {
+    marginRight: 16,
+    padding: 4,
+  },
+  playstoreHeaderTitle: {
+    flex: 1,
+    color: theme.colors.text,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  playstoreHero: {
+    flexDirection: 'row',
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 16,
+    alignItems: 'center',
+  },
+  playstoreIconContainer: {
+    width: 90,
+    height: 90,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: '#16191E',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  playstoreInfo: {
+    flex: 1,
+    marginLeft: 18,
+  },
+  playstoreTitle: {
+    color: theme.colors.text,
+    fontSize: 22,
+    fontWeight: 'bold',
+    letterSpacing: -0.5,
+  },
+  playstoreAuthor: {
+    color: theme.colors.primary,
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  playstoreCategory: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  playstoreStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingVertical: 12,
+    marginHorizontal: 24,
+    backgroundColor: '#16191E',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  playstoreStatItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  playstoreStatVal: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
+  playstoreStatLabel: {
+    color: theme.colors.textMuted,
+    fontSize: 10,
+    marginTop: 2,
+    fontWeight: '600',
+  },
+  playstoreStatDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: theme.colors.border,
+  },
+  playstoreBigBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#00c853', // Play Store Vibrant green!
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 24, // Curved modern pill button
+    gap: 10,
+    elevation: 4,
+    shadowColor: '#00c853',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  playstoreBigBtnText: {
+    color: '#000', // High contrast text on green
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  playstoreSection: {
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  playstoreSectionTitle: {
+    color: theme.colors.text,
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  playstoreScreenshotWrapper: {
+    width: 200,
+    height: 112, // 16:9 ratio
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#1E2228',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  playstoreScreenshot: {
+    width: '100%',
+    height: '100%',
+  },
+  playstoreDescription: {
+    color: theme.colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+  }
 });

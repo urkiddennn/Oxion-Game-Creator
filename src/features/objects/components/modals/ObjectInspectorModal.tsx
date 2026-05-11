@@ -1,5 +1,5 @@
 import React, { JSX, useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Modal, ScrollView, TextInput, Switch, Image, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, ScrollView, TextInput, Switch, Image, StyleSheet, Alert } from 'react-native';
 import { Info, Palette, Bolt, Share2, Settings, X, Plus, Trash2, Heart, Music, Target, Layers, Play, ArrowLeft, ArrowRight, Pause, ChevronUp, Zap, MousePointer2, HelpCircle, Layout, Globe, Activity, ChevronDown, ChevronRight, Database, Cpu, GitBranch, Code, Monitor, ZoomIn, ZoomOut, RotateCcw, FileCode, Image as ImageIcon } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../../../../theme';
@@ -51,42 +51,203 @@ const VariableRow = ({
     setLocalKey(varKey);
   }, [varKey]);
 
+  // Determine active type based on current value type in JS
+  const activeType = typeof value === 'boolean' ? 'boolean' : (typeof value === 'number' ? 'number' : 'string');
+
+  const [localVal, setLocalVal] = useState(String(value));
+
+  useEffect(() => {
+    if (activeType === 'number') {
+      if (parseFloat(localVal) !== value && localVal !== '-' && !localVal.endsWith('.')) {
+        setLocalVal(String(value));
+      }
+    } else {
+      if (localVal !== String(value)) {
+        setLocalVal(String(value));
+      }
+    }
+  }, [value, activeType]);
+
+  const handleTypeChange = (newType: 'number' | 'string' | 'boolean') => {
+    if (newType === activeType) return;
+    let newValue: any;
+    if (newType === 'number') {
+      newValue = parseFloat(localVal) || 0;
+    } else if (newType === 'boolean') {
+      newValue = localVal === 'true' || localVal === '1' || String(localVal).toLowerCase() === 'true';
+    } else {
+      newValue = String(value);
+    }
+    onChangeValue(newValue);
+  };
+
+  const handleValueTextChange = (text: string) => {
+    setLocalVal(text);
+    if (activeType === 'number') {
+      if (text === '' || text === '-' || text.endsWith('.')) {
+        return;
+      }
+      const parsed = parseFloat(text);
+      if (!isNaN(parsed)) {
+        onChangeValue(parsed);
+      }
+    } else {
+      onChangeValue(text);
+    }
+  };
+
+  const handleBlurValue = () => {
+    if (activeType === 'number') {
+      const parsed = parseFloat(localVal);
+      const finalVal = isNaN(parsed) ? 0 : parsed;
+      setLocalVal(String(finalVal));
+      onChangeValue(finalVal);
+    }
+  };
+
+  const handleDeleteWithConfirmation = () => {
+    Alert.alert(
+      "Delete Variable",
+      `Are you sure you want to delete the variable "${varKey}"? This action cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: onDelete }
+      ],
+      { cancelable: true }
+    );
+  };
+
   return (
-    <View style={styles.variableRow}>
-      {isGlobal ? (
-        <Text style={[styles.varName, { opacity: 0.7 }]}>{varKey}</Text>
-      ) : (
-        <TextInput
-          style={styles.varName}
-          value={localKey}
-          onChangeText={setLocalKey}
-          onBlur={() => {
-            if (localKey !== varKey && localKey.trim() !== '') {
-              onRename(varKey, localKey);
-            } else {
-              setLocalKey(varKey);
-            }
-          }}
-        />
-      )}
-      <TextInput
-        style={styles.varValue}
-        value={String(value)}
-        onChangeText={onChangeValue}
-      />
-      <View style={styles.varActions}>
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onLongPress={handleDeleteWithConfirmation}
+      delayLongPress={600}
+      style={{
+        backgroundColor: '#15181E',
+        borderRadius: 6,
+        padding: 8,
+        marginVertical: 4,
+        borderWidth: 1,
+        borderColor: '#262A31',
+        borderLeftWidth: 3,
+        borderLeftColor: isGlobal ? '#FBBF24' : theme.colors.primary,
+        gap: 6
+      }}
+    >
+      {/* Row 1: Variable Name */}
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        {isGlobal ? (
+          <Text style={{ color: '#FBBF24', fontSize: 11, fontWeight: 'bold', flex: 1 }} numberOfLines={1}>
+            {varKey}
+          </Text>
+        ) : (
+          <TextInput
+            style={{
+              flex: 1,
+              color: theme.colors.text,
+              fontSize: 11,
+              fontWeight: 'bold',
+              padding: 0,
+              margin: 0
+            }}
+            value={localKey}
+            onChangeText={setLocalKey}
+            onBlur={() => {
+              if (localKey !== varKey && localKey.trim() !== '') {
+                onRename(varKey, localKey);
+              } else {
+                setLocalKey(varKey);
+              }
+            }}
+            placeholder="variable_name"
+            placeholderTextColor="#555"
+          />
+        )}
+      </View>
+
+      {/* Row 2: Type, Value, and Global Icon */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        {/* Type selector */}
+        <View style={{ flexDirection: 'row', backgroundColor: '#0B0D10', borderRadius: 4, padding: 1, borderWidth: 1, borderColor: '#1F2228', gap: 1 }}>
+          {(['number', 'string', 'boolean'] as const).map(t => {
+            const isActive = activeType === t;
+            let label = 'N';
+            let activeColor = theme.colors.primary;
+            if (t === 'string') { label = 'S'; activeColor = theme.colors.secondary; }
+            if (t === 'boolean') { label = 'B'; activeColor = '#FBBF24'; }
+            return (
+              <TouchableOpacity
+                key={t}
+                onPress={() => handleTypeChange(t)}
+                style={{
+                  width: 22,
+                  height: 20,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  borderRadius: 2,
+                  backgroundColor: isActive ? activeColor : 'transparent',
+                }}
+              >
+                <Text style={{ fontSize: 9, fontWeight: 'bold', color: isActive ? '#000' : theme.colors.textMuted }}>{label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Value field */}
+        <View style={{ flex: 1 }}>
+          {activeType === 'boolean' ? (
+            <TouchableOpacity
+              onPress={() => onChangeValue(!value)}
+              style={{
+                height: 22,
+                backgroundColor: value ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.1)',
+                borderWidth: 1,
+                borderColor: value ? '#10B981' : '#EF4444',
+                borderRadius: 3,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: value ? '#10B981' : '#EF4444', fontSize: 10, fontWeight: 'bold' }}>
+                {value ? 'TRUE' : 'FALSE'}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TextInput
+              style={{
+                height: 22,
+                backgroundColor: '#1C1F26',
+                paddingVertical: 2,
+                paddingHorizontal: 6,
+                borderRadius: 3,
+                color: activeType === 'number' ? theme.colors.primary : theme.colors.secondary,
+                fontSize: 11,
+                borderWidth: 1,
+                borderColor: '#2D323E',
+                fontFamily: activeType === 'number' ? 'monospace' : undefined,
+              }}
+              value={localVal}
+              onChangeText={handleValueTextChange}
+              onBlur={handleBlurValue}
+              keyboardType={activeType === 'number' ? 'numeric' : 'default'}
+              placeholder={activeType === 'number' ? '0' : 'empty'}
+              placeholderTextColor="#555"
+            />
+          )}
+        </View>
+
+        {/* Global/Promote Icon */}
         {!isGlobal && onPromote && (
-          <TouchableOpacity onPress={onPromote}>
-            <Globe size={14} color={theme.colors.secondary} />
+          <TouchableOpacity onPress={onPromote} style={{ padding: 4 }}>
+            <Globe size={13} color={theme.colors.secondary} />
           </TouchableOpacity>
         )}
-        <TouchableOpacity onPress={onDelete}>
-          <Trash2 size={14} color="#EF4444" />
-        </TouchableOpacity>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 };
+
 
 const CollisionPreview = ({ obj, renderSpritePreview, currentProject }: { obj: any, renderSpritePreview: any, currentProject: any }) => {
   const sprite = (currentProject?.sprites || []).find((s: any) => s.id === obj.appearance.spriteId);
@@ -932,6 +1093,7 @@ export default function ObjectInspectorModal({
                     onToggle={() => toggleSection('variables')}
                   >
                     <View style={{ gap: 4 }}>
+                      <Text style={{ color: '#666', fontSize: 8, fontStyle: 'italic', marginBottom: 4 }}>* Hold a card to delete the variable</Text>
                       <Text style={styles.subSectionTitleCompact}>LOCAL VARIABLES</Text>
                       {Object.entries(safeObject.variables.local || {}).map(([key, value], index) => (
                         <VariableRow
@@ -944,8 +1106,8 @@ export default function ObjectInspectorModal({
                             delete newLocal[oldKey];
                             updateField('variables.local', newLocal);
                           }}
-                          onChangeValue={(v: string) => {
-                            const newLocal = { ...safeObject.variables.local, [key]: v };
+                          onChangeValue={(newVal: any) => {
+                            const newLocal = { ...safeObject.variables.local, [key]: newVal };
                             updateField('variables.local', newLocal);
                           }}
                           onPromote={() => useProjectStore.getState().promoteVariableToGlobal(safeObject.id, key)}
@@ -972,8 +1134,8 @@ export default function ObjectInspectorModal({
                           varKey={key}
                           value={value}
                           isGlobal={true}
-                          onChangeValue={(v: string) => {
-                            const newGlobals = { ...currentProject.variables.global, [key]: v };
+                          onChangeValue={(newVal: any) => {
+                            const newGlobals = { ...currentProject.variables.global, [key]: newVal };
                             useProjectStore.getState().updateProject({ variables: { global: newGlobals } });
                           }}
                           onDelete={() => useProjectStore.getState().deleteGlobalVariable(key)}

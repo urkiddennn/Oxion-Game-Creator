@@ -1126,7 +1126,7 @@ export default function RoomsScreen() {
 
               {expandedSections.controls && (
                 <View style={{ gap: 8 }}>
-                  {['left', 'right', 'jump', 'shoot', 'joystick'].map((btn) => {
+                  {['left', 'right', 'up', 'down', 'jump', 'shoot', 'joystick'].map((btn) => {
                     const controls = currentRoom?.settings?.showControls as any;
                     const isShowing = btn === 'joystick' ? controls?.joystick?.enabled : controls?.[btn];
                     return (
@@ -1135,7 +1135,7 @@ export default function RoomsScreen() {
                           style={[styles.toggleRow, isShowing && styles.toggleRowActive]}
                           onPress={() => {
                             if (!currentRoom) return;
-                            const newControls = { ...(currentRoom.settings?.showControls || { left: true, right: true, jump: true, shoot: true, joystick: { enabled: false, dead_zone: 10, stick_range: 50, output_mode: 'vector', persistence: false } }) };
+                            const newControls = { ...(currentRoom.settings?.showControls || { left: true, right: true, up: false, down: false, jump: true, shoot: true, joystick: { enabled: false, dead_zone: 10, stick_range: 50, output_mode: 'vector', persistence: false } }) };
 
                             if (btn === 'joystick') {
                               newControls.joystick = { ...(newControls.joystick || { enabled: false, dead_zone: 10, stick_range: 50, output_mode: 'vector', persistence: false }), enabled: !isShowing };
