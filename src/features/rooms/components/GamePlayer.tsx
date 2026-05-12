@@ -21,6 +21,7 @@ import Animated, {
   withTiming
 } from 'react-native-reanimated';
 import { useWindowDimensions } from 'react-native';
+import { PixelSprite } from '../../../components/PixelSprite';
 
 import base64js from 'base64-js';
 
@@ -402,7 +403,7 @@ const resolveTextWorklet = (text: string, v_tapX: number, v_tapY: number) => {
   resolved = resolved.replace(/\{tap_y\}/g, String(Math.round(v_tapY)));
   resolved = resolved.replace(/\{get_drag_x\}/g, String(Math.round(v_tapX)));
   resolved = resolved.replace(/\{get_drag_y\}/g, String(Math.round(v_tapY)));
-  
+
   return resolved;
 };
 
@@ -413,9 +414,9 @@ const DynamicTextNode = React.memo(({ content, variables, localVariables, lowerM
     const lower = content.toLowerCase();
     if (lower.includes('tap_x') || lower.includes('tap_y') || lower.includes('drag_x') || lower.includes('drag_y')) {
       const nextText = resolveTextWorklet(content, tapX.value, tapY.value);
-      return { 
+      return {
         text: nextText,
-        value: nextText 
+        value: nextText
       } as any;
     }
     return {};
@@ -481,7 +482,7 @@ const PhysicsBodyInner = ({
   instanceId, sprite, spriteId, sv, width, height, name, variables, nonce, localVariables, varKeysMap,
   obj, sprites, override, onTap, globalFrameTimer, cameraX, cameraY, cameraZoom,
   gameWidth, gameHeight, onFetch, isRemote, ySort, ySortAmount, layerIndex, forceNoHUD,
-  liveOverride, tapX, tapY, debug
+  liveOverride, tapX, tapY, debug, tileData
 }: {
   instanceId?: string,
   sprite: any,
@@ -513,7 +514,8 @@ const PhysicsBodyInner = ({
   layerIndex?: number,
   forceNoHUD?: boolean,
   liveOverride?: { health?: any, sprite_repeater?: any, progress_bar?: any },
-  debug?: boolean
+  debug?: boolean,
+  tileData?: any
 }) => {
   const [imgDimensions, setImgDimensions] = useState({ w: 0, h: 0 });
   const [currentDimId, setCurrentDimId] = useState<string | null>(null);
@@ -935,6 +937,77 @@ const PhysicsBodyInner = ({
         height: totalH
       }}>
         {icons}
+      </View>
+    );
+  } else if (obj?.behavior === 'tilemap') {
+    const tileMapData = tileData || {};
+    const gs = currentSprite?.grid?.frameWidth || 32;
+
+    content = (
+      <View style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%' }}>
+        {Object.entries(tileMapData).map(([key, value]) => {
+          const [colStr, rowStr] = key.split(',');
+          const c = parseInt(colStr, 10);
+          const r = parseInt(rowStr, 10);
+          const tileIndex = parseInt(value as string, 10);
+
+          if (!currentSprite?.grid?.enabled) {
+            return (
+              <View
+                key={key}
+                style={{
+                  position: 'absolute',
+                  left: c * gs,
+                  top: r * gs,
+                  width: gs,
+                  height: gs,
+                }}
+              >
+                {bmpUri && <Image source={{ uri: bmpUri }} style={{ width: gs, height: gs }} />}
+              </View>
+            );
+          }
+
+          const fw = currentSprite.grid.frameWidth || gs;
+          const fh = currentSprite.grid.frameHeight || gs;
+          const sheetW = imgDimensions.w || currentSprite.width || 256;
+          const cols = Math.floor(sheetW / fw) || 1;
+
+          const tileRow = Math.floor(tileIndex / cols);
+          const tileCol = tileIndex % cols;
+
+          const leftOffset = -tileCol * gs;
+          const topOffset = -tileRow * gs;
+
+          return (
+            <View
+              key={key}
+              style={{
+                position: 'absolute',
+                left: c * gs,
+                top: r * gs,
+                width: gs,
+                height: gs,
+                overflow: 'hidden',
+              }}
+            >
+              {bmpUri && (
+                <Image
+                  source={{ uri: bmpUri }}
+                  style={{
+                    width: (sheetW / fw) * gs,
+                    height: ((imgDimensions.h || currentSprite.height || 256) / fh) * gs,
+                    position: 'absolute',
+                    left: leftOffset,
+                    top: topOffset,
+                  }}
+                  resizeMode="stretch"
+                  resizeMethod="scale"
+                />
+              )}
+            </View>
+          );
+        })}
       </View>
     );
   } else if (bmpUri && !obj?.text) {
@@ -1927,6 +2000,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             if (prop === 'health' && actualObj.health) return actualObj.health.current;
             if (prop === 'scale') return actualObj.physics?.scale || 1;
             if (prop === 'visible') return actualObj.visible !== false ? 1 : 0;
+            if (prop === 'flipX') return 1;
+            if (prop === 'is_flipped') return 0;
+            if (prop === 'is_overlapping' || prop === 'is_overlapping_another_objects' || prop === 'overlapping') return 0;
           }
         } else if (target === 'tap' || target === 'drag') {
           if (prop === 'x') return variablesRef.current.tap_x || 0;
@@ -1962,6 +2038,21 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             const sv = (targetBody as any).gameInfo?.sv;
             if (sv && sv.visible) return sv.visible.value;
             return (targetBody as any).gameInfo?.obj?.visible !== false ? 1 : 0;
+          }
+          if (prop === 'flipX') {
+            const sv = (targetBody as any).gameInfo?.sv;
+            if (sv && sv.flipX) return sv.flipX.value;
+            return 1;
+          }
+          if (prop === 'is_flipped') {
+            const sv = (targetBody as any).gameInfo?.sv;
+            if (sv && sv.flipX) return sv.flipX.value === -1 ? 1 : 0;
+            return 0;
+          }
+          if (prop === 'is_overlapping' || prop === 'is_overlapping_another_objects' || prop === 'overlapping') {
+            const sv = (targetBody as any).gameInfo?.sv;
+            if (sv && sv.isColliding) return sv.isColliding.value;
+            return 0;
           }
 
           // Sprite Repeater Properties
@@ -2144,7 +2235,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
       // --- Action Targeting (e.g. "player:jump" or "enemy:damage:10") ---
       const knownCommands = [
-        'jump', 'move_left', 'move_right', 'move_towards', 'stop_x', 'set_vx', 'set_vy', 'set_x', 'set_y', 'add_x', 'add_y',
+        'jump', 'move_left', 'move_right', 'move_up', 'move_down', 'move_towards', 'stop_x', 'set_vx', 'set_vy', 'set_x', 'set_y', 'add_x', 'add_y',
         'set_angle', 'add_angle', 'point_towards', 'var_add', 'var_set', 'lvar_add', 'lvar_set',
         'set_value', 'tween_to', 'add_value', 'bind_to_variable', 'set_health', 'add_health',
         'damage', 'heal', 'set_count', 'restart_room', 'go_to_room', 'create_instance',
@@ -2171,7 +2262,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       }
 
       // Clear move_towards tracking if we issue other direct movement commands
-      if (body && ['move_left', 'move_right', 'stop_x', 'set_vx', 'set_vy', 'set_x', 'set_y', 'add_x', 'add_y'].includes(cmd)) {
+      if (body && ['move_left', 'move_right', 'move_up', 'move_down', 'stop_x', 'set_vx', 'set_vy', 'set_x', 'set_y', 'add_x', 'add_y'].includes(cmd)) {
         const info = (body as any).gameInfo;
         if (info) info.moveTowards = undefined;
       }
@@ -2223,6 +2314,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
       if (cmd === 'jump') {
         if (body) {
+          // "Hard Jump": Physically lift the body 2 pixels to clear any floor friction/stuck state
+          Matter.Body.setPosition(body, { x: body.position.x, y: body.position.y - 2 });
           const jmp = obj?.physics?.jumpStrength !== undefined ? obj.physics.jumpStrength : 12;
           Matter.Body.setVelocity(body, { x: body.velocity.x, y: -jmp });
         }
@@ -2330,9 +2423,25 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           setNonce(n => n + 1);
         }
       } else if (cmd === 'move_left') {
-        if (body) Matter.Body.setVelocity(body, { x: -(obj?.physics?.moveSpeed || 5) * 0.8, y: body.velocity.y });
+        if (body) {
+          Matter.Body.setVelocity(body, { x: -(obj?.physics?.moveSpeed || 5) * 0.8, y: body.velocity.y });
+          const info = (body as any).gameInfo;
+          if (info?.sv?.flipX) info.sv.flipX.value = -1;
+        }
       } else if (cmd === 'move_right') {
-        if (body) Matter.Body.setVelocity(body, { x: (obj?.physics?.moveSpeed || 5) * 0.8, y: body.velocity.y });
+        if (body) {
+          Matter.Body.setVelocity(body, { x: (obj?.physics?.moveSpeed || 5) * 0.8, y: body.velocity.y });
+          const info = (body as any).gameInfo;
+          if (info?.sv?.flipX) info.sv.flipX.value = 1;
+        }
+      } else if (cmd === 'move_up') {
+        if (body) {
+          Matter.Body.setVelocity(body, { x: body.velocity.x, y: -(obj?.physics?.moveSpeed || 5) * 0.8 });
+        }
+      } else if (cmd === 'move_down') {
+        if (body) {
+          Matter.Body.setVelocity(body, { x: body.velocity.x, y: (obj?.physics?.moveSpeed || 5) * 0.8 });
+        }
       } else if (cmd === 'stop_x') {
         if (body) Matter.Body.setVelocity(body, { x: 0, y: body.velocity.y });
       } else if (cmd === 'set_vx') {
@@ -2660,7 +2769,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         if (lId) {
           const lower = textVal.toLowerCase();
           const isReactive = ['tap_x', 'tap_y', 'get_drag_x', 'get_drag_y'].some(v => lower.includes(v));
-          
+
           let resolved: string;
           if (isReactive) {
             // Convert bare names to bracketed templates for the worklet to pick up
@@ -3075,11 +3184,11 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
     // Sort instances by layer order
     const layers = currentRoom?.layers || [{ id: 'default', name: 'Layer 1', visible: true, locked: false }];
-    const layerOrderMap = new Map(layers.map((l, i) => [l.id, i]));
+    const layerOrderMap = new Map(layers.map((l: any, i: number) => [l.id, i]));
 
     const sortedInstances = [...(currentRoom?.instances || [])].sort((a, b) => {
-      const orderA = layerOrderMap.get(a.layerId || layers[0].id) ?? 0;
-      const orderB = layerOrderMap.get(b.layerId || layers[0].id) ?? 0;
+      const orderA = (layerOrderMap.get(a.layerId || layers[0].id) ?? 0) as number;
+      const orderB = (layerOrderMap.get(b.layerId || layers[0].id) ?? 0) as number;
       return orderA - orderB;
     });
 
@@ -3090,11 +3199,11 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
     sortedInstances.forEach((inst: any) => {
       if (!inst) return;
-      const originalIndex = instanceToIndexMap.get(inst.id);
-      if (originalIndex === undefined) return;
+      const originalIndex = instanceToIndexMap.get(inst.id) as number;
+      if (originalIndex === undefined || originalIndex === null) return;
       const instLayerId = inst.layerId || (layers[0]?.id || 'default');
-      const layer = layers.find(l => l.id === instLayerId);
-      const layerIndex = layers.findIndex(l => l.id === instLayerId);
+      const layer = layers.find((l: any) => l.id === instLayerId);
+      const layerIndex = layers.findIndex((l: any) => l.id === instLayerId);
       if (layer && !layer.visible) return;
       const obj = objectMap.get(inst.objectId);
       if (!obj) return;
@@ -3186,8 +3295,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
       const physics = obj.physics || {};
       const currentType = physics.bodyType || (physics.isStatic ? 'static' : 'dynamic');
-      const isStatic = (currentType === 'static' || currentType === 'kinematic' || !physics.enabled || obj.behavior === 'emitter') && obj.behavior !== 'player';
-      const isSensor = !physics.enabled || currentType === 'kinematic' || !!physics.ignoreCollision;
+      const isStatic = (currentType === 'static' || currentType === 'kinematic' || !physics.enabled || obj.behavior === 'emitter' || obj.behavior === 'tilemap') && obj.behavior !== 'player';
+      const isSensor = !physics.enabled || currentType === 'kinematic' || !!physics.ignoreCollision || obj.behavior === 'tilemap';
 
       const pObj = objectMap.get(inst.objectId);
       if (!pObj) return;
@@ -3338,7 +3447,8 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         height,
         name: instObj.name,
         layerIndex: layerIndex >= 0 ? layerIndex : 0,
-        isRoomInstance: true
+        isRoomInstance: true,
+        tileData: inst.tileData || {}
       });
 
       attachListeners(body, obj);
@@ -3349,9 +3459,193 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
     Matter.World.add(engine.world, newBodies);
 
+    // Load static physics bodies for tilemap layers
+    const tilemapBodies: Matter.Body[] = [];
+    const GRID_SIZE = currentRoom?.settings?.gridSize ?? 32;
+
+    layers.forEach((layer: any, layerIdx: number) => {
+      if (layer.tileData && (layer.isSolid ?? true)) {
+        const tileData = layer.tileData || {};
+        const visited = new Set<string>();
+
+        // Find painted keys
+        const keys = Object.keys(tileData);
+        if (keys.length === 0) return;
+
+        const cols = keys.map(k => parseInt(k.split(',')[0], 10));
+        const rows = keys.map(k => parseInt(k.split(',')[1], 10));
+        const minCol = Math.min(...cols);
+        const maxCol = Math.max(...cols);
+        const minRow = Math.min(...rows);
+        const maxRow = Math.max(...rows);
+
+        for (let r = minRow; r <= maxRow; r++) {
+          for (let c = minCol; c <= maxCol; c++) {
+            const currentKey = `${c},${r}`;
+            if (tileData[currentKey] !== undefined && !visited.has(currentKey)) {
+              // 1. Find max width for this row
+              let w = 0;
+              while (
+                tileData[`${c + w},${r}`] !== undefined &&
+                !visited.has(`${c + w},${r}`)
+              ) {
+                w++;
+              }
+
+              // 2. See how far down we can extend this row of width w
+              let h = 1;
+              while (true) {
+                const nextRow = r + h;
+                let canExtend = true;
+                for (let dx = 0; dx < w; dx++) {
+                  const checkKey = `${c + dx},${nextRow}`;
+                  if (
+                    tileData[checkKey] === undefined ||
+                    visited.has(checkKey)
+                  ) {
+                    canExtend = false;
+                    break;
+                  }
+                }
+                if (canExtend) {
+                  h++;
+                } else {
+                  break;
+                }
+              }
+
+              // 3. Mark the rectangle as visited
+              for (let dy = 0; dy < h; dy++) {
+                for (let dx = 0; dx < w; dx++) {
+                  visited.add(`${c + dx},${r + dy}`);
+                }
+              }
+
+              // 4. Calculate dimensions and center position
+              const boxWidth = w * GRID_SIZE;
+              const boxHeight = h * GRID_SIZE;
+              const tileX = c * GRID_SIZE + boxWidth / 2;
+              const tileY = r * GRID_SIZE + boxHeight / 2;
+
+              const tileBody = Matter.Bodies.rectangle(tileX, tileY, boxWidth, boxHeight, {
+                isStatic: true,
+                label: `tile_merged_${layer.id}_${c}_${r}_w${w}_h${h}`
+              });
+
+              (tileBody as any).gameInfo = {
+                width: boxWidth,
+                height: boxHeight,
+                nameLower: 'tile',
+                behaviorLower: 'static',
+                spawnTime: roomStartTime,
+                layerIndex: layerIdx
+              };
+
+              tilemapBodies.push(tileBody);
+            }
+          }
+        }
+      }
+    });
+
+    if (tilemapBodies.length > 0) {
+      Matter.World.add(engine.world, tilemapBodies);
+    }
+
+    // Load static physics bodies for object-based tilemap instances
+    const objTilemapBodies: Matter.Body[] = [];
+    (currentRoom?.instances || []).forEach((inst: any) => {
+      const obj = objectMap.get(inst.objectId);
+      if (obj?.behavior === 'tilemap' && obj?.physics?.enabled !== false) {
+        const tileData = inst.tileData || {};
+        const visited = new Set<string>();
+
+        const keys = Object.keys(tileData);
+        if (keys.length === 0) return;
+
+        const cols = keys.map(k => parseInt(k.split(',')[0], 10));
+        const rows = keys.map(k => parseInt(k.split(',')[1], 10));
+        const minCol = Math.min(...cols);
+        const maxCol = Math.max(...cols);
+        const minRow = Math.min(...rows);
+        const maxRow = Math.max(...rows);
+
+        for (let r = minRow; r <= maxRow; r++) {
+          for (let c = minCol; c <= maxCol; c++) {
+            const currentKey = `${c},${r}`;
+            if (tileData[currentKey] !== undefined && !visited.has(currentKey)) {
+              // 1. Find max width for this row
+              let w = 0;
+              while (
+                tileData[`${c + w},${r}`] !== undefined &&
+                !visited.has(`${c + w},${r}`)
+              ) {
+                w++;
+              }
+
+              // 2. See how far down we can extend this row of width w
+              let h = 1;
+              while (true) {
+                const nextRow = r + h;
+                let canExtend = true;
+                for (let dx = 0; dx < w; dx++) {
+                  const checkKey = `${c + dx},${nextRow}`;
+                  if (
+                    tileData[checkKey] === undefined ||
+                    visited.has(checkKey)
+                  ) {
+                    canExtend = false;
+                    break;
+                  }
+                }
+                if (canExtend) {
+                  h++;
+                } else {
+                  break;
+                }
+              }
+
+              // 3. Mark the rectangle as visited
+              for (let dy = 0; dy < h; dy++) {
+                for (let dx = 0; dx < w; dx++) {
+                  visited.add(`${c + dx},${r + dy}`);
+                }
+              }
+
+              // 4. Calculate absolute dimensions and center position
+              const boxWidth = w * GRID_SIZE;
+              const boxHeight = h * GRID_SIZE;
+              const tileX = inst.x + (c * GRID_SIZE) + boxWidth / 2;
+              const tileY = inst.y + (r * GRID_SIZE) + boxHeight / 2;
+
+              const tileBody = Matter.Bodies.rectangle(tileX, tileY, boxWidth, boxHeight, {
+                isStatic: true,
+                label: `tile_merged_obj_${inst.id}_${c}_${r}_w${w}_h${h}`
+              });
+
+              (tileBody as any).gameInfo = {
+                width: boxWidth,
+                height: boxHeight,
+                nameLower: obj.name?.toLowerCase() || 'tilemap',
+                behaviorLower: 'static',
+                spawnTime: roomStartTime,
+                layerIndex: 0
+              };
+
+              objTilemapBodies.push(tileBody);
+            }
+          }
+        }
+      }
+    });
+
+    if (objTilemapBodies.length > 0) {
+      Matter.World.add(engine.world, objTilemapBodies);
+    }
+
     // Optimization: Create instance map for collision lookup
     const instanceMap = new Map<string, any>();
-    currentRoom.instances.forEach(i => instanceMap.set(i.id, i));
+    (currentRoom?.instances || []).forEach((i: any) => instanceMap.set(i.id, i));
 
     // Collision actions are queued here and drained once per game-loop frame
     // (same pattern as inputJump — prevents phantom/duplicate triggers)
@@ -3618,9 +3912,6 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         const c = pb.obj.physics || {};
         const combat = pb.obj.combat || {};
 
-        let nVx = b.velocity.x;
-        let nVy = b.velocity.y;
-
         // Jump Handling (Direct detection + Coyote Time + Jump Buffer)
         const onGround = checkGroundDirect(b);
         if (onGround) (pb as any).lastOnGroundTime = now;
@@ -3630,13 +3921,10 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
         if (inputJump.current === 1 || inputTap.current === 1) {
           if (!pb.jumpedThisPress && canJump) {
-            // "Hard Jump": Physically lift the body 2 pixels to clear any floor friction/stuck state
-            Matter.Body.setPosition(b, { x: b.position.x, y: b.position.y - 2 });
-            // Set the exact jump velocity requested by the object properties
-            const jmp = c.jumpStrength !== undefined ? c.jumpStrength : 12;
-            nVy = -jmp;
-            didJump = true;
             pb.jumpedThisPress = true;
+            didJump = true;
+            executeAction('jump', b, pb.obj, 'InputLoop');
+            DeviceEventEmitter.emit('builtin_jump', { targetId: b.label });
           }
         } else {
           pb.jumpedThisPress = false;
@@ -3644,47 +3932,39 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
         // Horizontal Movement
         if (inputLeft.current === 1) {
-          nVx = -(c.moveSpeed || 5) * 0.8;
-          if (pb.sv && pb.sv.flipX) pb.sv.flipX.value = -1;
+          executeAction('move_left', b, pb.obj, 'InputLoop');
+          DeviceEventEmitter.emit('builtin_left', { targetId: b.label });
         } else if (inputRight.current === 1) {
-          nVx = (c.moveSpeed || 5) * 0.8;
-          if (pb.sv && pb.sv.flipX) pb.sv.flipX.value = 1;
+          executeAction('move_right', b, pb.obj, 'InputLoop');
+          DeviceEventEmitter.emit('builtin_right', { targetId: b.label });
         } else {
-          nVx *= 0.85;
+          // Horizontal Stop / Damping when no horizontal movement keys are pressed
+          Matter.Body.setVelocity(b, { x: b.velocity.x * 0.85, y: b.velocity.y });
         }
 
         // Vertical Movement
         if (inputUp.current === 1) {
-          nVy = -(c.moveSpeed || 5) * 0.8;
-        } else if (inputDown.current === 1) {
-          nVy = (c.moveSpeed || 5) * 0.8;
-        } else if (engine.gravity.y === 0) {
-          nVy *= 0.85;
-        }
-
-        Matter.Body.setVelocity(b, { x: nVx, y: nVy });
-
-        // Emit events AFTER velocity is set so scripts can override it if they wish
-        if (didJump) {
-          DeviceEventEmitter.emit('builtin_jump', { targetId: b.label });
-          if (pb.obj.sounds?.jump) playSoundEffect(pb.obj.sounds.jump);
-        }
-        if (inputLeft.current === 1) {
-          DeviceEventEmitter.emit('builtin_left', { targetId: b.label });
-        } else if (inputRight.current === 1) {
-          DeviceEventEmitter.emit('builtin_right', { targetId: b.label });
-        }
-        if (inputUp.current === 1) {
+          executeAction('move_up', b, pb.obj, 'InputLoop');
           DeviceEventEmitter.emit('builtin_up', { targetId: b.label });
         } else if (inputDown.current === 1) {
+          executeAction('move_down', b, pb.obj, 'InputLoop');
           DeviceEventEmitter.emit('builtin_down', { targetId: b.label });
+        } else if (engine.gravity.y === 0) {
+          // Vertical Stop / Damping only in zero gravity environments
+          Matter.Body.setVelocity(b, { x: b.velocity.x, y: b.velocity.y * 0.85 });
+        }
+
+        // Play jump sound
+        if (didJump && pb.obj.sounds?.jump) {
+          playSoundEffect(pb.obj.sounds.jump);
         }
 
         // Automatic Running Sound (approx once every 300ms)
         if (onGround && Math.abs(b.velocity.x) > 1 && pb.obj.sounds?.run) {
-          if (!pb.lastRunSoundTime || now - pb.lastRunSoundTime > 300) {
+          const pbAny = pb as any;
+          if (!pbAny.lastRunSoundTime || now - pbAny.lastRunSoundTime > 300) {
             playSoundEffect(pb.obj.sounds.run);
-            pb.lastRunSoundTime = now;
+            pbAny.lastRunSoundTime = now;
           }
         }
 
@@ -4429,74 +4709,135 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       list.push({ inst, index });
     });
 
-    return layers.map((layer: RoomLayer) => {
+    return layers.map((layer: RoomLayer, layerIdx: number) => {
       // Skip invisible layers entirely
       if (!layer.visible) return null;
 
       const layerInstances = instancesByLayer.get(layer.id) || [];
+      const tileData = layer.tileData || {};
+      const hasTiles = Object.keys(tileData).length > 0;
+      const tilesetSprite = spriteMap.get(layer.tilesetSpriteId || '');
+      const GRID_SIZE = currentRoom?.settings?.gridSize ?? 32;
 
-      return layerInstances.map(({ inst, index }) => {
-        if (!instanceSharedValues[index]) return null;
+      return (
+        <React.Fragment key={`layer-static-${layer.id}-${restartKey}`}>
+          {/* Render Tiles for this Layer */}
+          {hasTiles && (
+            <View
+              style={{
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                width: roomWidth,
+                height: roomHeight,
+                pointerEvents: 'none',
+                zIndex: layerIdx * 10
+              }}
+            >
+              {Object.entries(tileData).map(([key, value]) => {
+                const [colStr, rowStr] = key.split(',');
+                const col = parseInt(colStr, 10);
+                const row = parseInt(rowStr, 10);
+                const tileIndex = parseInt(value, 10);
 
-        const liveObj = liveObjectsRef.current.get(inst.id) || objectMap.get(inst.objectId);
-        if (!liveObj || liveObj.behavior === 'gui_container') return null;
+                return (
+                  <View
+                    key={key}
+                    style={{
+                      position: 'absolute',
+                      left: col * GRID_SIZE,
+                      top: row * GRID_SIZE,
+                      width: GRID_SIZE,
+                      height: GRID_SIZE,
+                    }}
+                  >
+                    <PixelSprite
+                      sprite={tilesetSprite}
+                      size={GRID_SIZE}
+                      originalSize={true}
+                      frameIndex={tileIndex}
+                    />
+                  </View>
+                );
+              })}
+            </View>
+          )}
 
-        // --- O(1) Sprite Lookup via Map ---
-        const appearance = liveObj.appearance || { type: 'sprite', spriteId: null };
-        const sprite = spriteMap.get(appearance.spriteId || '');
+          {/* Render Instances for this Layer */}
+          {layerInstances.map(({ inst, index }) => {
+            if (!instanceSharedValues[index]) return null;
 
-        const isGrid = !!sprite?.grid?.enabled;
-        const fw = isGrid ? sprite.grid.frameWidth : sprite?.width;
-        const fh = isGrid ? sprite.grid.frameHeight : sprite?.height;
-        const width = isGrid ? fw : (liveObj.width || inst.width || fw || 32);
-        const height = isGrid ? fh : (liveObj.height || inst.height || fh || 32);
+            const liveObj = liveObjectsRef.current.get(inst.id) || objectMap.get(inst.objectId);
+            if (!liveObj || liveObj.behavior === 'gui_container') return null;
 
-        // Targeted variables and nonce culling: static walls/blocks don't receive variables or nonce,
-        // preventing them from re-rendering in React when scores or timers change.
-        const needsVariables = !!(liveObj?.text || liveObj?.behavior === 'sprite_repeater' || liveObj?.behavior === 'progress_bar');
+            // --- O(1) Sprite Lookup via Map ---
+            const appearance = liveObj.appearance || { type: 'sprite', spriteId: null };
+            const sprite = spriteMap.get(appearance.spriteId || '');
 
-        return (
-          <PhysicsBody
-            key={`${inst.id}-${restartKey}`}
-            instanceId={inst.id}
-            sprite={sprite}
-            spriteId={appearance.spriteId || undefined}
-            sprites={allSprites}
-            isRemote={!!(currentProject as any)?.isRemote}
-            onFetch={handleFetchAsset}
-            sv={instanceSharedValues[index]}
-            width={width}
-            height={height}
-            name={liveObj?.name}
-            nonce={needsVariables ? nonce : undefined}
-            onTap={() => {
-              DeviceEventEmitter.emit('builtin_tap', { targetId: inst.id });
-              if (liveObj?.logic?.triggers?.onTap) {
-                DeviceEventEmitter.emit(liveObj.logic.triggers.onTap!);
-              }
-            }}
-            variables={needsVariables ? variables : undefined}
-            localVariables={needsVariables ? localVariables[inst.id] : undefined}
-            varKeysMap={varKeysCache.current.lowerMap}
-            obj={liveObj}
-            override={instanceOverrides[inst.id]}
-            debug={debug}
-            globalFrameTimer={globalFrameTimer}
-            cameraX={cameraX}
-            cameraY={cameraY}
-            cameraZoom={cameraZoom}
-            gameWidth={gameWidth}
-            gameHeight={gameHeight}
-            ySort={currentRoom?.settings?.ySort}
-            ySortAmount={currentRoom?.settings?.ySortAmount}
-            tapX={tapX}
-            tapY={tapY}
-          />
-        );
-      });
+            const isGrid = !!sprite?.grid?.enabled;
+            const fw = isGrid ? sprite.grid.frameWidth : sprite?.width;
+            const fh = isGrid ? sprite.grid.frameHeight : sprite?.height;
+            let width = isGrid ? fw : (liveObj.width || inst.width || fw || 32);
+            let height = isGrid ? fh : (liveObj.height || inst.height || fh || 32);
+
+            // For tilemap instances, compute actual painted extent so visibility culling is correct
+            if (liveObj?.behavior === 'tilemap' && inst.tileData && Object.keys(inst.tileData).length > 0) {
+              const tileGS = currentRoom?.settings?.gridSize ?? 32;
+              const keys = Object.keys(inst.tileData);
+              const maxCol = Math.max(...keys.map(k => parseInt(k.split(',')[0], 10)));
+              const maxRow = Math.max(...keys.map(k => parseInt(k.split(',')[1], 10)));
+              width = (maxCol + 1) * tileGS;
+              height = (maxRow + 1) * tileGS;
+            }
+
+            // Targeted variables and nonce culling: static walls/blocks don't receive variables or nonce,
+            // preventing them from re-rendering in React when scores or timers change.
+            const needsVariables = !!(liveObj?.text || liveObj?.behavior === 'sprite_repeater' || liveObj?.behavior === 'progress_bar');
+
+            return (
+              <PhysicsBody
+                key={`${inst.id}-${restartKey}`}
+                instanceId={inst.id}
+                sprite={sprite}
+                spriteId={appearance.spriteId || undefined}
+                sprites={allSprites}
+                isRemote={!!(currentProject as any)?.isRemote}
+                onFetch={handleFetchAsset}
+                sv={instanceSharedValues[index]}
+                width={width}
+                height={height}
+                name={liveObj?.name}
+                nonce={needsVariables ? nonce : undefined}
+                onTap={() => {
+                  DeviceEventEmitter.emit('builtin_tap', { targetId: inst.id });
+                  if (liveObj?.logic?.triggers?.onTap) {
+                    DeviceEventEmitter.emit(liveObj.logic.triggers.onTap!);
+                  }
+                }}
+                variables={needsVariables ? variables : undefined}
+                localVariables={needsVariables ? localVariables[inst.id] : undefined}
+                varKeysMap={varKeysCache.current.lowerMap}
+                obj={liveObj}
+                override={instanceOverrides[inst.id]}
+                debug={debug}
+                globalFrameTimer={globalFrameTimer}
+                cameraX={cameraX}
+                cameraY={cameraY}
+                cameraZoom={cameraZoom}
+                gameWidth={gameWidth}
+                gameHeight={gameHeight}
+                ySort={currentRoom?.settings?.ySort}
+                ySortAmount={currentRoom?.settings?.ySortAmount}
+                tapX={tapX}
+                tapY={tapY}
+                tileData={liveObj?.behavior === 'tilemap' ? (inst.tileData || {}) : undefined}
+              />
+            );
+          })}
+        </React.Fragment>
+      );
     });
   }, [currentRoom, instanceSharedValues, objectMap, spriteMap, currentProject, handleFetchAsset, nonce, globalFrameTimer, cameraX, cameraY, gameWidth, gameHeight, allSprites]);
-
 
   if (!visible) return null;
 
@@ -4569,6 +4910,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                           tapX={tapX}
                           tapY={tapY}
                           debug={debug}
+                          tileData={d.tileData}
                         />
                       );
                     })}
@@ -4721,7 +5063,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                       </GameButton>
                     )}
                     {currentRoom?.settings?.showControls?.up === true && currentRoom?.settings?.showControls?.down === true && (
-                       <View style={{ width: 10 }} />
+                      <View style={{ width: 10 }} />
                     )}
                     {currentRoom?.settings?.showControls?.right !== false && (
                       <GameButton
@@ -4812,7 +5154,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                   else if (obj.progress_bar) stat = `Bar: ${Math.round(obj.progress_bar.currentValue)}%`;
                   if (!stat) return null;
                   return (
-                    <View key={inst.id} style={{ marginBottom: 8, borderBottomWidth: 1, borderBottomColor: '#333', pb: 4 }}>
+                    <View key={inst.id} style={{ marginBottom: 8, borderBottomWidth: 1, borderBottomColor: '#333', paddingBottom: 4 }}>
                       <Text style={[styles.debugVarName, { color: '#aaa' }]}>{obj.name || 'UI_Element'}</Text>
                       <Text style={[styles.debugVarVal, { color: '#4facfe' }]}>{stat}</Text>
                       {inst._logicState?.scripts?.map((s: any, si: number) => (
@@ -4888,7 +5230,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
                 <Text style={[styles.debugLabel, { marginTop: 20 }]}>LOCAL VARIABLES</Text>
                 {Object.entries(localVariables).map(([instId, vars]) => {
-                  const inst = currentRoom?.instances?.find(i => i.id === instId);
+                  const inst = currentRoom?.instances?.find((i: any) => i.id === instId);
                   const obj = objectMap.get(inst?.objectId || '');
                   return (
                     <View key={instId} style={{ marginBottom: 10 }}>

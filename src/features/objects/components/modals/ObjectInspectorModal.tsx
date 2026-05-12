@@ -631,7 +631,7 @@ export default function ObjectInspectorModal({
     const allKeywords = [
       'self', 'other', 'Global', 'room_width', 'room_height', 'time',
       'clamp(', 'min(', 'max(', 'abs(', 'floor(', 'random(',
-      'jump', 'move_left', 'move_right', 'move_towards', 'move_towards:', 'go_to:', 'go_to:touch', 'stop_x', 'restart_room', 'go_to_room:',
+      'jump', 'move_left', 'move_right', 'move_up', 'move_down', 'move_towards', 'move_towards:', 'go_to:', 'go_to:touch', 'stop_x', 'restart_room', 'go_to_room:',
       'set_value', 'add_value', 'tween_to', 'bind_to_variable', 'on_empty', 'on_full',
       'damage', 'heal', 'set_count', 'on_life_lost', 'on_zero_lives',
       'save_game', 'load_game',

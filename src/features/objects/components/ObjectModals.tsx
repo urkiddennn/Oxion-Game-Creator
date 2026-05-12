@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput } from 'react-native';
-import { X, Image as ImageIcon, Film, ArrowLeft, ArrowRight, Pause, ArrowUp, Layout, Zap, Settings, Activity, ChevronUp, MousePointer2, Bolt, Clock, GitBranch, Heart, Volume2, VolumeX, Search, Database, PlayIcon, Eye, EyeOff, Target, Type, Palette } from 'lucide-react-native';
+import { X, Image as ImageIcon, Film, ArrowLeft, ArrowRight, Pause, ArrowUp, ArrowDown, Layout, Zap, Settings, Activity, ChevronUp, MousePointer2, Bolt, Clock, GitBranch, Heart, Volume2, VolumeX, Search, Database, PlayIcon, Eye, EyeOff, Target, Type, Palette, ArrowLeftRight, Maximize2 } from 'lucide-react-native';
 import ObjectCreatorModal from './modals/ObjectCreatorModal';
 import ObjectInspectorModal from './modals/ObjectInspectorModal';
 import { theme } from '../../../theme';
@@ -238,313 +238,159 @@ export default function ObjectModals({
             <ScrollView showsVerticalScrollIndicator={false}>
               {/* Logic Flow Templates */}
               {([
-                { id: 'if', label: 'IF THEN' },
-                { id: 'if_else', label: 'IF ELSE' },
-                { id: 'wait_until', label: 'WAIT UNTIL' },
+                { id: 'if', label: 'IF THEN', icon: GitBranch },
+                { id: 'if_else', label: 'IF ELSE', icon: GitBranch },
+                { id: 'wait_until', label: 'WAIT UNTIL', icon: Clock },
               ].filter(t => matchesSearch(t.label) || matchesSearch(t.id)).length > 0) && (
-                  <>
-                    <Text style={styles.subSectionTitleCompact}>Logic Flow Templates</Text>
-                    <View style={[styles.pickerRowSmall, { flexWrap: 'wrap', marginBottom: 12, paddingHorizontal: 10 }]}>
-                      {[
-                        { id: 'if', label: 'IF THEN', icon: GitBranch },
-                        { id: 'if_else', label: 'IF ELSE', icon: GitBranch },
-                        { id: 'wait_until', label: 'WAIT UNTIL', icon: Clock },
-                      ].filter(t => matchesSearch(t.label) || matchesSearch(t.id)).map(t => (
-                        <TouchableOpacity key={t.id} style={[styles.pickerChip, { backgroundColor: '#1A1D23', minWidth: 80 }]} onPress={() => {
-                          if (handleEventSelect) handleEventSelect(t.id);
-                          else if ((global as any).handleEventSelect) (global as any).handleEventSelect(t.id);
-                          setEventPickerVisible(false);
-                          setSearchQuery('');
-                        }}>
-                          <t.icon size={12} color={theme.colors.primary} style={{ marginRight: 4 }} />
-                          <Text style={[styles.pickerChipText, { color: theme.colors.primary, fontSize: 9 }]}>{t.label}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </>
-                )}
+                <>
+                  <Text style={styles.subSectionTitleCompact}>Logic Flow Templates</Text>
+                  <View style={[styles.pickerRowSmall, { flexWrap: 'wrap', marginBottom: 12, paddingHorizontal: 10 }]}>
+                    {[
+                      { id: 'if', label: 'IF THEN', icon: GitBranch },
+                      { id: 'if_else', label: 'IF ELSE', icon: GitBranch },
+                      { id: 'wait_until', label: 'WAIT UNTIL', icon: Clock },
+                    ].filter(t => matchesSearch(t.label) || matchesSearch(t.id)).map(t => (
+                      <TouchableOpacity key={t.id} style={[styles.pickerChip, { backgroundColor: '#1A1D23', minWidth: 80 }]} onPress={() => {
+                        if (handleEventSelect) handleEventSelect(t.id);
+                        else if ((global as any).handleEventSelect) (global as any).handleEventSelect(t.id);
+                        setEventPickerVisible(false);
+                        setSearchQuery('');
+                      }}>
+                        <t.icon size={12} color={theme.colors.primary} style={{ marginRight: 4 }} />
+                        <Text style={[styles.pickerChipText, { color: theme.colors.primary, fontSize: 9 }]}>{t.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
 
               {/* Engine Events */}
               {([
-                { id: 'on_tick', label: 'Every Frame (on tick)' },
-                { id: 'on_start', label: 'On Start (once)' },
-                { id: 'on_timer:1000', label: 'Timer (every 1 second)' },
+                { id: 'on_tick', label: 'Every Frame (on tick)', icon: Activity, color: theme.colors.primary },
+                { id: 'on_start', label: 'On Start (once)', icon: Zap, color: theme.colors.secondary },
+                { id: 'on_timer:1000', label: 'Timer (every 1 second)', icon: Clock, color: theme.colors.warning },
               ].filter(e => matchesSearch(e.label) || matchesSearch(e.id)).length > 0) && (
-                  <>
-                    <View style={styles.divider} />
-                    <Text style={styles.subSectionTitleCompact}>Engine Events</Text>
-                    {(matchesSearch('Every Frame') || matchesSearch('on_tick')) && (
-                      <TouchableOpacity
-                        style={styles.actionPresetItem}
-                        onPress={() => {
-                          if (handleEventSelect) handleEventSelect('on_tick');
-                          else if ((global as any).handleEventSelect) (global as any).handleEventSelect('on_tick');
-                          setEventPickerVisible(false);
-                          setSearchQuery('');
-                        }}
-                      >
-                        <Activity size={14} color={theme.colors.primary} />
-                        <Text style={[styles.actionPresetText, { fontWeight: 'bold', color: theme.colors.primary }]}>Every Frame (on tick)</Text>
-                      </TouchableOpacity>
-                    )}
-                    {(matchesSearch('On Start') || matchesSearch('on_start')) && (
-                      <TouchableOpacity
-                        style={styles.actionPresetItem}
-                        onPress={() => {
-                          if (handleEventSelect) handleEventSelect('on_start');
-                          else if ((global as any).handleEventSelect) (global as any).handleEventSelect('on_start');
-                          setEventPickerVisible(false);
-                          setSearchQuery('');
-                        }}
-                      >
-                        <Zap size={14} color={theme.colors.secondary} />
-                        <Text style={[styles.actionPresetText, { fontWeight: 'bold', color: theme.colors.secondary }]}>On Start (once)</Text>
-                      </TouchableOpacity>
-                    )}
-                    {(matchesSearch('Timer') || matchesSearch('on_timer')) && (
-                      <TouchableOpacity
-                        style={styles.actionPresetItem}
-                        onPress={() => {
-                          if (handleEventSelect) handleEventSelect('on_timer:1000');
-                          else if ((global as any).handleEventSelect) (global as any).handleEventSelect('on_timer:1000');
-                          setEventPickerVisible(false);
-                          setSearchQuery('');
-                        }}
-                      >
-                        <Clock size={14} color={theme.colors.warning} />
-                        <Text style={[styles.actionPresetText, { color: theme.colors.warning }]}>Timer (every 1 second)</Text>
-                      </TouchableOpacity>
-                    )}
-                  </>
-                )}
-
-              {/* Variables & Comparisons (WHEN...) */}
-              {(((Object.keys(currentProject?.variables?.global || {}).length > 0 || Object.keys(selectedObject?.variables?.local || {}).length > 0)) && 
-                (matchesSearch('when') || matchesSearch('compare') || matchesSearch('boolean') || matchesSearch('variable') || 
-                 Object.keys(currentProject?.variables?.global || {}).some(v => matchesSearch(v)) || 
-                 Object.keys(selectedObject?.variables?.local || {}).some(v => matchesSearch(v)))) && (
-                  <>
-                    <View style={styles.divider} />
-                    <Text style={[styles.subSectionTitleCompact, { color: '#FBBF24', fontSize: 9, letterSpacing: 0.5, marginBottom: 4 }]}>Variables & Comparisons (WHEN...)</Text>
-                    
-                    {/* List Global Variable Comparisons */}
-                    {Object.keys(currentProject?.variables?.global || {}).map(v => (
-                      <View key={`when-global-${v}`} style={{ marginVertical: 4, paddingHorizontal: 4 }}>
-                        <Text style={{ color: theme.colors.textMuted, fontSize: 8, textTransform: 'uppercase', marginBottom: 2 }}>GLOBAL VAR: {v}</Text>
-                        <View style={[styles.pickerRowSmall, { marginTop: 0, flexDirection: 'row', gap: 6, flexWrap: 'wrap' }]}>
-                          <TouchableOpacity
-                            style={[styles.pickerChipSecondary, { paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#1E2228', borderRadius: 2, borderWidth: 1, borderColor: '#333' }]}
-                            onPress={() => {
-                              const val = `when: Global.${v} > 0`;
-                              if (handleEventSelect) handleEventSelect(val);
-                              else if ((global as any).handleEventSelect) (global as any).handleEventSelect(val);
-                              setEventPickerVisible(false);
-                              setSearchQuery('');
-                            }}
-                          >
-                            <Text style={{ fontSize: 9, fontWeight: 'bold', color: theme.colors.primary }}>WHEN Global.{v} &gt; 0</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[styles.pickerChipSecondary, { paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#1E2228', borderRadius: 2, borderWidth: 1, borderColor: '#333' }]}
-                            onPress={() => {
-                              const val = `when: Global.${v} == true`;
-                              if (handleEventSelect) handleEventSelect(val);
-                              else if ((global as any).handleEventSelect) (global as any).handleEventSelect(val);
-                              setEventPickerVisible(false);
-                              setSearchQuery('');
-                            }}
-                          >
-                            <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#FBBF24' }}>WHEN Global.{v} is TRUE</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    ))}
-
-                    {/* List Local Variable Comparisons */}
-                    {Object.keys(selectedObject?.variables?.local || {}).map(v => (
-                      <View key={`when-local-${v}`} style={{ marginVertical: 4, paddingHorizontal: 4 }}>
-                        <Text style={{ color: theme.colors.textMuted, fontSize: 8, textTransform: 'uppercase', marginBottom: 2 }}>LOCAL VAR: {v}</Text>
-                        <View style={[styles.pickerRowSmall, { marginTop: 0, flexDirection: 'row', gap: 6, flexWrap: 'wrap' }]}>
-                          <TouchableOpacity
-                            style={[styles.pickerChipSecondary, { paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#1E2228', borderRadius: 2, borderWidth: 1, borderColor: '#333' }]}
-                            onPress={() => {
-                              const val = `when: self.${v} > 0`;
-                              if (handleEventSelect) handleEventSelect(val);
-                              else if ((global as any).handleEventSelect) (global as any).handleEventSelect(val);
-                              setEventPickerVisible(false);
-                              setSearchQuery('');
-                            }}
-                          >
-                            <Text style={{ fontSize: 9, fontWeight: 'bold', color: theme.colors.secondary }}>WHEN self.{v} &gt; 0</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[styles.pickerChipSecondary, { paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#1E2228', borderRadius: 2, borderWidth: 1, borderColor: '#333' }]}
-                            onPress={() => {
-                              const val = `when: self.${v} == true`;
-                              if (handleEventSelect) handleEventSelect(val);
-                              else if ((global as any).handleEventSelect) (global as any).handleEventSelect(val);
-                              setEventPickerVisible(false);
-                              setSearchQuery('');
-                            }}
-                          >
-                            <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#FBBF24' }}>WHEN self.{v} is TRUE</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    ))}
-                  </>
-                )}
-
-              {/* Built-in Movements */}
-              {([
-                { id: 'builtin_jump', label: 'When Player Jumps (Built-in)' },
-                { id: 'on_jump_press', label: 'On Jump Button (Global)' },
-                { id: 'builtin_left', label: 'When Player Moves Left' },
-                { id: 'builtin_right', label: 'When Player Moves Right' },
-                { id: 'builtin_tap', label: 'When Screen Tapped' },
-                { id: 'on_screen_tap', label: 'On Screen Tap (Global)' },
-                { id: 'on_release', label: 'On Object Release' },
-                { id: 'wait_until:', label: 'Wait Until (Condition)' },
-              ].filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).length > 0) && (
-                  <>
-                    <View style={styles.divider} />
-                    <Text style={styles.subSectionTitleCompact}>Built-in Movements</Text>
-                    {[
-                      { id: 'builtin_jump', label: 'When Player Jumps (Built-in)' },
-                      { id: 'on_jump_press', label: 'On Jump Button (Global)' },
-                      { id: 'builtin_left', label: 'When Player Moves Left' },
-                      { id: 'builtin_right', label: 'When Player Moves Right' },
-                      { id: 'when_self_tap', label: 'When THIS Object Tapped' },
-                      { id: 'builtin_tap', label: 'When Screen Tapped' },
-                      { id: 'on_screen_tap', label: 'On Screen Tap (Global)' },
-                      { id: 'on_release', label: 'On Object Release' },
-                      { id: 'wait_until:', label: 'Wait Until (Condition)' },
-                    ].filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).map(ev => (
-                      <TouchableOpacity
-                        key={ev.id}
-                        style={styles.actionPresetItem}
-                        onPress={() => {
-                          if (handleEventSelect) handleEventSelect(ev.id);
-                          else if ((global as any).handleEventSelect) (global as any).handleEventSelect(ev.id);
-                          setEventPickerVisible(false);
-                          setSearchQuery('');
-                        }}
-                      >
-                        {ev.id === 'builtin_jump' && <ChevronUp size={14} color={theme.colors.primary} />}
-                        {ev.id === 'builtin_left' && <ArrowLeft size={14} color={theme.colors.primary} />}
-                        {ev.id === 'builtin_right' && <ArrowRight size={14} color={theme.colors.primary} />}
-                        {ev.id === 'builtin_tap' && <MousePointer2 size={14} color={theme.colors.primary} />}
-                        {ev.id === 'when_self_tap' && <MousePointer2 size={14} color={theme.colors.success} />}
-                        {ev.id === 'on_screen_tap' && <MousePointer2 size={14} color={theme.colors.secondary} />}
-                        {ev.id === 'on_release' && <Pause size={14} color={theme.colors.error} />}
-                        <Text style={styles.actionPresetText}>{ev.label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </>
-                )}
-
-              {/* Progress Bar & Stats */}
-              {([
-                { id: 'on_empty', label: 'On Empty (0%)' },
-                { id: 'on_full', label: 'On Full (100%)' },
-                { id: 'on_life_lost', label: 'On Life Lost' },
-                { id: 'on_zero_lives', label: 'On Zero Lives' },
-              ].filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).length > 0) && (
-                  <>
-                    <View style={styles.divider} />
-                    <Text style={styles.subSectionTitleCompact}>Progress Bar & Stats</Text>
-                    {[
-                      { id: 'on_empty', label: 'On Empty (0%)', icon: Activity, color: theme.colors.error },
-                      { id: 'on_full', label: 'On Full (100%)', icon: Activity, color: theme.colors.primary },
-                      { id: 'on_life_lost', label: 'On Life Lost', icon: Heart, color: theme.colors.error },
-                      { id: 'on_zero_lives', label: 'On Zero Lives', icon: Heart, color: theme.colors.error },
-                    ].filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).map(ev => (
-                      <TouchableOpacity
-                        key={ev.id}
-                        style={styles.actionPresetItem}
-                        onPress={() => {
-                          if (handleEventSelect) handleEventSelect(ev.id);
-                          else if ((global as any).handleEventSelect) (global as any).handleEventSelect(ev.id);
-                          setEventPickerVisible(false);
-                          setSearchQuery('');
-                        }}
-                      >
-                        <ev.icon size={14} color={ev.color} />
-                        <Text style={[styles.actionPresetText, { color: ev.color }]}>{ev.label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </>
-                )}
-
-              {/* Game Audio */}
-              {([
-                { id: 'on_start_sound', label: 'When ANY Sound Starts' },
-                { id: 'on_stop_sound', label: 'When ANY Sound Stops' },
-              ].filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).length > 0 || (currentProject?.sounds || []).filter((snd: any) => matchesSearch(snd.name)).length > 0) && (
-                  <>
-                    <View style={styles.divider} />
-                    <Text style={styles.subSectionTitleCompact}>Game Audio</Text>
-                    {[
-                      { id: 'on_start_sound', label: 'When ANY Sound Starts', icon: Volume2, color: theme.colors.primary },
-                      { id: 'on_stop_sound', label: 'When ANY Sound Stops', icon: VolumeX, color: theme.colors.error },
-                    ].filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).map(ev => (
-                      <TouchableOpacity
-                        key={ev.id}
-                        style={styles.actionPresetItem}
-                        onPress={() => {
-                          if (handleEventSelect) handleEventSelect(ev.id);
-                          else if ((global as any).handleEventSelect) (global as any).handleEventSelect(ev.id);
-                          setEventPickerVisible(false);
-                          setSearchQuery('');
-                        }}
-                      >
-                        <ev.icon size={14} color={ev.color} />
-                        <Text style={[styles.actionPresetText, { color: ev.color }]}>{ev.label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                    {(currentProject?.sounds || []).filter((snd: any) => matchesSearch(snd.name)).length > 0 && (
-                      <>
-                        <Text style={[styles.subSectionTitleCompact, { marginTop: 12, marginBottom: 8, fontSize: 11, opacity: 0.8 }]}>When specific Sound starts:</Text>
-                        <View style={styles.pickerRowSmall}>
-                          {(currentProject?.sounds || []).filter((snd: any) => matchesSearch(snd.name)).map((snd: any) => (
-                            <TouchableOpacity
-                              key={snd.id}
-                              style={styles.pickerChipSecondary}
-                              onPress={() => {
-                                if (handleEventSelect) handleEventSelect(`on_start_sound:${snd.name}`);
-                                else if ((global as any).handleEventSelect) (global as any).handleEventSelect(`on_start_sound:${snd.name}`);
-                                setEventPickerVisible(false);
-                                setSearchQuery('');
-                              }}
-                            >
-                              <Text style={styles.pickerChipTextSmall}>{snd.name?.toUpperCase()}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      </>
-                    )}
-                  </>
-                )}
-
-              {/* Collisions */}
-              {(matchesSearch('collision') || matchesSearch('hit') || (currentProject?.objects || []).filter((obj: any) => matchesSearch(obj.name)).length > 0) && (
                 <>
                   <View style={styles.divider} />
-                  <Text style={styles.subSectionTitleCompact}>Collisions & Interactions</Text>
-                  {matchesSearch('collision') && (
+                  <Text style={styles.subSectionTitleCompact}>Engine Events</Text>
+                  {[
+                    { id: 'on_tick', label: 'Every Frame (on tick)', icon: Activity, color: theme.colors.primary },
+                    { id: 'on_start', label: 'On Start (once)', icon: Zap, color: theme.colors.secondary },
+                    { id: 'on_timer:1000', label: 'Timer (every 1 second)', icon: Clock, color: theme.colors.warning },
+                  ].filter(e => matchesSearch(e.label) || matchesSearch(e.id)).map(ev => (
                     <TouchableOpacity
+                      key={ev.id}
                       style={styles.actionPresetItem}
                       onPress={() => {
-                        if (handleEventSelect) handleEventSelect('on_collision');
-                        else if ((global as any).handleEventSelect) (global as any).handleEventSelect('on_collision');
+                        if (handleEventSelect) handleEventSelect(ev.id);
+                        else if ((global as any).handleEventSelect) (global as any).handleEventSelect(ev.id);
                         setEventPickerVisible(false);
                         setSearchQuery('');
                       }}
                     >
-                      <Bolt size={14} color="#FFAC00" />
-                      <Text style={styles.actionPresetText}>On Any Collision</Text>
+                      <ev.icon size={14} color={ev.color} />
+                      <Text style={[styles.actionPresetText, { color: ev.color, fontWeight: 'bold' }]}>{ev.label}</Text>
                     </TouchableOpacity>
-                  )}
+                  ))}
+                </>
+              )}
+
+              {/* Player & Control Input */}
+              {([
+                { id: 'builtin_jump', label: 'When Player Jumps (Built-in)', icon: ChevronUp, color: theme.colors.primary },
+                { id: 'on_jump_press', label: 'On Jump Button (Global)', icon: ChevronUp, color: theme.colors.primary },
+                { id: 'builtin_left', label: 'When Player Moves Left', icon: ArrowLeft, color: theme.colors.secondary },
+                { id: 'builtin_right', label: 'When Player Moves Right', icon: ArrowRight, color: theme.colors.secondary },
+                { id: 'when_self_tap', label: 'When THIS Object Tapped', icon: MousePointer2, color: theme.colors.success },
+                { id: 'builtin_tap', label: 'When Screen Tapped', icon: MousePointer2, color: theme.colors.primary },
+                { id: 'on_screen_tap', label: 'On Screen Tap (Global)', icon: MousePointer2, color: theme.colors.secondary },
+                { id: 'on_release', label: 'On Object Release', icon: Pause, color: theme.colors.error },
+                { id: 'wait_until:', label: 'Wait Until (Condition)', icon: Clock, color: theme.colors.warning },
+              ].filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).length > 0) && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Player & Control Input</Text>
+                  {[
+                    { id: 'builtin_jump', label: 'When Player Jumps (Built-in)', icon: ChevronUp, color: theme.colors.primary },
+                    { id: 'on_jump_press', label: 'On Jump Button (Global)', icon: ChevronUp, color: theme.colors.primary },
+                    { id: 'builtin_left', label: 'When Player Moves Left', icon: ArrowLeft, color: theme.colors.secondary },
+                    { id: 'builtin_right', label: 'When Player Moves Right', icon: ArrowRight, color: theme.colors.secondary },
+                    { id: 'when_self_tap', label: 'When THIS Object Tapped', icon: MousePointer2, color: theme.colors.success },
+                    { id: 'builtin_tap', label: 'When Screen Tapped', icon: MousePointer2, color: theme.colors.primary },
+                    { id: 'on_screen_tap', label: 'On Screen Tap (Global)', icon: MousePointer2, color: theme.colors.secondary },
+                    { id: 'on_release', label: 'On Object Release', icon: Pause, color: theme.colors.error },
+                    { id: 'wait_until:', label: 'Wait Until (Condition)', icon: Clock, color: theme.colors.warning },
+                  ].filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).map(ev => (
+                    <TouchableOpacity
+                      key={ev.id}
+                      style={styles.actionPresetItem}
+                      onPress={() => {
+                        if (handleEventSelect) handleEventSelect(ev.id);
+                        else if ((global as any).handleEventSelect) (global as any).handleEventSelect(ev.id);
+                        setEventPickerVisible(false);
+                        setSearchQuery('');
+                      }}
+                    >
+                      <ev.icon size={14} color={ev.color} />
+                      <Text style={styles.actionPresetText}>{ev.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </>
+              )}
+
+              {/* Appearance & State */}
+              {([
+                { id: 'when: self.is_flipped == true', label: 'Is Flipped (Facing Left)', icon: ArrowLeftRight, color: theme.colors.warning },
+                { id: 'when: self.visible == true', label: 'Is Visible', icon: Eye, color: theme.colors.success },
+              ].filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).length > 0) && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Appearance & State</Text>
+                  {[
+                    { id: 'when: self.is_flipped == true', label: 'Is Flipped (Facing Left)', icon: ArrowLeftRight, color: theme.colors.warning },
+                    { id: 'when: self.visible == true', label: 'Is Visible', icon: Eye, color: theme.colors.success },
+                  ].filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).map(ev => (
+                    <TouchableOpacity
+                      key={ev.id}
+                      style={styles.actionPresetItem}
+                      onPress={() => {
+                        if (handleEventSelect) handleEventSelect(ev.id);
+                        else if ((global as any).handleEventSelect) (global as any).handleEventSelect(ev.id);
+                        setEventPickerVisible(false);
+                        setSearchQuery('');
+                      }}
+                    >
+                      <ev.icon size={14} color={ev.color} />
+                      <Text style={styles.actionPresetText}>{ev.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </>
+              )}
+
+              {/* Collisions & Interactions */}
+              {(matchesSearch('collision') || matchesSearch('hit') || matchesSearch('overlapping') || (currentProject?.objects || []).filter((obj: any) => matchesSearch(obj.name)).length > 0) && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Collisions & Interactions</Text>
+                  {[
+                    { id: 'on_collision', label: 'On Any Collision', icon: Bolt, color: '#FFAC00' },
+                    { id: 'when: self.is_overlapping == true', label: 'Is Overlapping another object', icon: Zap, color: theme.colors.secondary },
+                  ].filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).map(ev => (
+                    <TouchableOpacity
+                      key={ev.id}
+                      style={styles.actionPresetItem}
+                      onPress={() => {
+                        if (handleEventSelect) handleEventSelect(ev.id);
+                        else if ((global as any).handleEventSelect) (global as any).handleEventSelect(ev.id);
+                        setEventPickerVisible(false);
+                        setSearchQuery('');
+                      }}
+                    >
+                      <ev.icon size={14} color={ev.color} />
+                      <Text style={styles.actionPresetText}>{ev.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+
                   {(currentProject?.objects || []).filter((obj: any) => matchesSearch(obj.name)).length > 0 && (
                     <>
                       <Text style={[styles.subSectionTitleCompact, { marginTop: 12, marginBottom: 8, fontSize: 11, opacity: 0.8 }]}>When hitting specific Object:</Text>
@@ -572,7 +418,200 @@ export default function ObjectModals({
                 </>
               )}
 
-              {/* Raycast Trigger Events */}
+              {/* Size & Position */}
+              {([
+                { id: 'when: self.x > 100', label: 'Compare X Coordinate', icon: Target, color: theme.colors.primary },
+                { id: 'when: self.y > 100', label: 'Compare Y Coordinate', icon: Target, color: theme.colors.primary },
+                { id: 'when: self.width > 32', label: 'Compare Width', icon: Maximize2, color: theme.colors.success },
+                { id: 'when: self.height > 32', label: 'Compare Height', icon: Maximize2, color: theme.colors.success },
+              ].filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).length > 0) && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Size & Position</Text>
+                  {[
+                    { id: 'when: self.x > 100', label: 'Compare X Coordinate', icon: Target, color: theme.colors.primary },
+                    { id: 'when: self.y > 100', label: 'Compare Y Coordinate', icon: Target, color: theme.colors.primary },
+                    { id: 'when: self.width > 32', label: 'Compare Width', icon: Maximize2, color: theme.colors.success },
+                    { id: 'when: self.height > 32', label: 'Compare Height', icon: Maximize2, color: theme.colors.success },
+                  ].filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).map(ev => (
+                    <TouchableOpacity
+                      key={ev.id}
+                      style={styles.actionPresetItem}
+                      onPress={() => {
+                        if (handleEventSelect) handleEventSelect(ev.id);
+                        else if ((global as any).handleEventSelect) (global as any).handleEventSelect(ev.id);
+                        setEventPickerVisible(false);
+                        setSearchQuery('');
+                      }}
+                    >
+                      <ev.icon size={14} color={ev.color} />
+                      <Text style={styles.actionPresetText}>{ev.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </>
+              )}
+
+              {/* Variables & Comparisons (WHEN...) */}
+              {(((Object.keys(currentProject?.variables?.global || {}).length > 0 || Object.keys(selectedObject?.variables?.local || {}).length > 0)) && 
+                (matchesSearch('when') || matchesSearch('compare') || matchesSearch('boolean') || matchesSearch('variable') || 
+                 Object.keys(currentProject?.variables?.global || {}).some(v => matchesSearch(v)) || 
+                 Object.keys(selectedObject?.variables?.local || {}).some(v => matchesSearch(v)))) && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={[styles.subSectionTitleCompact, { color: '#FBBF24', fontSize: 9, letterSpacing: 0.5, marginBottom: 4 }]}>Variables & Comparisons (WHEN...)</Text>
+                  
+                  {/* List Global Variable Comparisons */}
+                  {Object.keys(currentProject?.variables?.global || {}).map(v => (
+                    <View key={`when-global-${v}`} style={{ marginVertical: 4, paddingHorizontal: 4 }}>
+                      <Text style={{ color: theme.colors.textMuted, fontSize: 8, textTransform: 'uppercase', marginBottom: 2 }}>GLOBAL VAR: {v}</Text>
+                      <View style={[styles.pickerRowSmall, { marginTop: 0, flexDirection: 'row', gap: 6, flexWrap: 'wrap' }]}>
+                        <TouchableOpacity
+                          style={[styles.pickerChipSecondary, { paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#1E2228', borderRadius: 2, borderWidth: 1, borderColor: '#333' }]}
+                          onPress={() => {
+                            const val = `when: Global.${v} > 0`;
+                            if (handleEventSelect) handleEventSelect(val);
+                            else if ((global as any).handleEventSelect) (global as any).handleEventSelect(val);
+                            setEventPickerVisible(false);
+                            setSearchQuery('');
+                          }}
+                        >
+                          <Text style={{ fontSize: 9, fontWeight: 'bold', color: theme.colors.primary }}>WHEN Global.{v} &gt; 0</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.pickerChipSecondary, { paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#1E2228', borderRadius: 2, borderWidth: 1, borderColor: '#333' }]}
+                          onPress={() => {
+                            const val = `when: Global.${v} == true`;
+                            if (handleEventSelect) handleEventSelect(val);
+                            else if ((global as any).handleEventSelect) (global as any).handleEventSelect(val);
+                            setEventPickerVisible(false);
+                            setSearchQuery('');
+                          }}
+                        >
+                          <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#FBBF24' }}>WHEN Global.{v} is TRUE</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
+
+                  {/* List Local Variable Comparisons */}
+                  {Object.keys(selectedObject?.variables?.local || {}).map(v => (
+                    <View key={`when-local-${v}`} style={{ marginVertical: 4, paddingHorizontal: 4 }}>
+                      <Text style={{ color: theme.colors.textMuted, fontSize: 8, textTransform: 'uppercase', marginBottom: 2 }}>LOCAL VAR: {v}</Text>
+                      <View style={[styles.pickerRowSmall, { marginTop: 0, flexDirection: 'row', gap: 6, flexWrap: 'wrap' }]}>
+                        <TouchableOpacity
+                          style={[styles.pickerChipSecondary, { paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#1E2228', borderRadius: 2, borderWidth: 1, borderColor: '#333' }]}
+                          onPress={() => {
+                            const val = `when: self.${v} > 0`;
+                            if (handleEventSelect) handleEventSelect(val);
+                            else if ((global as any).handleEventSelect) (global as any).handleEventSelect(val);
+                            setEventPickerVisible(false);
+                            setSearchQuery('');
+                          }}
+                        >
+                          <Text style={{ fontSize: 9, fontWeight: 'bold', color: theme.colors.secondary }}>WHEN self.{v} &gt; 0</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.pickerChipSecondary, { paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#1E2228', borderRadius: 2, borderWidth: 1, borderColor: '#333' }]}
+                          onPress={() => {
+                            const val = `when: self.${v} == true`;
+                            if (handleEventSelect) handleEventSelect(val);
+                            else if ((global as any).handleEventSelect) (global as any).handleEventSelect(val);
+                            setEventPickerVisible(false);
+                            setSearchQuery('');
+                          }}
+                        >
+                          <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#FBBF24' }}>WHEN self.{v} is TRUE</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
+                </>
+              )}
+
+              {/* Progress Bar & Stats */}
+              {([
+                { id: 'on_empty', label: 'On Empty (0%)', icon: Activity, color: theme.colors.error },
+                { id: 'on_full', label: 'On Full (100%)', icon: Activity, color: theme.colors.primary },
+                { id: 'on_life_lost', label: 'On Life Lost', icon: Heart, color: theme.colors.error },
+                { id: 'on_zero_lives', label: 'On Zero Lives', icon: Heart, color: theme.colors.error },
+              ].filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).length > 0) && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Progress Bar & Stats</Text>
+                  {[
+                    { id: 'on_empty', label: 'On Empty (0%)', icon: Activity, color: theme.colors.error },
+                    { id: 'on_full', label: 'On Full (100%)', icon: Activity, color: theme.colors.primary },
+                    { id: 'on_life_lost', label: 'On Life Lost', icon: Heart, color: theme.colors.error },
+                    { id: 'on_zero_lives', label: 'On Zero Lives', icon: Heart, color: theme.colors.error },
+                  ].filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).map(ev => (
+                    <TouchableOpacity
+                      key={ev.id}
+                      style={styles.actionPresetItem}
+                      onPress={() => {
+                        if (handleEventSelect) handleEventSelect(ev.id);
+                        else if ((global as any).handleEventSelect) (global as any).handleEventSelect(ev.id);
+                        setEventPickerVisible(false);
+                        setSearchQuery('');
+                      }}
+                    >
+                      <ev.icon size={14} color={ev.color} />
+                      <Text style={[styles.actionPresetText, { color: ev.color }]}>{ev.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </>
+              )}
+
+              {/* Game Audio */}
+              {([
+                { id: 'on_start_sound', label: 'When ANY Sound Starts', icon: Volume2, color: theme.colors.primary },
+                { id: 'on_stop_sound', label: 'When ANY Sound Stops', icon: VolumeX, color: theme.colors.error },
+              ].filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).length > 0 || (currentProject?.sounds || []).filter((snd: any) => matchesSearch(snd.name)).length > 0) && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Game Audio</Text>
+                  {[
+                    { id: 'on_start_sound', label: 'When ANY Sound Starts', icon: Volume2, color: theme.colors.primary },
+                    { id: 'on_stop_sound', label: 'When ANY Sound Stops', icon: VolumeX, color: theme.colors.error },
+                  ].filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).map(ev => (
+                    <TouchableOpacity
+                      key={ev.id}
+                      style={styles.actionPresetItem}
+                      onPress={() => {
+                        if (handleEventSelect) handleEventSelect(ev.id);
+                        else if ((global as any).handleEventSelect) (global as any).handleEventSelect(ev.id);
+                        setEventPickerVisible(false);
+                        setSearchQuery('');
+                      }}
+                    >
+                      <ev.icon size={14} color={ev.color} />
+                      <Text style={[styles.actionPresetText, { color: ev.color }]}>{ev.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                  {(currentProject?.sounds || []).filter((snd: any) => matchesSearch(snd.name)).length > 0 && (
+                    <>
+                      <Text style={[styles.subSectionTitleCompact, { marginTop: 12, marginBottom: 8, fontSize: 11, opacity: 0.8 }]}>When specific Sound starts:</Text>
+                      <View style={styles.pickerRowSmall}>
+                        {(currentProject?.sounds || []).filter((snd: any) => matchesSearch(snd.name)).map((snd: any) => (
+                          <TouchableOpacity
+                            key={snd.id}
+                            style={styles.pickerChipSecondary}
+                            onPress={() => {
+                              if (handleEventSelect) handleEventSelect(`on_start_sound:${snd.name}`);
+                              else if ((global as any).handleEventSelect) (global as any).handleEventSelect(`on_start_sound:${snd.name}`);
+                              setEventPickerVisible(false);
+                              setSearchQuery('');
+                            }}
+                          >
+                            <Text style={styles.pickerChipTextSmall}>{snd.name?.toUpperCase()}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </>
+                  )}
+                </>
+              )}
+
+              {/* Raycasting Triggers */}
               {(matchesSearch('raycast') || matchesSearch('hit') || matchesSearch('clear') || (selectedObject?.plugins || []).some((p: any) => p.type === 'raycast')) && (
                 <>
                   <View style={styles.divider} />
@@ -633,23 +672,23 @@ export default function ObjectModals({
               {([
                 'self.x', 'self.y', 'self.width', 'self.height', 'room_width', 'room_height'
               ].filter(p => matchesSearch(p)).length > 0) && (
-                  <>
-                    <View style={styles.divider} />
-                    <Text style={styles.subSectionTitleCompact}>Dynamic Comparisons (WHEN ...)</Text>
-                    <View style={styles.pickerRowSmall}>
-                      {['self.x', 'self.y', 'self.width', 'self.height', 'room_width', 'room_height'].filter(p => matchesSearch(p)).map(p => (
-                        <TouchableOpacity key={p} style={[styles.pickerChip, { backgroundColor: '#111' }]} onPress={() => {
-                          if (handleEventSelect) handleEventSelect(p + ' > ');
-                          else if ((global as any).handleEventSelect) (global as any).handleEventSelect(p + ' > ');
-                          setEventPickerVisible(false);
-                          setSearchQuery('');
-                        }}>
-                          <Text style={[styles.pickerChipText, { color: theme.colors.warning }]}>{p.toUpperCase()}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </>
-                )}
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Dynamic Comparisons (WHEN ...)</Text>
+                  <View style={styles.pickerRowSmall}>
+                    {['self.x', 'self.y', 'self.width', 'self.height', 'room_width', 'room_height'].filter(p => matchesSearch(p)).map(p => (
+                      <TouchableOpacity key={p} style={[styles.pickerChip, { backgroundColor: '#111' }]} onPress={() => {
+                        if (handleEventSelect) handleEventSelect(p + ' > ');
+                        else if ((global as any).handleEventSelect) (global as any).handleEventSelect(p + ' > ');
+                        setEventPickerVisible(false);
+                        setSearchQuery('');
+                      }}>
+                        <Text style={[styles.pickerChipText, { color: theme.colors.warning }]}>{p.toUpperCase()}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
 
               {/* Global Variables */}
               {(Object.keys(currentProject?.variables?.global || {}).filter(v => matchesSearch(v)).length > 0) && (
@@ -707,58 +746,58 @@ export default function ObjectModals({
               {([
                 '>', '<', '==', '!=', '>=', '<=', '+', '-', '*', '/', '^', '%', 'clamp', 'min', 'max', 'abs', 'floor', 'random'
               ].filter(op => matchesSearch(op)).length > 0) && (
-                  <>
-                    <View style={styles.divider} />
-                    <Text style={styles.subSectionTitleCompact}>Math & Operators (WHEN ...)</Text>
-                    <View style={styles.pickerRowSmall}>
-                      {['>', '<', '==', '!=', '>=', '<=', '+', '-', '*', '/', '^', '%'].filter(op => matchesSearch(op)).map(op => (
-                        <TouchableOpacity key={op} style={[styles.pickerChip, { backgroundColor: theme.colors.surfaceElevated }]} onPress={() => {
-                          if (handleEventSelect) handleEventSelect(op);
-                          else if ((global as any).handleEventSelect) (global as any).handleEventSelect(op);
-                          setEventPickerVisible(false);
-                          setSearchQuery('');
-                        }}>
-                          <Text style={styles.pickerChipText}>{op}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                    <View style={styles.pickerRowSmall}>
-                      {['clamp(', 'min(', 'max(', 'abs(', 'floor(', 'random('].filter(p => matchesSearch(p)).map(p => (
-                        <TouchableOpacity key={p} style={[styles.pickerChip, { backgroundColor: '#0A0C10' }]} onPress={() => {
-                          if (handleEventSelect) handleEventSelect(p);
-                          else if ((global as any).handleEventSelect) (global as any).handleEventSelect(p);
-                          setEventPickerVisible(false);
-                          setSearchQuery('');
-                        }}>
-                          <Text style={[styles.pickerChipText, { color: theme.colors.secondary }]}>{p.toUpperCase()}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </>
-                )}
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Math & Operators (WHEN ...)</Text>
+                  <View style={styles.pickerRowSmall}>
+                    {['>', '<', '==', '!=', '>=', '<=', '+', '-', '*', '/', '^', '%'].filter(op => matchesSearch(op)).map(op => (
+                      <TouchableOpacity key={op} style={[styles.pickerChip, { backgroundColor: theme.colors.surfaceElevated }]} onPress={() => {
+                        if (handleEventSelect) handleEventSelect(op);
+                        else if ((global as any).handleEventSelect) (global as any).handleEventSelect(op);
+                        setEventPickerVisible(false);
+                        setSearchQuery('');
+                      }}>
+                        <Text style={styles.pickerChipText}>{op}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <View style={styles.pickerRowSmall}>
+                    {['clamp(', 'min(', 'max(', 'abs(', 'floor(', 'random('].filter(p => matchesSearch(p)).map(p => (
+                      <TouchableOpacity key={p} style={[styles.pickerChip, { backgroundColor: '#0A0C10' }]} onPress={() => {
+                        if (handleEventSelect) handleEventSelect(p);
+                        else if ((global as any).handleEventSelect) (global as any).handleEventSelect(p);
+                        setEventPickerVisible(false);
+                        setSearchQuery('');
+                      }}>
+                        <Text style={[styles.pickerChipText, { color: theme.colors.secondary }]}>{p.toUpperCase()}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
 
               {/* Object Properties */}
               {([
                 'self', 'other', 'tap_x', 'tap_y', 'room_width', 'room_height', 'time'
               ].filter(p => matchesSearch(p)).length > 0) && (
-                  <>
-                    <View style={styles.divider} />
-                    <Text style={styles.subSectionTitleCompact}>Object Properties</Text>
-                    <View style={styles.pickerRowSmall}>
-                      {['self', 'other', 'tap_x', 'tap_y', 'room_width', 'room_height', 'time'].filter(p => matchesSearch(p)).map(p => (
-                        <TouchableOpacity key={p} style={[styles.pickerChip, { backgroundColor: '#111' }]} onPress={() => {
-                          const val = (p === 'self' || p === 'other') ? p + '.' : p;
-                          if (handleEventSelect) handleEventSelect(val);
-                          else if ((global as any).handleEventSelect) (global as any).handleEventSelect(val);
-                          setEventPickerVisible(false);
-                          setSearchQuery('');
-                        }}>
-                          <Text style={[styles.pickerChipText, { color: theme.colors.primary }]}>{p.toUpperCase()}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </>
-                )}
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Object Properties</Text>
+                  <View style={styles.pickerRowSmall}>
+                    {['self', 'other', 'tap_x', 'tap_y', 'room_width', 'room_height', 'time'].filter(p => matchesSearch(p)).map(p => (
+                      <TouchableOpacity key={p} style={[styles.pickerChip, { backgroundColor: '#111' }]} onPress={() => {
+                        const val = (p === 'self' || p === 'other') ? p + '.' : p;
+                        if (handleEventSelect) handleEventSelect(val);
+                        else if ((global as any).handleEventSelect) (global as any).handleEventSelect(val);
+                        setEventPickerVisible(false);
+                        setSearchQuery('');
+                      }}>
+                        <Text style={[styles.pickerChipText, { color: theme.colors.primary }]}>{p.toUpperCase()}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
             </ScrollView>
           </View>
         </View>
@@ -1025,260 +1064,223 @@ export default function ObjectModals({
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Preset Actions */}
               {([
-                { id: 'tap_x', label: 'Tap X Position', icon: MousePointer2, color: theme.colors.warning },
-                { id: 'tap_y', label: 'Tap Y Position', icon: MousePointer2, color: theme.colors.warning },
-                { id: 'restart_room', label: 'Restart Room', icon: GitBranch, color: theme.colors.info },
+                { id: 'save_game', label: 'Save Game Progress', icon: Database, color: theme.colors.success },
+                { id: 'load_game', label: 'Load Game Progress', icon: Database, color: theme.colors.warning },
+                { id: 'restart_room', label: 'Restart Room', icon: GitBranch, color: theme.colors.primary },
               ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).length > 0) && (
-                  <>
-                    <Text style={styles.subSectionTitleCompact}>Presets</Text>
-                    {[
-                      { id: 'tap_x', label: 'Tap X Position', icon: MousePointer2, color: theme.colors.warning },
-                      { id: 'tap_y', label: 'Tap Y Position', icon: MousePointer2, color: theme.colors.warning },
-                      { id: 'restart_room', label: 'Restart Room', icon: GitBranch, color: theme.colors.info },
-                      { id: 'save_game', label: 'Save Game Progress', icon: Database, color: theme.colors.success },
-                      { id: 'load_game', label: 'Load Game Progress', icon: Database, color: theme.colors.warning },
-                    ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
-                      <TouchableOpacity
-                        key={act.id}
-                        style={styles.actionPresetItem}
-                        onPress={() => {
-                          if (handleActionSelect) handleActionSelect(act.id);
-                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
+                <>
+                  <Text style={styles.subSectionTitleCompact}>Preset Actions</Text>
+                  {[
+                    { id: 'save_game', label: 'Save Game Progress', icon: Database, color: theme.colors.success },
+                    { id: 'load_game', label: 'Load Game Progress', icon: Database, color: theme.colors.warning },
+                    { id: 'restart_room', label: 'Restart Room', icon: GitBranch, color: theme.colors.primary },
+                  ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
+                    <TouchableOpacity
+                      key={act.id}
+                      style={styles.actionPresetItem}
+                      onPress={() => {
+                        if (handleActionSelect) handleActionSelect(act.id);
+                        else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
+                        setActionPickerVisible(false);
+                        setSearchQuery('');
+                      }}
+                    >
+                      <act.icon size={14} color={act.color} />
+                      <Text style={styles.actionPresetText}>{act.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </>
+              )}
+
+              {/* Movement, Physics & Scale */}
+              {([
+                { id: 'move_left', label: 'Move Left', icon: ArrowLeft, color: theme.colors.secondary },
+                { id: 'move_right', label: 'Move Right', icon: ArrowRight, color: theme.colors.secondary },
+                { id: 'move_up', label: 'Move Up', icon: ArrowUp, color: theme.colors.secondary },
+                { id: 'move_down', label: 'Move Down', icon: ArrowDown, color: theme.colors.secondary },
+                { id: 'jump', label: 'Jump / Hop Up', icon: ChevronUp, color: theme.colors.primary },
+                { id: 'stop_x', label: 'Stop Horizontal Movement', icon: Pause, color: theme.colors.error },
+                { id: 'move_towards:Player:1', label: 'Move Towards Player (Speed 1)', icon: ArrowRight, color: theme.colors.success },
+                { id: 'move_towards:400:300:1', label: 'Move Towards Coordinates 400,300 (Speed 1)', icon: ArrowRight, color: theme.colors.success },
+                { id: 'go_to:touch', label: 'Go To Touch (Teleport to Drag/Tap)', icon: MousePointer2, color: theme.colors.warning },
+                { id: 'go_to:Player', label: 'Go To Player (Teleport to Object)', icon: Target, color: theme.colors.primary },
+              ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).length > 0 || 
+                ['add_x:1', 'add_x:-1', 'add_y:1', 'add_y:-1', 'add_angle:5', 'add_angle:-5', 'set_scale:1.5', 'add_scale:0.1'].some(act => matchesSearch(act))) && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Movement & Physics</Text>
+                  {[
+                    { id: 'move_left', label: 'Move Left', icon: ArrowLeft, color: theme.colors.secondary },
+                    { id: 'move_right', label: 'Move Right', icon: ArrowRight, color: theme.colors.secondary },
+                    { id: 'move_up', label: 'Move Up', icon: ArrowUp, color: theme.colors.secondary },
+                    { id: 'move_down', label: 'Move Down', icon: ArrowDown, color: theme.colors.secondary },
+                    { id: 'jump', label: 'Jump / Hop Up', icon: ChevronUp, color: theme.colors.primary },
+                    { id: 'stop_x', label: 'Stop Horizontal Movement', icon: Pause, color: theme.colors.error },
+                    { id: 'move_towards:Player:1', label: 'Move Towards Player (Speed 1)', icon: ArrowRight, color: theme.colors.success },
+                    { id: 'move_towards:400:300:1', label: 'Move Towards Coordinates 400,300 (Speed 1)', icon: ArrowRight, color: theme.colors.success },
+                    { id: 'go_to:touch', label: 'Go To Touch (Teleport to Drag/Tap)', icon: MousePointer2, color: theme.colors.warning },
+                    { id: 'go_to:Player', label: 'Go To Player (Teleport to Object)', icon: Target, color: theme.colors.primary },
+                  ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
+                    <TouchableOpacity
+                      key={act.id}
+                      style={styles.actionPresetItem}
+                      onPress={() => {
+                        if (handleActionSelect) handleActionSelect(act.id);
+                        else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
+                        setActionPickerVisible(false);
+                        setSearchQuery('');
+                      }}
+                    >
+                      <act.icon size={14} color={act.color} />
+                      <Text style={styles.actionPresetText}>{act.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+
+                  {/* Positioning micro-chips */}
+                  {['add_x:1', 'add_x:-1', 'add_y:1', 'add_y:-1', 'add_angle:5', 'add_angle:-5', 'set_scale:1.5', 'add_scale:0.1'].filter(act => matchesSearch(act)).length > 0 && (
+                    <View style={[styles.pickerRowSmall, { marginTop: 8 }]}>
+                      {['add_x:1', 'add_x:-1', 'add_y:1', 'add_y:-1', 'add_angle:5', 'add_angle:-5', 'set_scale:1.5', 'add_scale:0.1'].filter(act => matchesSearch(act)).map(act => (
+                        <TouchableOpacity key={act} style={styles.pickerChipSecondary} onPress={() => {
+                          if (handleActionSelect) handleActionSelect(act);
+                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act);
                           setActionPickerVisible(false);
                           setSearchQuery('');
-                        }}
-                      >
-                        <act.icon size={14} color={act.color} />
-                        <Text style={styles.actionPresetText}>{act.label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </>
-                )}
+                        }}>
+                          <Text style={styles.pickerChipTextSmall}>{act.toUpperCase().replace('_', ' ')}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </>
+              )}
 
+              {/* Lives & Stats */}
               {([
                 { id: 'damage:1', label: 'Damage (-1 Life)', icon: Heart, color: theme.colors.error },
                 { id: 'heal:1', label: 'Heal (+1 Life)', icon: Heart, color: theme.colors.success },
                 { id: 'set_count:3', label: 'Set Lives Count', icon: Heart, color: theme.colors.primary },
               ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).length > 0) && (
-                  <>
-                    <View style={styles.divider} />
-                    <Text style={styles.subSectionTitleCompact}>Sprite Repeater / Lives</Text>
-                    {[
-                      { id: 'damage:1', label: 'Damage (-1 Life)', icon: Heart, color: theme.colors.error },
-                      { id: 'heal:1', label: 'Heal (+1 Life)', icon: Heart, color: theme.colors.success },
-                      { id: 'set_count:3', label: 'Set Lives Count', icon: Heart, color: theme.colors.primary },
-                    ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
-                      <TouchableOpacity
-                        key={act.id}
-                        style={styles.actionPresetItem}
-                        onPress={() => {
-                          if (handleActionSelect) handleActionSelect(act.id);
-                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
-                          setActionPickerVisible(false);
-                          setSearchQuery('');
-                        }}
-                      >
-                        <act.icon size={14} color={act.color} />
-                        <Text style={[styles.actionPresetText, { color: act.color }]}>{act.label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </>
-                )}
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>Lives & Stats</Text>
+                  {[
+                    { id: 'damage:1', label: 'Damage (-1 Life)', icon: Heart, color: theme.colors.error },
+                    { id: 'heal:1', label: 'Heal (+1 Life)', icon: Heart, color: theme.colors.success },
+                    { id: 'set_count:3', label: 'Set Lives Count', icon: Heart, color: theme.colors.primary },
+                  ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
+                    <TouchableOpacity
+                      key={act.id}
+                      style={styles.actionPresetItem}
+                      onPress={() => {
+                        if (handleActionSelect) handleActionSelect(act.id);
+                        else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
+                        setActionPickerVisible(false);
+                        setSearchQuery('');
+                      }}
+                    >
+                      <act.icon size={14} color={act.color} />
+                      <Text style={[styles.actionPresetText, { color: act.color }]}>{act.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </>
+              )}
 
+              {/* State & Visibility */}
               {([
                 { id: 'destroy', label: 'Destroy Object', icon: X, color: theme.colors.error },
                 { id: 'set_visible:true', label: 'Show Object', icon: Eye, color: theme.colors.success },
                 { id: 'set_visible:false', label: 'Hide Object', icon: EyeOff, color: theme.colors.warning },
               ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).length > 0) && (
-                  <>
-                    <View style={styles.divider} />
-                    <Text style={styles.subSectionTitleCompact}>Object State & Visibility</Text>
-                    {[
-                      { id: 'destroy', label: 'Destroy Object', icon: X, color: theme.colors.error },
-                      { id: 'set_visible:true', label: 'Show Object', icon: Eye, color: theme.colors.success },
-                      { id: 'set_visible:false', label: 'Hide Object', icon: EyeOff, color: theme.colors.warning },
-                    ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
-                      <TouchableOpacity
-                        key={act.id}
-                        style={styles.actionPresetItem}
-                        onPress={() => {
-                          if (handleActionSelect) handleActionSelect(act.id);
-                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
-                          setActionPickerVisible(false);
-                          setSearchQuery('');
-                        }}
-                      >
-                        <act.icon size={14} color={act.color} />
-                        <Text style={styles.actionPresetText}>{act.label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </>
-                )}
-
-              {([
-                { id: 'set_text:Hello', label: 'Set Text to "Hello"', icon: Type, color: theme.colors.primary },
-                { id: 'set_text:Global.var_0', label: 'Set Text to Variable', icon: Type, color: theme.colors.secondary },
-              ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).length > 0) && (
-                  <>
-                    <View style={styles.divider} />
-                    <Text style={styles.subSectionTitleCompact}>UI & Text</Text>
-                    {[
-                      { id: 'set_text:Hello', label: 'Set Text', icon: Type, color: theme.colors.primary },
-                      { id: 'set_text_color:#FF0000', label: 'Set Text Color', icon: Palette, color: theme.colors.error },
-                      { id: 'set_bg_color:rgba(0,0,0,0.5)', label: 'Set Background', icon: Layout, color: theme.colors.secondary },
-                      { id: 'set_text_size:24', label: 'Set Text Size', icon: Type, color: theme.colors.warning },
-                      { id: 'set_text_align:center', label: 'Set Text Align', icon: Type, color: theme.colors.info },
-                    ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
-                      <TouchableOpacity
-                        key={act.id}
-                        style={styles.actionPresetItem}
-                        onPress={() => {
-                          if (handleActionSelect) handleActionSelect(act.id);
-                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
-                          setActionPickerVisible(false);
-                          setSearchQuery('');
-                        }}
-                      >
-                        <act.icon size={14} color={act.color} />
-                        <Text style={styles.actionPresetText}>{act.label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </>
-                )}
-
-              {([
-                { id: 'jump', label: 'Jump', icon: ChevronUp, color: theme.colors.primary },
-                { id: 'move_left', label: 'Move Left', icon: ArrowLeft, color: theme.colors.secondary },
-                { id: 'move_right', label: 'Move Right', icon: ArrowRight, color: theme.colors.secondary },
-                { id: 'move_towards:Player:1', label: 'Move Towards Player (Speed 1)', icon: ArrowRight, color: theme.colors.success },
-                { id: 'move_towards:400:300:1', label: 'Move Towards Coordinates 400,300 (Speed 1)', icon: ArrowRight, color: theme.colors.success },
-                { id: 'go_to:touch', label: 'Go To Touch (Teleport to Drag/Tap)', icon: MousePointer2, color: theme.colors.warning },
-                { id: 'go_to:Player', label: 'Go To Player (Teleport to Object)', icon: Target, color: theme.colors.primary },
-                { id: 'stop_x', label: 'Stop Horizontal', icon: Pause, color: theme.colors.error },
-              ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).length > 0) && (
-                  <>
-                    <View style={styles.divider} />
-                    <Text style={styles.subSectionTitleCompact}>Movement & Rotation</Text>
-                    {[
-                      { id: 'jump', label: 'Jump', icon: ChevronUp, color: theme.colors.primary },
-                      { id: 'move_left', label: 'Move Left', icon: ArrowLeft, color: theme.colors.secondary },
-                      { id: 'move_right', label: 'Move Right', icon: ArrowRight, color: theme.colors.secondary },
-                      { id: 'move_towards:Player:1', label: 'Move Towards Player (Speed 1)', icon: ArrowRight, color: theme.colors.success },
-                      { id: 'move_towards:400:300:1', label: 'Move Towards Coordinates 400,300 (Speed 1)', icon: ArrowRight, color: theme.colors.success },
-                      { id: 'go_to:touch', label: 'Go To Touch (Teleport to Drag/Tap)', icon: MousePointer2, color: theme.colors.warning },
-                      { id: 'go_to:Player', label: 'Go To Player (Teleport to Object)', icon: Target, color: theme.colors.primary },
-                      { id: 'stop_x', label: 'Stop Horizontal', icon: Pause, color: theme.colors.error },
-                    ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
-                      <TouchableOpacity
-                        key={act.id}
-                        style={styles.actionPresetItem}
-                        onPress={() => {
-                          if (handleActionSelect) handleActionSelect(act.id);
-                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
-                          setActionPickerVisible(false);
-                          setSearchQuery('');
-                        }}
-                      >
-                        <act.icon size={14} color={act.color} />
-                        <Text style={styles.actionPresetText}>{act.label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </>
-                )}
-
-              {Object.keys(currentProject?.variables?.global || {}).filter(v => matchesSearch(v)).length > 0 && (
                 <>
                   <View style={styles.divider} />
-                  <Text style={styles.subSectionTitleCompact}>Global Variables (Game-wide)</Text>
-                  {Object.keys(currentProject?.variables?.global || {}).filter(v => matchesSearch(v)).map(v => (
-                    <View key={v} style={{ marginBottom: 12 }}>
-                      <Text style={[styles.miniLabel, { color: theme.colors.primary }]}>{v.toUpperCase()}</Text>
-                      <View style={styles.pickerRowSmall}>
-                        <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => {
-                          if (handleActionSelect) handleActionSelect(`var_add:${v}:1`);
-                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(`var_add:${v}:1`);
-                          setActionPickerVisible(false);
-                          setSearchQuery('');
-                        }}>
-                          <Text style={styles.pickerChipTextSmall}>+1</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => {
-                          if (handleActionSelect) handleActionSelect(`var_add:${v}:-1`);
-                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(`var_add:${v}:-1`);
-                          setActionPickerVisible(false);
-                          setSearchQuery('');
-                        }}>
-                          <Text style={styles.pickerChipTextSmall}>-1</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => {
-                          if (handleActionSelect) handleActionSelect(`var_set:${v}:0`);
-                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(`var_set:${v}:0`);
-                          setActionPickerVisible(false);
-                          setSearchQuery('');
-                        }}>
-                          <Text style={styles.pickerChipTextSmall}>SET 0</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
+                  <Text style={styles.subSectionTitleCompact}>State & Visibility</Text>
+                  {[
+                    { id: 'destroy', label: 'Destroy Object', icon: X, color: theme.colors.error },
+                    { id: 'set_visible:true', label: 'Show Object', icon: Eye, color: theme.colors.success },
+                    { id: 'set_visible:false', label: 'Hide Object', icon: EyeOff, color: theme.colors.warning },
+                  ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
+                    <TouchableOpacity
+                      key={act.id}
+                      style={styles.actionPresetItem}
+                      onPress={() => {
+                        if (handleActionSelect) handleActionSelect(act.id);
+                        else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
+                        setActionPickerVisible(false);
+                        setSearchQuery('');
+                      }}
+                    >
+                      <act.icon size={14} color={act.color} />
+                      <Text style={styles.actionPresetText}>{act.label}</Text>
+                    </TouchableOpacity>
                   ))}
                 </>
               )}
 
-              {[
+              {/* UI, Text & Appearance */}
+              {([
+                { id: 'set_text:Hello', label: 'Set Text to "Hello"', icon: Type, color: theme.colors.primary },
+                { id: 'set_text:Global.var_0', label: 'Set Text to Variable', icon: Type, color: theme.colors.secondary },
+              ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).length > 0) && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.subSectionTitleCompact}>UI, Text & Appearance</Text>
+                  {[
+                    { id: 'set_text:Hello', label: 'Set Text', icon: Type, color: theme.colors.primary },
+                    { id: 'set_text_color:#FF0000', label: 'Set Text Color', icon: Palette, color: theme.colors.error },
+                    { id: 'set_bg_color:rgba(0,0,0,0.5)', label: 'Set Background', icon: Layout, color: theme.colors.secondary },
+                    { id: 'set_text_size:24', label: 'Set Text Size', icon: Type, color: theme.colors.warning },
+                    { id: 'set_text_align:center', label: 'Set Text Align', icon: Type, color: theme.colors.primary },
+                  ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
+                    <TouchableOpacity
+                      key={act.id}
+                      style={styles.actionPresetItem}
+                      onPress={() => {
+                        if (handleActionSelect) handleActionSelect(act.id);
+                        else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
+                        setActionPickerVisible(false);
+                        setSearchQuery('');
+                      }}
+                    >
+                      <act.icon size={14} color={act.color} />
+                      <Text style={styles.actionPresetText}>{act.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </>
+              )}
+
+              {/* Progress Bar Actions */}
+              {([
                 { id: 'set_value:50', label: 'SET VALUE' },
                 { id: 'add_value:-10', label: 'CHANGE BAR' },
                 { id: 'tween_to:100:1000', label: 'TWEEN TO' },
                 { id: 'bind_to_variable:', label: 'BIND TO VAR' },
-                { id: 'damage:1', label: 'DAMAGE' },
-                { id: 'heal:1', label: 'HEAL' },
-                { id: 'set_count:3', label: 'SET COUNT' },
-              ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).length > 0 && (
-                  <>
-                    <View style={styles.divider} />
-                    <Text style={styles.subSectionTitleCompact}>Progress Bar Actions</Text>
-                    <View style={styles.pickerRowSmall}>
-                      {[
-                        { id: 'set_value:50', label: 'SET VALUE' },
-                        { id: 'add_value:-10', label: 'CHANGE BAR' },
-                        { id: 'tween_to:100:1000', label: 'TWEEN TO' },
-                        { id: 'bind_to_variable:', label: 'BIND TO VAR' },
-                        { id: 'damage:1', label: 'DAMAGE' },
-                        { id: 'heal:1', label: 'HEAL' },
-                        { id: 'set_count:3', label: 'SET COUNT' },
-                      ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
-                        <TouchableOpacity key={act.id} style={[styles.pickerChipSecondary, { borderColor: theme.colors.primary }]} onPress={() => {
-                          if (handleActionSelect) handleActionSelect(act.id);
-                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
-                          setActionPickerVisible(false);
-                          setSearchQuery('');
-                        }}>
-                          <Text style={[styles.pickerChipTextSmall, { color: theme.colors.primary }]}>{act.label}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </>
-                )}
-
-              {['add_x:1', 'add_x:-1', 'add_y:1', 'add_y:-1', 'add_angle:5', 'add_angle:-5', 'set_scale:1.5', 'add_scale:0.1'].filter(act => matchesSearch(act)).length > 0 && (
+              ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).length > 0) && (
                 <>
                   <View style={styles.divider} />
-                  <Text style={styles.subSectionTitleCompact}>Movement & Rotation</Text>
+                  <Text style={styles.subSectionTitleCompact}>Progress Bar Actions</Text>
                   <View style={styles.pickerRowSmall}>
-                    {['add_x:1', 'add_x:-1', 'add_y:1', 'add_y:-1', 'add_angle:5', 'add_angle:-5', 'set_scale:1.5', 'add_scale:0.1'].filter(act => matchesSearch(act)).map(act => (
-                      <TouchableOpacity key={act} style={styles.pickerChipSecondary} onPress={() => {
-                        if (handleActionSelect) handleActionSelect(act);
-                        else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act);
+                    {[
+                      { id: 'set_value:50', label: 'SET VALUE' },
+                      { id: 'add_value:-10', label: 'CHANGE BAR' },
+                      { id: 'tween_to:100:1000', label: 'TWEEN TO' },
+                      { id: 'bind_to_variable:', label: 'BIND TO VAR' },
+                    ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
+                      <TouchableOpacity key={act.id} style={[styles.pickerChipSecondary, { borderColor: theme.colors.primary }]} onPress={() => {
+                        if (handleActionSelect) handleActionSelect(act.id);
+                        else if ((global as any).handleActionSelect) (global as any).handleActionSelect(act.id);
                         setActionPickerVisible(false);
                         setSearchQuery('');
                       }}>
-                        <Text style={styles.pickerChipTextSmall}>{act.toUpperCase().replace('_', ' ')}</Text>
+                        <Text style={[styles.pickerChipTextSmall, { color: theme.colors.primary }]}>{act.label}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                 </>
               )}
 
+              {/* Game Audio */}
               {(currentProject?.sounds || []).filter((snd: any) => matchesSearch(snd.name)).length > 0 && (
                 <>
                   <View style={styles.divider} />
@@ -1323,10 +1325,11 @@ export default function ObjectModals({
                 </>
               )}
 
+              {/* Scene & Room Control */}
               {(matchesSearch('restart_room') || (currentProject?.rooms || []).filter((room: any) => matchesSearch(room.name)).length > 0) && (
                 <>
                   <View style={styles.divider} />
-                  <Text style={styles.subSectionTitleCompact}>Scene Control</Text>
+                  <Text style={styles.subSectionTitleCompact}>Scene & Room Control</Text>
                   <View style={styles.pickerRowSmall}>
                     {matchesSearch('restart_room') && (
                       <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => {
@@ -1356,6 +1359,7 @@ export default function ObjectModals({
                 </>
               )}
 
+              {/* Spawn Objects */}
               {(currentProject?.objects || []).filter((obj: any) => matchesSearch(obj.name)).length > 0 && (
                 <>
                   <View style={styles.divider} />
@@ -1382,6 +1386,7 @@ export default function ObjectModals({
                 </>
               )}
 
+              {/* Math & Expressions */}
               {['random(10)', 'clamp(0,0,0)', 'min(0,0)', 'max(0,0)', 'abs(0)', 'floor(0)', 'sin(0)', 'cos(0)'].filter(m => matchesSearch(m)).length > 0 && (
                 <>
                   <View style={styles.divider} />
@@ -1401,7 +1406,7 @@ export default function ObjectModals({
                 </>
               )}
 
-
+              {/* Values & Environment */}
               {['tap_x', 'tap_y', 'get_drag_x', 'get_drag_y', 'room_width', 'room_height', 'time', 'self.x', 'self.y', 'self.vx', 'self.vy', 'self.rot', 'self.scale', 'self.visible'].filter(p => matchesSearch(p)).length > 0 && (
                 <>
                   <View style={styles.divider} />
@@ -1421,22 +1426,42 @@ export default function ObjectModals({
                 </>
               )}
 
+              {/* Project Variables (Global) */}
               {currentProject?.variables?.global && Object.keys(currentProject.variables.global).filter(v => matchesSearch(v)).length > 0 && (
                 <>
                   <View style={styles.divider} />
-                  <Text style={styles.subSectionTitleCompact}>Global Variables</Text>
-                  <View style={styles.pickerRowSmall}>
-                    {Object.keys(currentProject.variables.global).filter(v => matchesSearch(v)).map(v => (
-                      <TouchableOpacity key={v} style={styles.pickerChipSecondary} onPress={() => {
-                        if (handleActionSelect) handleActionSelect(v);
-                        else if ((global as any).handleActionSelect) (global as any).handleActionSelect(v);
-                        setActionPickerVisible(false);
-                        setSearchQuery('');
-                      }}>
-                        <Text style={[styles.pickerChipTextSmall, { color: theme.colors.secondary }]}>{v.toUpperCase()}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
+                  <Text style={styles.subSectionTitleCompact}>Project Variables (Global)</Text>
+                  {Object.keys(currentProject.variables.global).filter(v => matchesSearch(v)).map(v => (
+                    <View key={v} style={{ marginBottom: 12 }}>
+                      <Text style={[styles.miniLabel, { color: theme.colors.primary }]}>{v.toUpperCase()}</Text>
+                      <View style={styles.pickerRowSmall}>
+                        <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => {
+                          if (handleActionSelect) handleActionSelect(`var_add:${v}:1`);
+                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(`var_add:${v}:1`);
+                          setActionPickerVisible(false);
+                          setSearchQuery('');
+                        }}>
+                          <Text style={styles.pickerChipTextSmall}>+1</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => {
+                          if (handleActionSelect) handleActionSelect(`var_add:${v}:-1`);
+                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(`var_add:${v}:-1`);
+                          setActionPickerVisible(false);
+                          setSearchQuery('');
+                        }}>
+                          <Text style={styles.pickerChipTextSmall}>-1</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.pickerChipSecondary} onPress={() => {
+                          if (handleActionSelect) handleActionSelect(`var_set:${v}:0`);
+                          else if ((global as any).handleActionSelect) (global as any).handleActionSelect(`var_set:${v}:0`);
+                          setActionPickerVisible(false);
+                          setSearchQuery('');
+                        }}>
+                          <Text style={styles.pickerChipTextSmall}>SET 0</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
                 </>
               )}
             </ScrollView>

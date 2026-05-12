@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet } from 'react-native';
-import { Box, User, MousePointer2, Timer, Heart, Move, Zap, Layout, Activity } from 'lucide-react-native';
+import { Box, User, MousePointer2, Timer, Heart, Move, Zap, Layout, Activity, Grid } from 'lucide-react-native';
 import { theme } from '../../../../theme';
 
 export const BEHAVIORS = [
@@ -18,6 +18,7 @@ export const BEHAVIORS = [
   { id: 'progress_bar', label: 'Progress Bar', icon: Activity, color: '#10B981' },
   { id: 'sprite_repeater', label: 'Sprite Repeater', icon: Heart, color: '#F43F5E' },
   { id: 'gui_container', label: 'GUI Container', icon: Layout, color: '#10B981' },
+  { id: 'tilemap', label: 'Tilemap', icon: Grid, color: '#10B981' },
 ];
 
 interface ObjectCreatorModalProps {

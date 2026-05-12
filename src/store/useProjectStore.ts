@@ -242,7 +242,12 @@ export interface RoomLayer {
   name: string;
   visible: boolean;
   locked: boolean;
+  type?: 'instance' | 'tilemap';
+  tilesetSpriteId?: string;
+  tileData?: Record<string, string>;
+  isSolid?: boolean;
 }
+
 
 export interface ObjectInstance {
   id: string;
@@ -333,6 +338,7 @@ interface ProjectState {
   updateInstancePosition: (roomId: string, instanceId: string, x: number, y: number) => void;
   updateInstanceSize: (roomId: string, instanceId: string, width: number, height: number) => void;
   updateInstanceAngle: (roomId: string, instanceId: string, angle: number) => void;
+  updateInstanceTileData: (roomId: string, instanceId: string, tileData: Record<string, string>) => void;
   removeInstanceFromRoom: (roomId: string, instanceId: string) => void;
   reorderInstance: (roomId: string, instanceId: string, direction: 'forward' | 'backward' | 'front' | 'back') => void;
   addLayer: (roomId: string) => void;
@@ -715,6 +721,7 @@ export const useProjectStore = create<ProjectState>()(
             } : room
           )
         };
+        FileSystemManager.saveProjectJson(updated.id, updated);
         return {
           activeProject: updated,
           selectedProject: state.selectedProject?.name === updated.name ? updated : state.selectedProject,
@@ -734,6 +741,7 @@ export const useProjectStore = create<ProjectState>()(
             } : room
           )
         };
+        FileSystemManager.saveProjectJson(updated.id, updated);
         return {
           activeProject: updated,
           selectedProject: state.selectedProject?.name === updated.name ? updated : state.selectedProject,
@@ -753,6 +761,27 @@ export const useProjectStore = create<ProjectState>()(
             } : room
           )
         };
+        FileSystemManager.saveProjectJson(updated.id, updated);
+        return {
+          activeProject: updated,
+          selectedProject: state.selectedProject?.name === updated.name ? updated : state.selectedProject,
+          projects: state.projects.map(p => p.name === updated.name ? updated : p)
+        };
+      }),
+      updateInstanceTileData: (roomId, instanceId, tileData) => set((state) => {
+        if (!state.activeProject) return state;
+        const updated = {
+          ...state.activeProject,
+          rooms: (state.activeProject.rooms || []).map(room =>
+            room.id === roomId ? {
+              ...room,
+              instances: (room.instances || []).map(inst =>
+                inst.id === instanceId ? { ...inst, tileData } : inst
+              )
+            } : room
+          )
+        };
+        FileSystemManager.saveProjectJson(updated.id, updated);
         return {
           activeProject: updated,
           selectedProject: state.selectedProject?.name === updated.name ? updated : state.selectedProject,

@@ -61,7 +61,7 @@ export const generateWebHTML = (project: any, useLocalMatter: boolean = false) =
         let currentRoom = project.rooms.find(r => r.id === project.mainRoomId) || project.rooms[0];
         let variables = { ...(project.variables?.global || {}), score: 0 };
         const spriteCache = new Map();
-        const input = { left: 0, right: 0, jump: 0 };
+        const input = { left: 0, right: 0, up: 0, down: 0, jump: 0 };
         const camera = { x: 0, y: 0, targetX: 0, targetY: 0, zoom: 2 };
 
         function resize() {
@@ -109,6 +109,8 @@ export const generateWebHTML = (project: any, useLocalMatter: boolean = false) =
             if (cmd === 'jump') Matter.Body.setVelocity(body, { x: body.velocity.x, y: -(obj.physics?.jumpStrength || 10) * 0.4 });
             else if (cmd === 'move_left') Matter.Body.setVelocity(body, { x: -(obj.physics?.moveSpeed || 5) * 0.5, y: body.velocity.y });
             else if (cmd === 'move_right') Matter.Body.setVelocity(body, { x: (obj.physics?.moveSpeed || 5) * 0.5, y: body.velocity.y });
+            else if (cmd === 'move_up') Matter.Body.setVelocity(body, { x: body.velocity.x, y: -(obj.physics?.moveSpeed || 5) * 0.5 });
+            else if (cmd === 'move_down') Matter.Body.setVelocity(body, { x: body.velocity.x, y: (obj.physics?.moveSpeed || 5) * 0.5 });
             else if (cmd === 'var_add') variables[parts[1]] = (variables[parts[1]] || 0) + parseFloat(parts[2]);
         }
 
@@ -143,6 +145,21 @@ export const generateWebHTML = (project: any, useLocalMatter: boolean = false) =
         bindBtn('btn-right', 'right');
         bindBtn('btn-jump', 'jump');
 
+        window.addEventListener('keydown', e => {
+            if (e.key === 'ArrowLeft' || e.key === 'a') input.left = 1;
+            if (e.key === 'ArrowRight' || e.key === 'd') input.right = 1;
+            if (e.key === 'ArrowUp' || e.key === 'w') { input.up = 1; input.jump = 1; }
+            if (e.key === 'ArrowDown' || e.key === 's') input.down = 1;
+            if (e.key === ' ' || e.key === 'x') input.jump = 1;
+        });
+        window.addEventListener('keyup', e => {
+            if (e.key === 'ArrowLeft' || e.key === 'a') input.left = 0;
+            if (e.key === 'ArrowRight' || e.key === 'd') input.right = 0;
+            if (e.key === 'ArrowUp' || e.key === 'w') { input.up = 0; input.jump = 0; }
+            if (e.key === 'ArrowDown' || e.key === 's') input.down = 0;
+            if (e.key === ' ' || e.key === 'x') input.jump = 0;
+        });
+
         function update() {
             Engine.update(engine, 1000 / 60);
             const bodies = Composite.allBodies(world);
@@ -154,9 +171,25 @@ export const generateWebHTML = (project: any, useLocalMatter: boolean = false) =
                 const behavior = obj.behavior?.toLowerCase() || '';
                 if (behavior.includes('player')) {
                     playerBody = body;
-                    if (input.left) executeAction('move_left', body, obj);
-                    if (input.right) executeAction('move_right', body, obj);
-                    if (input.jump && Math.abs(body.velocity.y) < 0.1) executeAction('jump', body, obj);
+                    if (input.left) {
+                        executeAction('move_left', body, obj);
+                    } else if (input.right) {
+                        executeAction('move_right', body, obj);
+                    } else {
+                        Matter.Body.setVelocity(body, { x: body.velocity.x * 0.85, y: body.velocity.y });
+                    }
+
+                    if (input.up) {
+                        executeAction('move_up', body, obj);
+                    } else if (input.down) {
+                        executeAction('move_down', body, obj);
+                    } else if (engine.gravity.y === 0) {
+                        Matter.Body.setVelocity(body, { x: body.velocity.x, y: body.velocity.y * 0.85 });
+                    }
+
+                    if (input.jump && Math.abs(body.velocity.y) < 0.1) {
+                        executeAction('jump', body, obj);
+                    }
                 }
             });
 

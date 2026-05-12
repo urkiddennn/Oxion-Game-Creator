@@ -1,5 +1,69 @@
 # Changelog - Oxion Game Creator
 
+## [1.21.1] - 2026-05-12
+### Fixed
+- **Synchronized Room Editor Gestures & Crash Protection**:
+  - Eliminated drag/pan gesture conflicts inside the Room Editor (`RoomsScreen.tsx`) by introducing a coordinated `isDragging` state hook. Whenever an instance is dragged using the "Move" tool, background camera panning is temporarily disabled, preventing double-pan fight vectors and thread crashes.
+  - Hardened Reanimated `SharedValue` bindings in `DraggableInstance` with strict type casting (`Number(...) || 0`) and fallback dimensions. This prevents crashes due to uninitialized/undefined coordinates or NaN states when opening projects.
+- **Instant Project Persistence**:
+  - Configured `updateInstancePosition`, `updateInstanceSize`, and `updateInstanceAngle` inside `useProjectStore.ts` to instantly trigger asynchronous writes to disk using `FileSystemManager.saveProjectJson`. This guarantees edits are fully persisted on disk immediately as they are made.
+
+## [1.21.0] - 2026-05-12
+### Added
+- **Interactive Tile Width & Height Configuration**:
+  - Implemented real-time numeric inputs for customized **Tile Width** and **Tile Height** direct from the Room Editor sidebar panel (`RoomsScreen.tsx`).
+  - Editing tile dimensions instantly modifies grid slicing offsets and frame dimensions, updating the sprite's grid configuration dynamically on the fly.
+- **High-Performance Nested Tileset Scrolling**:
+  - Replaced the large-scale wrapping grid layout inside the sidebar with an elegant `<ScrollView nestedScrollEnabled={true}>` container with a clean `maxHeight: 180` limit.
+  - This prevents sidebar expansion/overflow and ensures smooth, independent vertical scrolling for tilesets containing many frames without disrupting the parent sidebar's vertical scroll gestures.
+
+### Fixed
+- **Guarded Game Player Execution**:
+  - Added robust null/undefined safety wrappers when iterating room instances (`currentRoom?.instances`) in the mobile runner physics pipeline (`GamePlayer.tsx`), completely eliminating occasional crash vectors when loading or switching room states.
+
+## [1.20.0] - 2026-05-12
+### Added
+- **Unified Multi-Capability Layers & Streamlined Editors**:
+  - Overhauled the layer systems inside the Room Editor (`RoomsScreen.tsx`) and the mobile runner (`GamePlayer.tsx`) to remove rigid, binary layer classifications ("Objects" layer vs "Tilemap" layer).
+  - Designed every layer to natively support both custom sliced tileset grids and placement of interactive game object instances concurrently.
+  - Implemented an elegant "Enable Tile Painting" switch toggle inside the Tilemap Painter panel to dynamically assign tileset sprites and grid configurations to any active layer.
+  - Streamlined the Layer Panel sidebar, replacing redundant action buttons with automated inline indicators displaying the currently active tileset name.
+  - Aligned editor visual rendering lists seamlessly with play-mode canvas buffers for consistent spatial-depth painting.
+
+## [1.19.0] - 2026-05-12
+### Added
+- **Experimental Tilemap Feature Integration**:
+  - Extended global database state layer (`useProjectStore.ts`) to support custom tilemap layers, including tileset sprite associations, coordinates, cell frame-slice assignments, and physical solid state triggers.
+  - Implemented real-time interactive drag-painting, cell erasing, tileset selection, and viewport rendering controls directly in the Room Editor screen (`RoomsScreen.tsx`).
+  - Integrated high-performance static block simulation in the physics engine (`GamePlayer.tsx`), allocating dynamic rectangular solid bodies mapped cleanly with collision labels and identifiers.
+  - Rendered beautiful overlay sheets of sliced custom tile sprites via `PixelSprite` frame-slicer layers within the virtual player viewport canvas.
+
+## [1.18.0] - 2026-05-12
+### Added
+- **Elegant Action Picker Reorganization**:
+  - Eliminated visual clutter and duplicate categories inside the Action Picker Modal (`ObjectModals.tsx`).
+  - Restructured all game-making capabilities into beautiful, distinct, descriptive categories: *Preset Actions*, *Movement & Physics*, *Lives & Stats*, *State & Visibility*, *UI, Text & Appearance*, *Progress Bar Actions*, *Game Audio*, *Scene & Room Control*, *Spawn Objects*, *Math & Expressions*, *Values & Environment*, and *Project Variables (Global)*.
+- **Enhanced Collision & Overlapping Triggers**:
+  - Added new visual condition trigger keyword **`is overlapping another object`** under the "COLLISIONS" category in the Trigger Picker list.
+  - Dynamically runs on-tick bounding box detection to evaluate spatial overlapping between objects and executes script logic seamlessly.
+- **Dynamic Size & Position Triggers**:
+  - Added size & position evaluation trigger operators under "Size & Position": **`compare width`**, **`compare height`**, **`compare x`**, and **`compare y`**.
+  - Enabled creators to specify conditional comparisons on an object's spatial dimensions and coordinates relative to values or variables.
+- **Appearance & Visibility Triggers**:
+  - Added new event triggers **`is flipped`** (evaluates horizontal scaling flipping) and **`is visible`** (evaluates rendering visibility) to the state observation capabilities of the trigger system.
+
+## [1.17.0] - 2026-05-12
+### Added
+- **Fully Event and Action-Driven Player Movement**:
+  - Re-engineered player movement logic inside `GamePlayer.tsx` to utilize built-in events (`builtin_left`, `builtin_right`, `builtin_up`, `builtin_down`, `builtin_jump`) and actions (`move_left`, `move_right`, `move_up`, `move_down`, `jump`), eliminating raw, hardcoded velocity overrides in the core update loop.
+  - Users can now customize or override default player movement behaviors by registering standard event listeners on these built-in events.
+- **Vertical Movement Action Commands (`move_up` & `move_down`)**:
+  - Integrated native `move_up` and `move_down` action commands in both the mobile game runner (`GamePlayer.tsx`) and the HTML web exporter (`webExportTemplate.ts`).
+  - Added visual action picker presets with Lucide icon indicators (`ArrowUp` & `ArrowDown`) inside the Movement & Rotation category in `ObjectModals.tsx`.
+  - Added code autocomplete keywords to the suggestions dictionary in `ObjectInspectorModal.tsx`.
+- **Desktop Keyboard Controls Support in Web Exports**:
+  - Added robust keyboard controls (WASD, Arrow keys, Space, X) to exported games, enabling instant desktop playability of exported projects.
+
 ## [1.16.1] - 2026-05-11
 ### Added
 - **Typed Variables Support (Number, String, Boolean)**:

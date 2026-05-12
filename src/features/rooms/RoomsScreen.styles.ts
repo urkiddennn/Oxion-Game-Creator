@@ -110,21 +110,24 @@ export const styles = StyleSheet.create({
   layerItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 4,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 1,
-    marginBottom: 2,
+    padding: 8,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+
+    marginBottom: 6,
     borderWidth: 1,
-    borderColor: 'transparent',
+    borderColor: 'rgba(255,255,255,0.06)',
   },
   layerItemActive: {
-    backgroundColor: 'rgba(0, 209, 255, 0.1)',
+    backgroundColor: 'rgba(0, 209, 255, 0.08)',
     borderColor: theme.colors.primary,
+    borderLeftWidth: 1,
+    borderLeftColor: theme.colors.primary,
   },
   layerInfo: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
   },
   layerPreview: {
     width: 24,
@@ -136,13 +139,14 @@ export const styles = StyleSheet.create({
     marginRight: 8,
   },
   layerName: {
-    color: theme.colors.text,
+    color: '#E2E8F0',
     fontSize: 12,
+    fontWeight: '500',
   },
   layerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
   },
   zoomControls: {
     position: 'absolute',
@@ -195,10 +199,10 @@ export const styles = StyleSheet.create({
     zIndex: 110,
   },
   sidebarToggleOpen: {
-    right: 180,
+    right: 230,
   },
   sidebar: {
-    width: 180,
+    width: 230,
     backgroundColor: '#16191E',
     borderLeftWidth: 1,
     borderLeftColor: theme.colors.border,

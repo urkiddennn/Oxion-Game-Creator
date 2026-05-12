@@ -1,12 +1,12 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Image, DeviceEventEmitter, Alert, useWindowDimensions, Switch, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Image, DeviceEventEmitter, Alert, useWindowDimensions, Modal, Switch } from 'react-native';
 import { theme } from '../../theme';
 import {
   Grid3X3, ChevronLeft, ChevronRight, Box, Settings,
   MousePointer2, Copy, X, ZoomIn, ZoomOut, HelpCircle, Layout,
   ArrowRight, ArrowDown, Layers, ChevronUp, ChevronDown,
   ArrowUpToLine, ArrowDownToLine, Eye, EyeOff, Lock, Unlock, Plus, Trash2, Edit3,
-  MousePointer, Move
+  MousePointer, Move, Grid
 } from 'lucide-react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -25,48 +25,63 @@ import { ColorPickerWrapper } from '../../components/ColorPicker';
 
 
 
-const DraggableInstance = ({ inst, obj, scale, gridSize, onDragEnd, onRotateEnd, sprite, activeTool, onToolAction, isPlacing, isSelected, onSelect }: any) => {
-  const translateX = useSharedValue(inst.x);
-  const translateY = useSharedValue(inst.y);
+const DraggableInstance = ({ inst, obj, scale, gridSize, onDragStart, onDragEnd, onRotateEnd, sprite, activeTool, onToolAction, isPlacing, isSelected, onSelect }: any) => {
+  const translateX = useSharedValue(Number(inst?.x) || 0);
+  const translateY = useSharedValue(Number(inst?.y) || 0);
   const isGrid = !!sprite?.grid?.enabled;
-  const fw = isGrid ? (sprite?.grid?.frameWidth || gridSize) : (sprite?.width || gridSize);
-  const fh = isGrid ? (sprite?.grid?.frameHeight || gridSize) : (sprite?.height || gridSize);
-  const width = useSharedValue(isGrid ? fw : (inst.width || obj?.width || fw));
-  const height = useSharedValue(isGrid ? fh : (inst.height || obj?.height || fh));
-  const rotation = useSharedValue(inst.angle || 0);
+  const gs = gridSize || 32;
+  const fw = isGrid ? (sprite?.grid?.frameWidth || gs) : (sprite?.width || gs);
+  const fh = isGrid ? (sprite?.grid?.frameHeight || gs) : (sprite?.height || gs);
+  const width = useSharedValue(Number(isGrid ? fw : (inst?.width || obj?.width || fw)) || 32);
+  const height = useSharedValue(Number(isGrid ? fh : (inst?.height || obj?.height || fh)) || 32);
+  const rotation = useSharedValue(Number(inst?.angle) || 0);
 
   // Sync shared values if inst prop changes
   React.useEffect(() => {
-    translateX.value = inst.x;
-    translateY.value = inst.y;
+    if (!inst) return;
+    translateX.value = Number(inst.x) || 0;
+    translateY.value = Number(inst.y) || 0;
     const isGrid = !!sprite?.grid?.enabled;
     const fw = isGrid ? (sprite?.grid?.frameWidth || gridSize) : (sprite?.width || gridSize);
     const fh = isGrid ? (sprite?.grid?.frameHeight || gridSize) : (sprite?.height || gridSize);
-    width.value = isGrid ? fw : (inst.width || obj?.width || fw);
-    height.value = isGrid ? fh : (inst.height || obj?.height || fh);
-  }, [inst.x, inst.y, inst.width, inst.height, obj?.width, obj?.height, sprite?.width, sprite?.height, sprite?.grid?.enabled, sprite?.grid?.frameWidth, sprite?.grid?.frameHeight]);
+    width.value = Number(isGrid ? fw : (inst.width || obj?.width || fw)) || 32;
+    height.value = Number(isGrid ? fh : (inst.height || obj?.height || fh)) || 32;
+  }, [inst?.x, inst?.y, inst?.width, inst?.height, obj?.width, obj?.height, sprite?.width, sprite?.height, sprite?.grid?.enabled, sprite?.grid?.frameWidth, sprite?.grid?.frameHeight]);
 
   const dragGesture = Gesture.Pan()
     .enabled(activeTool === 'move')
     .onStart(() => {
-      runOnJS(onSelect)();
+      if (onDragStart) {
+        runOnJS(onDragStart)();
+      }
+      if (onSelect) {
+        runOnJS(onSelect)();
+      }
     })
     .onUpdate((e) => {
-      const rawX = inst.x + (e.translationX / scale.value);
-      const rawY = inst.y + (e.translationY / scale.value);
-      translateX.value = Math.round(rawX / gridSize) * gridSize;
-      translateY.value = Math.round(rawY / gridSize) * gridSize;
+      const currentGs = gridSize || 32;
+      const sv = scale?.value || 1;
+      const rawX = Number(inst?.x || 0) + (e.translationX / sv);
+      const rawY = Number(inst?.y || 0) + (e.translationY / sv);
+      translateX.value = Math.round(rawX / currentGs) * currentGs;
+      translateY.value = Math.round(rawY / currentGs) * currentGs;
     })
     .onEnd(() => {
-      runOnJS(onDragEnd)(inst.id, translateX.value, translateY.value);
+      if (onDragEnd) {
+        runOnJS(onDragEnd)(inst?.id, translateX.value, translateY.value);
+      }
     });
 
   const tapGesture = Gesture.Tap()
     .onEnd(() => {
       if (activeTool === 'erase' || activeTool === 'duplicate') {
-        runOnJS(onToolAction)(activeTool, inst);
+        if (onToolAction) {
+          runOnJS(onToolAction)(activeTool, inst);
+        }
       } else {
-        runOnJS(onSelect)();
+        if (onSelect) {
+          runOnJS(onSelect)();
+        }
       }
     });
 
@@ -128,6 +143,42 @@ const DraggableInstance = ({ inst, obj, scale, gridSize, onDragEnd, onRotateEnd,
         ) : obj?.behavior === 'gui_container' ? (
           <View style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 209, 255, 0.2)', borderWidth: 1, borderColor: '#00D1FF', borderStyle: 'dashed' }}>
             <Layout color="#00D1FF" size={24} />
+          </View>
+        ) : obj?.behavior === 'tilemap' ? (
+          <View style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+            {Object.keys(inst?.tileData || {}).length === 0 ? (
+              <View style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderWidth: 1, borderColor: '#10B981', borderStyle: 'dashed' }}>
+                <Grid color="#10B981" size={16} />
+                <Text style={{ color: '#10B981', fontSize: 7, marginTop: 2, fontWeight: 'bold' }}>Tilemap</Text>
+              </View>
+            ) : (
+              Object.entries(inst?.tileData || {}).map(([key, value]) => {
+                const [colStr, rowStr] = key.split(',');
+                const col = parseInt(colStr, 10);
+                const row = parseInt(rowStr, 10);
+                const tileIndex = parseInt(value, 10);
+
+                return (
+                  <View
+                    key={key}
+                    style={{
+                      position: 'absolute',
+                      left: col * gs,
+                      top: row * gs,
+                      width: gs,
+                      height: gs,
+                    }}
+                  >
+                    <PixelSprite
+                      sprite={sprite}
+                      size={gs}
+                      originalSize={true}
+                      frameIndex={tileIndex}
+                    />
+                  </View>
+                );
+              })
+            )}
           </View>
         ) : (
           <PixelSprite
@@ -266,7 +317,7 @@ const HexColorInput = ({ value, onChange }: { value: string, onChange: (v: strin
 
 export default function RoomsScreen() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const { activeProject: currentProject, updateRoom, addInstanceToRoom, updateInstancePosition, updateInstanceSize, updateInstanceAngle, removeInstanceFromRoom, reorderInstance, addRoom, addLayer, removeLayer, updateLayer, reorderLayer, activeRoomId, setActiveRoomId } = useProjectStore();
+  const { activeProject: currentProject, updateRoom, addInstanceToRoom, updateInstancePosition, updateInstanceSize, updateInstanceAngle, updateInstanceTileData, removeInstanceFromRoom, reorderInstance, addRoom, addLayer, removeLayer, updateLayer, reorderLayer, activeRoomId, setActiveRoomId, updateSprite } = useProjectStore();
   const [showGrid, setShowGrid] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
@@ -277,16 +328,29 @@ export default function RoomsScreen() {
   const [cameraTargetPickerVisible, setCameraTargetPickerVisible] = useState(false);
   const [colorPickerVisible, setColorPickerVisible] = useState(false);
 
+  const [activeTileIndex, setActiveTileIndex] = useState<number | null>(null);
+  const [isEraserMode, setIsEraserMode] = useState<boolean>(false);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+
+  const currentRoom = useMemo(() =>
+    (currentProject?.rooms || []).find((r: any) => r.id === activeRoomId) || (currentProject?.rooms || [])[0],
+    [currentProject, activeRoomId]);
+
+  const activeLayer = useMemo(() => {
+    return currentRoom?.layers?.find((l: any) => l.id === activeLayerId);
+  }, [currentRoom?.layers, activeLayerId]);
+
+  useEffect(() => {
+    if (activeLayer?.tilesetSpriteId && activeTileIndex === null) {
+      setActiveTileIndex(0);
+    }
+  }, [activeLayer?.id, activeLayer?.tilesetSpriteId]);
 
   useEffect(() => {
     if (!activeRoomId && currentProject?.rooms?.length) {
       setActiveRoomId(currentProject.rooms[0].id);
     }
   }, [currentProject?.rooms, activeRoomId]);
-
-  const currentRoom = useMemo(() =>
-    (currentProject?.rooms || []).find((r: any) => r.id === activeRoomId) || (currentProject?.rooms || [])[0],
-    [currentProject, activeRoomId]);
 
   const [expandedSections, setExpandedSections] = useState({
     layers: true,
@@ -363,6 +427,7 @@ export default function RoomsScreen() {
       width: 800,
       height: 600,
       instances: [],
+      layers: [{ id: 'default', name: 'Layer 1', visible: true, locked: false }],
       settings: {
         showControls: { left: true, right: true, jump: true, shoot: true },
         gravity: 9.8,
@@ -445,15 +510,87 @@ export default function RoomsScreen() {
     });
 
   const panGesture = Gesture.Pan()
-    .enabled(activeTool === 'select')
+    .enabled((activeTool === 'select' || activeTool === 'move') && !isDragging)
     .onUpdate((e) => {
-      offsetX.value = savedOffsetX.value + e.translationX;
-      offsetY.value = savedOffsetY.value + e.translationY;
+      const selectedInst = selectedInstanceId ? currentRoom?.instances?.find(i => i.id === selectedInstanceId) : null;
+      const selectedObj = selectedInst ? (currentProject?.objects || []).find(o => o.id === selectedInst.objectId) : null;
+      const isPaintingInstance = !!(selectedInst && selectedObj?.behavior === 'tilemap' && (activeTileIndex !== null || isEraserMode));
+      const isPaintingLayer = !!(activeLayer?.tilesetSpriteId && (activeTileIndex !== null || isEraserMode));
+
+      if ((isPaintingLayer || isPaintingInstance) && activeTool === 'select' && !selectedObjectId) {
+        // Continuous painting
+        const viewW = viewport.width || screenWidth;
+        const viewH = viewport.height || screenHeight;
+        const realX = (roomWidth / 2) + (e.x - (viewW / 2) - offsetX.value) / scale.value;
+        const realY = (roomHeight / 2) + (e.y - (viewH / 2) - offsetY.value) / scale.value;
+        runOnJS(handleTilemapPaint)(realX, realY);
+      } else {
+        offsetX.value = savedOffsetX.value + e.translationX;
+        offsetY.value = savedOffsetY.value + e.translationY;
+      }
     })
     .onEnd(() => {
       savedOffsetX.value = offsetX.value;
       savedOffsetY.value = offsetY.value;
     });
+
+  const handleTilemapPaint = (x: number, y: number) => {
+    if (!currentRoom) return;
+
+    // 1. Check if we have a selected tilemap instance
+    const selectedInst = selectedInstanceId ? currentRoom.instances?.find(i => i.id === selectedInstanceId) : null;
+    const selectedObj = selectedInst ? (currentProject?.objects || []).find(o => o.id === selectedInst.objectId) : null;
+
+    if (selectedInst && selectedObj?.behavior === 'tilemap') {
+      // Paint on the individual instance in relative coordinates
+      const relativeX = x - selectedInst.x;
+      const relativeY = y - selectedInst.y;
+      const col = Math.floor(relativeX / GRID_SIZE);
+      const row = Math.floor(relativeY / GRID_SIZE);
+
+      // Bounds check relative to room size (or allow infinite relative coordinates)
+      const absCol = Math.floor(x / GRID_SIZE);
+      const absRow = Math.floor(y / GRID_SIZE);
+      if (absCol < 0 || absCol * GRID_SIZE >= roomWidth || absRow < 0 || absRow * GRID_SIZE >= roomHeight) return;
+
+      const key = `${col},${row}`;
+      const tileData = { ...(selectedInst.tileData || {}) };
+
+      if (isEraserMode) {
+        delete tileData[key];
+      } else if (activeTileIndex !== null) {
+        tileData[key] = activeTileIndex.toString();
+      } else {
+        return;
+      }
+
+      updateInstanceTileData(currentRoom.id, selectedInst.id, tileData);
+      return;
+    }
+
+    // 2. Otherwise paint on the active layer (Backwards Compatibility)
+    if (!activeLayerId) return;
+    const layer = currentRoom.layers.find(l => l.id === activeLayerId);
+    if (!layer || !layer.tilesetSpriteId) return;
+
+    const col = Math.floor(x / GRID_SIZE);
+    const row = Math.floor(y / GRID_SIZE);
+
+    if (col < 0 || col * GRID_SIZE >= roomWidth || row < 0 || row * GRID_SIZE >= roomHeight) return;
+
+    const key = `${col},${row}`;
+    const tileData = { ...(layer.tileData || {}) };
+
+    if (isEraserMode) {
+      delete tileData[key];
+    } else if (activeTileIndex !== null) {
+      tileData[key] = activeTileIndex.toString();
+    } else {
+      return;
+    }
+
+    updateLayer(currentRoom.id, activeLayerId, { tileData });
+  };
 
   const handlePlaceObject = (x: number, y: number) => {
     if (!selectedObjectId || !currentRoom) return;
@@ -494,12 +631,19 @@ export default function RoomsScreen() {
 
   const tapGesture = Gesture.Tap()
     .onEnd((e) => {
-      if (selectedObjectId) {
-        // Correct for camera offset, scale, and room centering relative to the actual viewport
-        const viewW = viewport.width || screenWidth;
-        const viewH = viewport.height || screenHeight;
-        const realX = (roomWidth / 2) + (e.x - (viewW / 2) - offsetX.value) / scale.value;
-        const realY = (roomHeight / 2) + (e.y - (viewH / 2) - offsetY.value) / scale.value;
+      const viewW = viewport.width || screenWidth;
+      const viewH = viewport.height || screenHeight;
+      const realX = (roomWidth / 2) + (e.x - (viewW / 2) - offsetX.value) / scale.value;
+      const realY = (roomHeight / 2) + (e.y - (viewH / 2) - offsetY.value) / scale.value;
+
+      const selectedInst = selectedInstanceId ? currentRoom?.instances?.find(i => i.id === selectedInstanceId) : null;
+      const selectedObj = selectedInst ? (currentProject?.objects || []).find(o => o.id === selectedInst.objectId) : null;
+      const isPaintingInstance = !!(selectedInst && selectedObj?.behavior === 'tilemap' && (activeTileIndex !== null || isEraserMode));
+      const isPaintingLayer = !!(activeLayer?.tilesetSpriteId && (activeTileIndex !== null || isEraserMode));
+
+      if ((isPaintingLayer || isPaintingInstance) && !selectedObjectId) {
+        runOnJS(handleTilemapPaint)(realX, realY);
+      } else if (selectedObjectId) {
         runOnJS(handlePlaceObject)(realX, realY);
       }
     });
@@ -580,34 +724,88 @@ export default function RoomsScreen() {
               {(currentRoom?.layers || [{ id: 'default', name: 'Layer 1', visible: true, locked: false }]).map((layer, idx, allLayers) => {
                 if (!layer.visible) return null;
 
-                return (currentRoom?.instances || [])
-                  .filter(inst => (inst.layerId || allLayers[0].id) === layer.id)
-                  .map((inst) => {
-                    const obj = (currentProject?.objects || []).find(o => o.id === inst.objectId);
-                    const sprite = (currentProject?.sprites || []).find(s => s.id === obj?.appearance.spriteId);
+                const tilesetSprite = currentProject?.sprites.find(s => s.id === layer.tilesetSpriteId);
+                const tileData = layer.tileData || {};
+                const hasTiles = Object.keys(tileData).length > 0;
 
-                    return (
-                      <DraggableInstance
-                        key={inst.id}
-                        inst={inst}
-                        obj={obj}
-                        scale={scale}
-                        gridSize={GRID_SIZE}
-                        onDragEnd={handleDragEnd}
-                        onToolAction={handleToolAction}
-                        sprite={sprite}
-                        activeTool={activeTool}
-                        isPlacing={!!selectedObjectId && activeTool === 'select'}
-                        isSelected={selectedInstanceId === inst.id}
-                        onSelect={() => {
-                          if (!layer.locked) {
-                            setSelectedInstanceId(inst.id);
-                            setSelectedObjectId(null); // Cancel placement mode when selecting an object
-                          }
+                const layerInstances = (currentRoom?.instances || [])
+                  .filter(inst => (inst.layerId || allLayers[0].id) === layer.id);
+
+                return (
+                  <React.Fragment key={`editor-layer-${layer.id}`}>
+                    {hasTiles && (
+                      <View
+                        style={{
+                          position: 'absolute',
+                          left: 0,
+                          top: 0,
+                          width: roomWidth,
+                          height: roomHeight,
+                          pointerEvents: 'none',
+                          zIndex: idx * 10
                         }}
-                      />
-                    );
-                  });
+                      >
+                        {Object.entries(tileData).map(([key, value]) => {
+                          const [colStr, rowStr] = key.split(',');
+                          const col = parseInt(colStr, 10);
+                          const row = parseInt(rowStr, 10);
+                          const tileIndex = parseInt(value, 10);
+
+                          return (
+                            <View
+                              key={key}
+                              style={{
+                                position: 'absolute',
+                                left: col * GRID_SIZE,
+                                top: row * GRID_SIZE,
+                                width: GRID_SIZE,
+                                height: GRID_SIZE,
+                              }}
+                            >
+                              <PixelSprite
+                                sprite={tilesetSprite}
+                                size={GRID_SIZE}
+                                originalSize={true}
+                                frameIndex={tileIndex}
+                              />
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+
+                    {layerInstances.map((inst) => {
+                      const obj = (currentProject?.objects || []).find(o => o.id === inst.objectId);
+                      const sprite = (currentProject?.sprites || []).find(s => s.id === obj?.appearance.spriteId);
+
+                      return (
+                        <DraggableInstance
+                          key={inst.id}
+                          inst={inst}
+                          obj={obj}
+                          scale={scale}
+                          gridSize={GRID_SIZE}
+                          onDragStart={() => setIsDragging(true)}
+                          onDragEnd={(instId: any, x: any, y: any) => {
+                            setIsDragging(false);
+                            handleDragEnd(instId, x, y);
+                          }}
+                          onToolAction={handleToolAction}
+                          sprite={sprite}
+                          activeTool={activeTool}
+                          isPlacing={!!selectedObjectId && activeTool === 'select'}
+                          isSelected={selectedInstanceId === inst.id}
+                          onSelect={() => {
+                            if (!layer.locked) {
+                              setSelectedInstanceId(inst.id);
+                              setSelectedObjectId(null); // Cancel placement mode when selecting an object
+                            }
+                          }}
+                        />
+                      );
+                    })}
+                  </React.Fragment>
+                );
               })}
 
               {/* Room Boundary Rectangle */}
@@ -759,7 +957,10 @@ export default function RoomsScreen() {
                 <Layers color={theme.colors.primary} size={16} />
                 <Text style={styles.sectionTitle}>Layers</Text>
                 <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <TouchableOpacity onPress={() => currentRoom && addLayer(currentRoom.id)}>
+                  <TouchableOpacity onPress={(e) => {
+                    e.stopPropagation();
+                    currentRoom && addLayer(currentRoom.id);
+                  }}>
                     <Plus color={theme.colors.primary} size={16} />
                   </TouchableOpacity>
                   {expandedSections.layers ? <ChevronUp color={theme.colors.textMuted} size={14} /> : <ChevronDown color={theme.colors.textMuted} size={14} />}
@@ -801,29 +1002,30 @@ export default function RoomsScreen() {
                                 setActiveLayerId(layer.id);
                               }
                             }}
-                            onLongPress={() => {
-                              if (currentRoom.layers.length <= 1) {
-                                Alert.alert('Cannot Delete', 'A room must have at least one layer.');
-                                return;
-                              }
-                              Alert.alert(
-                                'Delete Layer',
-                                `Are you sure you want to delete "${layer.name}"? ALL objects on this layer will also be deleted.`,
-                                [
-                                  { text: 'Cancel', style: 'cancel' },
-                                  { text: 'Delete', style: 'destructive', onPress: () => removeLayer(currentRoom.id, layer.id) }
-                                ]
-                              );
-                            }}
                           >
-                            <Text style={[styles.layerName, isActive && { fontWeight: 'bold', color: theme.colors.primary }]} numberOfLines={1}>
-                              {layer.name}
-                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, width: '100%' }}>
+                              {layer.tilesetSpriteId ? (
+                                <Grid3X3 color={isActive ? theme.colors.primary : theme.colors.textMuted} size={12} />
+                              ) : (
+                                <Box color={isActive ? theme.colors.primary : theme.colors.textMuted} size={12} />
+                              )}
+                              <Text style={[styles.layerName, isActive && { fontWeight: 'bold', color: theme.colors.primary }]} numberOfLines={1}>
+                                {layer.name}
+                              </Text>
+                            </View>
+
+                            {isActive && layer.tilesetSpriteId && (
+                              <View style={{ marginTop: 4, paddingLeft: 18 }}>
+                                <Text style={{ fontSize: 9, color: theme.colors.textMuted, fontStyle: 'italic' }}>
+                                  Tileset: {currentProject?.sprites.find(s => s.id === layer.tilesetSpriteId)?.name || 'Unknown'}
+                                </Text>
+                              </View>
+                            )}
                           </TouchableOpacity>
 
                           <View style={styles.layerActions}>
                             {selectedInstanceId && !isActive && (
-                              <TouchableOpacity 
+                              <TouchableOpacity
                                 onPress={() => {
                                   updateRoom(currentRoom.id, {
                                     instances: currentRoom.instances.map(i =>
@@ -831,32 +1033,80 @@ export default function RoomsScreen() {
                                     )
                                   });
                                 }}
-                                style={{ marginRight: 4 }}
-                                tooltip="Move selected object to this layer"
+                                style={{
+                                  padding: 4,
+                                  backgroundColor: 'rgba(255,255,255,0.04)',
+                                  borderRadius: 4,
+                                }}
                               >
-                                <ArrowUpToLine color={theme.colors.primary} size={14} />
+                                <ArrowUpToLine color={theme.colors.primary} size={12} />
                               </TouchableOpacity>
                             )}
-                            <TouchableOpacity 
+                            <TouchableOpacity
                               onPress={() => reorderLayer(currentRoom.id, layer.id, 'forward')}
                               disabled={revIdx === 0}
-                              style={{ opacity: revIdx === 0 ? 0.3 : 1 }}
+                              style={{
+                                padding: 4,
+                                backgroundColor: 'rgba(255,255,255,0.04)',
+                                borderRadius: 4,
+                                opacity: revIdx === 0 ? 0.2 : 1
+                              }}
                             >
-                              <ChevronUp color={theme.colors.text} size={14} />
+                              <ChevronUp color={theme.colors.text} size={12} />
                             </TouchableOpacity>
-                            <TouchableOpacity 
+                            <TouchableOpacity
                               onPress={() => reorderLayer(currentRoom.id, layer.id, 'backward')}
                               disabled={revIdx === currentRoom.layers.length - 1}
-                              style={{ opacity: revIdx === currentRoom.layers.length - 1 ? 0.3 : 1 }}
+                              style={{
+                                padding: 4,
+                                backgroundColor: 'rgba(255,255,255,0.04)',
+                                borderRadius: 4,
+                                opacity: revIdx === currentRoom.layers.length - 1 ? 0.2 : 1
+                              }}
                             >
-                              <ChevronDown color={theme.colors.text} size={14} />
+                              <ChevronDown color={theme.colors.text} size={12} />
                             </TouchableOpacity>
-                            <TouchableOpacity onPress={() => updateLayer(currentRoom.id, layer.id, { visible: !layer.visible })}>
-                              {layer.visible ? <Eye color={theme.colors.text} size={14} /> : <EyeOff color={theme.colors.textMuted} size={14} />}
+                            <TouchableOpacity
+                              onPress={() => updateLayer(currentRoom.id, layer.id, { visible: !layer.visible })}
+                              style={{
+                                padding: 4,
+                                backgroundColor: 'rgba(255,255,255,0.04)',
+                                borderRadius: 4,
+                              }}
+                            >
+                              {layer.visible ? <Eye color={theme.colors.text} size={12} /> : <EyeOff color={theme.colors.textMuted} size={12} />}
                             </TouchableOpacity>
-                            <TouchableOpacity onPress={() => updateLayer(currentRoom.id, layer.id, { locked: !layer.locked })}>
-                              {layer.locked ? <Lock color={theme.colors.primary} size={14} /> : <Unlock color={theme.colors.textMuted} size={14} />}
+                            <TouchableOpacity
+                              onPress={() => updateLayer(currentRoom.id, layer.id, { locked: !layer.locked })}
+                              style={{
+                                padding: 4,
+                                backgroundColor: 'rgba(255,255,255,0.04)',
+                                borderRadius: 4,
+                              }}
+                            >
+                              {layer.locked ? <Lock color={theme.colors.primary} size={12} /> : <Unlock color={theme.colors.textMuted} size={12} />}
                             </TouchableOpacity>
+                            {currentRoom.layers.length > 1 && (
+                              <TouchableOpacity
+                                onPress={() => {
+                                  Alert.alert(
+                                    'Delete Layer',
+                                    `Are you sure you want to delete "${layer.name}"? ALL objects on this layer will also be deleted.`,
+                                    [
+                                      { text: 'Cancel', style: 'cancel' },
+                                      { text: 'Delete', style: 'destructive', onPress: () => removeLayer(currentRoom.id, layer.id) }
+                                    ]
+                                  );
+                                }}
+                                style={{
+                                  padding: 4,
+                                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                  borderRadius: 4,
+                                }}
+                              >
+                                <Trash2 color={theme.colors.error || '#EF4444'} size={12} />
+                              </TouchableOpacity>
+                            )}
                           </View>
                         </View>
                       );
@@ -942,6 +1192,208 @@ export default function RoomsScreen() {
               </View>
             )}
 
+            {selectedInstanceId && currentRoom && (() => {
+              const inst = currentRoom.instances.find(i => i.id === selectedInstanceId);
+              if (!inst) return null;
+              const obj = currentProject?.objects.find(o => o.id === inst.objectId);
+              if (obj?.behavior !== 'tilemap') return null;
+
+              const tilesetSprite = currentProject?.sprites.find(s => s.id === obj.appearance.spriteId);
+
+              return (
+                <View style={styles.sidebarSection}>
+                  <View style={[styles.sectionHeader, { borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.05)', paddingBottom: 8 }]}>
+                    <Grid3X3 color={theme.colors.primary} size={16} />
+                    <Text style={styles.sectionTitle}>Tilemap Instance Painter</Text>
+                  </View>
+
+                  <View style={{ padding: 12, gap: 12 }}>
+                    {!tilesetSprite ? (
+                      <View style={{ gap: 4 }}>
+                        <Text style={{ color: theme.colors.textMuted, fontSize: 11 }}>No Sprite Assigned</Text>
+                        <Text style={{ color: theme.colors.textMuted, fontSize: 10, fontStyle: 'italic' }}>
+                          Assign a sprite to this object in the Objects Screen first to use it as a tileset!
+                        </Text>
+                      </View>
+                    ) : (
+                      <>
+                        <View style={{ gap: 2 }}>
+                          <Text style={{ color: theme.colors.textMuted, fontSize: 11 }}>Active Tileset Sprite</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 6, backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: 4, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' }}>
+                            <PixelSprite sprite={tilesetSprite} size={24} />
+                            <Text style={{ color: theme.colors.primary, fontSize: 11, fontWeight: 'bold' }}>{tilesetSprite.name}</Text>
+                          </View>
+                        </View>
+
+                        {/* Tile Slicing Width & Height Inputs */}
+                        {(() => {
+                          const tileW = tilesetSprite.grid?.frameWidth ?? 32;
+                          const tileH = tilesetSprite.grid?.frameHeight ?? 32;
+                          return (
+                            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                              <View style={{ flex: 1, gap: 4 }}>
+                                <Text style={{ color: theme.colors.textMuted, fontSize: 10 }}>Tile Width (px)</Text>
+                                <TextInput
+                                  style={{
+                                    backgroundColor: 'rgba(0,0,0,0.3)',
+                                    color: '#fff',
+                                    paddingVertical: 4,
+                                    paddingHorizontal: 8,
+                                    borderRadius: 4,
+                                    fontSize: 11,
+                                    borderWidth: 1,
+                                    borderColor: 'rgba(255,255,255,0.1)'
+                                  }}
+                                  keyboardType="numeric"
+                                  value={String(tileW)}
+                                  onChangeText={(val) => {
+                                    const num = parseInt(val, 10);
+                                    if (!isNaN(num) && num > 0) {
+                                      updateSprite(tilesetSprite.id, {
+                                        grid: {
+                                          enabled: true,
+                                          frameWidth: num,
+                                          frameHeight: tileH
+                                        }
+                                      });
+                                    }
+                                  }}
+                                />
+                              </View>
+                              <View style={{ flex: 1, gap: 4 }}>
+                                <Text style={{ color: theme.colors.textMuted, fontSize: 10 }}>Tile Height (px)</Text>
+                                <TextInput
+                                  style={{
+                                    backgroundColor: 'rgba(0,0,0,0.3)',
+                                    color: '#fff',
+                                    paddingVertical: 4,
+                                    paddingHorizontal: 8,
+                                    borderRadius: 4,
+                                    fontSize: 11,
+                                    borderWidth: 1,
+                                    borderColor: 'rgba(255,255,255,0.1)'
+                                  }}
+                                  keyboardType="numeric"
+                                  value={String(tileH)}
+                                  onChangeText={(val) => {
+                                    const num = parseInt(val, 10);
+                                    if (!isNaN(num) && num > 0) {
+                                      updateSprite(tilesetSprite.id, {
+                                        grid: {
+                                          enabled: true,
+                                          frameWidth: tileW,
+                                          frameHeight: num
+                                        }
+                                      });
+                                    }
+                                  }}
+                                />
+                              </View>
+                            </View>
+                          );
+                        })()}
+
+                        {/* Brush / Eraser Mode */}
+                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                          <TouchableOpacity
+                            style={{
+                              flex: 1,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: 8,
+                              paddingVertical: 8,
+                              borderRadius: 4,
+                              backgroundColor: !isEraserMode ? theme.colors.primary : 'rgba(255,255,255,0.05)',
+                              borderWidth: 1,
+                              borderColor: !isEraserMode ? theme.colors.primary : 'rgba(255,255,255,0.1)'
+                            }}
+                            onPress={() => setIsEraserMode(false)}
+                          >
+                            <Edit3 size={14} color={!isEraserMode ? '#000' : '#fff'} />
+                            <Text style={{ color: !isEraserMode ? '#000' : '#fff', fontSize: 12, fontWeight: 'bold' }}>Brush</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={{
+                              flex: 1,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: 8,
+                              paddingVertical: 8,
+                              borderRadius: 4,
+                              backgroundColor: isEraserMode ? theme.colors.error : 'rgba(255,255,255,0.05)',
+                              borderWidth: 1,
+                              borderColor: isEraserMode ? theme.colors.error : 'rgba(255,255,255,0.1)'
+                            }}
+                            onPress={() => setIsEraserMode(true)}
+                          >
+                            <Trash2 size={14} color={isEraserMode ? '#fff' : '#fff'} />
+                            <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>Eraser</Text>
+                          </TouchableOpacity>
+                        </View>
+
+                        {/* Tile Palette Grid */}
+                        {!isEraserMode && (() => {
+                          const frameWidth = tilesetSprite.grid?.frameWidth || 32;
+                          const frameHeight = tilesetSprite.grid?.frameHeight || 32;
+                          const width = tilesetSprite.width || frameWidth;
+                          const height = tilesetSprite.height || frameHeight;
+                          const cols = Math.floor(width / frameWidth) || 1;
+                          const rows = Math.floor(height / frameHeight) || 1;
+                          const totalFrames = cols * rows;
+
+                          const tiles = [];
+                          for (let i = 0; i < totalFrames; i++) {
+                            tiles.push(i);
+                          }
+
+                          return (
+                            <View style={{ gap: 6 }}>
+                              <Text style={{ color: theme.colors.textMuted, fontSize: 11 }}>Select Tile Frame</Text>
+                              <ScrollView
+                                nestedScrollEnabled={true}
+                                style={{ maxHeight: 180, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 4 }}
+                                contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, padding: 8 }}
+                              >
+                                {tiles.map((idx) => {
+                                  const isSelected = activeTileIndex === idx;
+                                  return (
+                                    <TouchableOpacity
+                                      key={idx}
+                                      style={{
+                                        padding: 2,
+                                        borderRadius: 4,
+                                        backgroundColor: isSelected ? theme.colors.primary : 'transparent',
+                                        borderWidth: 2,
+                                        borderColor: isSelected ? theme.colors.primary : 'rgba(255,255,255,0.1)',
+                                      }}
+                                      onPress={() => {
+                                        setActiveTileIndex(idx);
+                                        setIsEraserMode(false);
+                                      }}
+                                    >
+                                      <PixelSprite sprite={tilesetSprite} size={32} originalSize={true} frameIndex={idx} />
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </ScrollView>
+                            </View>
+                          );
+                        })()}
+
+                        <Text style={{ color: theme.colors.textMuted, fontSize: 10, textAlign: 'center', fontStyle: 'italic', marginTop: 4 }}>
+                          Drag on canvas in "Select" mode to paint tiles inside this instance!
+                        </Text>
+                      </>
+                    )}
+                  </View>
+                </View>
+              );
+            })()}
+
+
             <View style={styles.sidebarSection}>
               <TouchableOpacity
                 style={styles.sectionHeader}
@@ -986,14 +1438,14 @@ export default function RoomsScreen() {
                     <Text style={[styles.settingLabel, { marginBottom: 8 }]}>Background Color</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                       <TouchableOpacity
-                          style={{
-                            width: 32,
-                            height: 32,
-                            borderRadius: 2,
-                            backgroundColor: currentRoom?.settings?.backgroundColor || '#2E333D',
-                            borderWidth: 1,
-                            borderColor: 'rgba(255,255,255,0.1)'
-                          }}
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 2,
+                          backgroundColor: currentRoom?.settings?.backgroundColor || '#2E333D',
+                          borderWidth: 1,
+                          borderColor: 'rgba(255,255,255,0.1)'
+                        }}
                         onPress={() => setColorPickerVisible(true)}
                       />
                       <View style={{ flex: 1 }}>
@@ -1249,7 +1701,7 @@ export default function RoomsScreen() {
         visible={colorPickerVisible}
         onClose={() => setColorPickerVisible(false)}
         color={currentRoom?.settings?.backgroundColor || '#2E333D'}
-        onColorChange={(c) => currentRoom && updateRoom(currentRoom.id, {
+        onColorChange={(c: string) => currentRoom && updateRoom(currentRoom.id, {
           settings: { ...(currentRoom.settings || {}), backgroundColor: c }
         })}
       />
