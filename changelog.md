@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.2] - 2026-05-13
+### Optimized
+- **TypedArrays Sprite Painter**: Fully refactored `SpriteEditor.tsx` to utilize flat, lightning-fast `Uint32Array` buffers with dynamic color caching (O(1) uint32-to-hex LUT), completely avoiding high-frequency nested array clone overhead and garbage-collector stuttering during draw/paint actions.
+- **O(1) Tilemap Dimensions Caching**: Integrated a `WeakMap`-backed boundary tracking cache in the physics engine Visibility Culling loop, resolving maximum tile rows/columns lookup complexity in true O(1) without string operations.
+- **State-Memoized Tilemap Layer Component**: Designed a standalone `LayerTilemapRenderer` component in `GamePlayer.tsx` and `RoomsScreen.tsx` that evaluates and memoizes coordinate offsets in a single run-pass on state modifications, removing high-frequency string splitting and coordinate parsing from layout updates.
+- **Single-Pass Physics Boundaries**: Optimized solid-layer boundary parsing routines to resolve min/max constraints using simple single-pass loops rather than mapping/splitting multiple temporary arrays.
+
 ## [1.22.1] - 2026-05-13
 ### Fixed
 - **Tilemap Boundary Removal**: Removed hardcoded room bounds checks (`roomWidth`/`roomHeight`) in both individual tilemap instance painting and active layer painting, enabling creators to paint and place tilesets anywhere in world space (inside or outside standard room boundaries).

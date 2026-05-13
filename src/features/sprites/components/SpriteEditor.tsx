@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
 import { theme } from '../../../theme';
 import { Save, X, Eraser, Pencil, PaintBucket, RotateCcw } from 'lucide-react-native';
@@ -19,14 +19,43 @@ const PALETTE = [
 const GRID_SIZE = 16;
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
-// Calculate pixel size based on available screen height (landscape)
 const EDITOR_SIZE = Math.min(SCREEN_HEIGHT * 0.7, 400);
 const PIXEL_SIZE = EDITOR_SIZE / GRID_SIZE;
 
+// --- High Performance Color Packing/Unpacking ---
+const hexToUint32 = (hex: string): number => {
+  if (hex === 'transparent' || !hex) return 0;
+  const cleanHex = hex.replace('#', '');
+  let r = 0, g = 0, b = 0;
+  if (cleanHex.length === 3) {
+    r = parseInt(cleanHex[0] + cleanHex[0], 16);
+    g = parseInt(cleanHex[1] + cleanHex[1], 16);
+    b = parseInt(cleanHex[2] + cleanHex[2], 16);
+  } else {
+    r = parseInt(cleanHex.substring(0, 2), 16);
+    g = parseInt(cleanHex.substring(2, 4), 16);
+    b = parseInt(cleanHex.substring(4, 6), 16);
+  }
+  return (r << 24) | (g << 16) | (b << 8) | 255;
+};
+
+const uint32ToHexCache = new Map<number, string>();
+
+const uint32ToHex = (val: number): string => {
+  if (val === 0) return 'transparent';
+  let cached = uint32ToHexCache.get(val);
+  if (cached) return cached;
+
+  const r = (val >>> 24) & 0xFF;
+  const g = (val >>> 16) & 0xFF;
+  const b = (val >>> 8) & 0xFF;
+  const hex = '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('').toUpperCase();
+  uint32ToHexCache.set(val, hex);
+  return hex;
+};
+
 export default function SpriteEditor({ onSave, onCancel }: SpriteEditorProps) {
-  const [pixels, setPixels] = useState<string[][]>(
-    Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill('transparent'))
-  );
+  const [pixels, setPixels] = useState<Uint32Array>(() => new Uint32Array(GRID_SIZE * GRID_SIZE));
   const [selectedColor, setSelectedColor] = useState('#000000');
   const [tool, setTool] = useState<'pen' | 'eraser' | 'fill'>('pen');
 
@@ -38,29 +67,30 @@ export default function SpriteEditor({ onSave, onCancel }: SpriteEditorProps) {
     const row = Math.floor(y / PIXEL_SIZE);
 
     if (row >= 0 && row < GRID_SIZE && col >= 0 && col < GRID_SIZE) {
-      const currentColor = pixelsRef.current[row][col];
-      const targetColor = tool === 'eraser' ? 'transparent' : selectedColor;
+      const idx = row * GRID_SIZE + col;
+      const currentColorVal = pixelsRef.current[idx];
+      const targetColorVal = tool === 'eraser' ? 0 : hexToUint32(selectedColor);
 
-      if (currentColor !== targetColor) {
+      if (currentColorVal !== targetColorVal) {
         if (tool === 'fill') {
-          const newPixels = [...pixelsRef.current.map(r => [...r])];
-          fill(newPixels, row, col, currentColor, targetColor);
+          const newPixels = new Uint32Array(pixelsRef.current);
+          fill(newPixels, row, col, currentColorVal, targetColorVal);
           setPixels(newPixels);
         } else {
-          const newPixels = [...pixelsRef.current.map(r => [...r])];
-          newPixels[row][col] = targetColor;
-          setPixels(newPixels);
+          // Mutate in-place for fast draw sequences, trigger React re-render by copy
+          pixelsRef.current[idx] = targetColorVal;
+          setPixels(new Uint32Array(pixelsRef.current));
         }
       }
     }
   };
 
-  const fill = (p: string[][], r: number, c: number, target: string, replacement: string) => {
+  const fill = (p: Uint32Array, r: number, c: number, target: number, replacement: number) => {
     if (target === replacement) return;
     if (r < 0 || r >= GRID_SIZE || c < 0 || c >= GRID_SIZE) return;
-    if (p[r][c] !== target) return;
+    if (p[r * GRID_SIZE + c] !== target) return;
 
-    p[r][c] = replacement;
+    p[r * GRID_SIZE + c] = replacement;
     fill(p, r + 1, c, target, replacement);
     fill(p, r - 1, c, target, replacement);
     fill(p, r, c + 1, target, replacement);
@@ -99,6 +129,18 @@ export default function SpriteEditor({ onSave, onCancel }: SpriteEditorProps) {
     return cells;
   };
 
+  const handleSave = () => {
+    const out: string[][] = [];
+    for (let r = 0; r < GRID_SIZE; r++) {
+      const row: string[] = [];
+      for (let c = 0; c < GRID_SIZE; c++) {
+        row.push(uint32ToHex(pixels[r * GRID_SIZE + c]));
+      }
+      out.push(row);
+    }
+    onSave(out);
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.mainLayout}>
@@ -108,7 +150,7 @@ export default function SpriteEditor({ onSave, onCancel }: SpriteEditorProps) {
             <X color={theme.colors.text} size={20} />
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => onSave(pixels)} style={styles.saveButton}>
+          <TouchableOpacity onPress={handleSave} style={styles.saveButton}>
             <Save color={theme.colors.background} size={20} />
           </TouchableOpacity>
 
@@ -134,7 +176,7 @@ export default function SpriteEditor({ onSave, onCancel }: SpriteEditorProps) {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.toolIcon}
-            onPress={() => setPixels(Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill('transparent')))}
+            onPress={() => setPixels(new Uint32Array(GRID_SIZE * GRID_SIZE))}
           >
             <RotateCcw color={theme.colors.text} size={18} />
           </TouchableOpacity>
@@ -145,21 +187,25 @@ export default function SpriteEditor({ onSave, onCancel }: SpriteEditorProps) {
           <GestureDetector gesture={drawGesture}>
             <View style={[styles.gridContainer, { width: EDITOR_SIZE, height: EDITOR_SIZE }]}>
               {renderCheckerboard()}
-              {pixels.map((row, r) => (
+              {Array.from({ length: GRID_SIZE }).map((_, r) => (
                 <View key={r} style={styles.row}>
-                  {row.map((color, c) => (
-                    <View
-                      key={`${r}-${c}`}
-                      style={[
-                        styles.pixel,
-                        {
-                          backgroundColor: color,
-                          width: PIXEL_SIZE,
-                          height: PIXEL_SIZE
-                        }
-                      ]}
-                    />
-                  ))}
+                  {Array.from({ length: GRID_SIZE }).map((_, c) => {
+                    const colorVal = pixels[r * GRID_SIZE + c];
+                    const color = uint32ToHex(colorVal);
+                    return (
+                      <View
+                        key={`${r}-${c}`}
+                        style={[
+                          styles.pixel,
+                          {
+                            backgroundColor: color,
+                            width: PIXEL_SIZE,
+                            height: PIXEL_SIZE
+                          }
+                        ]}
+                      />
+                    );
+                  })}
                 </View>
               ))}
             </View>

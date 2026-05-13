@@ -29,6 +29,42 @@ const SPRITE_CACHE = new Map<string, string>();
 const parsedImmediateCache = new WeakMap<any, any>();
 const parsedSubConditionsCache = new WeakMap<any, any>();
 
+// --- Optimized Tilemap Dimensions Lookup Cache ---
+const tilemapDimensionCache = new WeakMap<any, { width: number; height: number }>();
+
+function getTilemapDimensions(inst: any, tileGS: number): { width: number; height: number } {
+  const cached = tilemapDimensionCache.get(inst);
+  if (cached) return cached;
+
+  const tileData = inst.tileData || {};
+  const keys = Object.keys(tileData);
+  if (keys.length === 0) {
+    const res = { width: 32, height: 32 };
+    tilemapDimensionCache.set(inst, res);
+    return res;
+  }
+
+  let maxCol = 0;
+  let maxRow = 0;
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i];
+    const commaIndex = k.indexOf(',');
+    if (commaIndex !== -1) {
+      const col = parseInt(k.substring(0, commaIndex), 10);
+      const row = parseInt(k.substring(commaIndex + 1), 10);
+      if (col > maxCol) maxCol = col;
+      if (row > maxRow) maxRow = row;
+    }
+  }
+
+  const res = {
+    width: (maxCol + 1) * tileGS,
+    height: (maxRow + 1) * tileGS
+  };
+  tilemapDimensionCache.set(inst, res);
+  return res;
+}
+
 // --- Raycast Geometry Helpers ---
 function getLineIntersection(
   x1: number, y1: number, x2: number, y2: number,
@@ -519,6 +555,25 @@ const PhysicsBodyInner = ({
 }) => {
   const [imgDimensions, setImgDimensions] = useState({ w: 0, h: 0 });
   const [currentDimId, setCurrentDimId] = useState<string | null>(null);
+
+  const parsedTileEntries = useMemo(() => {
+    if (obj?.behavior !== 'tilemap' || !tileData) return [];
+    return Object.entries(tileData).map(([key, value]) => {
+      const commaIndex = key.indexOf(',');
+      let c = 0;
+      let r = 0;
+      if (commaIndex !== -1) {
+        c = parseInt(key.substring(0, commaIndex), 10);
+        r = parseInt(key.substring(commaIndex + 1), 10);
+      }
+      return {
+        key,
+        c,
+        r,
+        tileIndex: parseInt(value as string, 10)
+      };
+    });
+  }, [tileData, obj?.behavior]);
   const [localAnimState, setLocalAnimState] = useState(() => {
     if (!sv?.animState) return 0;
     // Safely check if it's a real Reanimated shared value
@@ -940,17 +995,11 @@ const PhysicsBodyInner = ({
       </View>
     );
   } else if (obj?.behavior === 'tilemap') {
-    const tileMapData = tileData || {};
     const gs = currentSprite?.grid?.frameWidth || 32;
 
     content = (
       <View style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%' }}>
-        {Object.entries(tileMapData).map(([key, value]) => {
-          const [colStr, rowStr] = key.split(',');
-          const c = parseInt(colStr, 10);
-          const r = parseInt(rowStr, 10);
-          const tileIndex = parseInt(value as string, 10);
-
+        {parsedTileEntries.map(({ key, c, r, tileIndex }) => {
           if (!currentSprite?.grid?.enabled) {
             return (
               <View
@@ -1456,6 +1505,51 @@ const ZoomIndicator = React.memo(({ zoom, camX, camY, enabled, roomW, roomH, gam
         {enabled && ` | Cam: (${Math.round(displayX)}, ${Math.round(displayY)})`}
       </Text>
     </View>
+  );
+});
+
+const LayerTilemapRenderer = React.memo(({ tileData, tilesetSprite, gridSize }: { tileData: any; tilesetSprite: any; gridSize: number }) => {
+  const parsedTiles = useMemo(() => {
+    const data = tileData || {};
+    return Object.entries(data).map(([key, value]) => {
+      const commaIndex = key.indexOf(',');
+      let col = 0;
+      let row = 0;
+      if (commaIndex !== -1) {
+        col = parseInt(key.substring(0, commaIndex), 10);
+        row = parseInt(key.substring(commaIndex + 1), 10);
+      }
+      return {
+        key,
+        col,
+        row,
+        tileIndex: parseInt(value as string, 10)
+      };
+    });
+  }, [tileData]);
+
+  return (
+    <>
+      {parsedTiles.map((tile) => (
+        <View
+          key={tile.key}
+          style={{
+            position: 'absolute',
+            left: tile.col * gridSize,
+            top: tile.row * gridSize,
+            width: gridSize,
+            height: gridSize,
+          }}
+        >
+          <PixelSprite
+            sprite={tilesetSprite}
+            size={gridSize}
+            originalSize={true}
+            frameIndex={tile.tileIndex}
+          />
+        </View>
+      ))}
+    </>
   );
 });
 
@@ -3472,12 +3566,20 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         const keys = Object.keys(tileData);
         if (keys.length === 0) return;
 
-        const cols = keys.map(k => parseInt(k.split(',')[0], 10));
-        const rows = keys.map(k => parseInt(k.split(',')[1], 10));
-        const minCol = Math.min(...cols);
-        const maxCol = Math.max(...cols);
-        const minRow = Math.min(...rows);
-        const maxRow = Math.max(...rows);
+        let minCol = Infinity, maxCol = -Infinity;
+        let minRow = Infinity, maxRow = -Infinity;
+        for (let i = 0; i < keys.length; i++) {
+          const k = keys[i];
+          const commaIndex = k.indexOf(',');
+          if (commaIndex !== -1) {
+            const col = parseInt(k.substring(0, commaIndex), 10);
+            const row = parseInt(k.substring(commaIndex + 1), 10);
+            if (col < minCol) minCol = col;
+            if (col > maxCol) maxCol = col;
+            if (row < minRow) minRow = row;
+            if (row > maxRow) maxRow = row;
+          }
+        }
 
         for (let r = minRow; r <= maxRow; r++) {
           for (let c = minCol; c <= maxCol; c++) {
@@ -3563,12 +3665,20 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         const keys = Object.keys(tileData);
         if (keys.length === 0) return;
 
-        const cols = keys.map(k => parseInt(k.split(',')[0], 10));
-        const rows = keys.map(k => parseInt(k.split(',')[1], 10));
-        const minCol = Math.min(...cols);
-        const maxCol = Math.max(...cols);
-        const minRow = Math.min(...rows);
-        const maxRow = Math.max(...rows);
+        let minCol = Infinity, maxCol = -Infinity;
+        let minRow = Infinity, maxRow = -Infinity;
+        for (let i = 0; i < keys.length; i++) {
+          const k = keys[i];
+          const commaIndex = k.indexOf(',');
+          if (commaIndex !== -1) {
+            const col = parseInt(k.substring(0, commaIndex), 10);
+            const row = parseInt(k.substring(commaIndex + 1), 10);
+            if (col < minCol) minCol = col;
+            if (col > maxCol) maxCol = col;
+            if (row < minRow) minRow = row;
+            if (row > maxRow) maxRow = row;
+          }
+        }
 
         for (let r = minRow; r <= maxRow; r++) {
           for (let c = minCol; c <= maxCol; c++) {
@@ -4734,32 +4844,11 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                 zIndex: layerIdx * 10
               }}
             >
-              {Object.entries(tileData).map(([key, value]) => {
-                const [colStr, rowStr] = key.split(',');
-                const col = parseInt(colStr, 10);
-                const row = parseInt(rowStr, 10);
-                const tileIndex = parseInt(value, 10);
-
-                return (
-                  <View
-                    key={key}
-                    style={{
-                      position: 'absolute',
-                      left: col * GRID_SIZE,
-                      top: row * GRID_SIZE,
-                      width: GRID_SIZE,
-                      height: GRID_SIZE,
-                    }}
-                  >
-                    <PixelSprite
-                      sprite={tilesetSprite}
-                      size={GRID_SIZE}
-                      originalSize={true}
-                      frameIndex={tileIndex}
-                    />
-                  </View>
-                );
-              })}
+              <LayerTilemapRenderer
+                tileData={tileData}
+                tilesetSprite={tilesetSprite}
+                gridSize={GRID_SIZE}
+              />
             </View>
           )}
 
@@ -4781,13 +4870,11 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             let height = isGrid ? fh : (liveObj.height || inst.height || fh || 32);
 
             // For tilemap instances, compute actual painted extent so visibility culling is correct
-            if (liveObj?.behavior === 'tilemap' && inst.tileData && Object.keys(inst.tileData).length > 0) {
+            if (liveObj?.behavior === 'tilemap' && inst.tileData) {
               const tileGS = currentRoom?.settings?.gridSize ?? 32;
-              const keys = Object.keys(inst.tileData);
-              const maxCol = Math.max(...keys.map(k => parseInt(k.split(',')[0], 10)));
-              const maxRow = Math.max(...keys.map(k => parseInt(k.split(',')[1], 10)));
-              width = (maxCol + 1) * tileGS;
-              height = (maxRow + 1) * tileGS;
+              const dims = getTilemapDimensions(inst, tileGS);
+              width = dims.width;
+              height = dims.height;
             }
 
             // Targeted variables and nonce culling: static walls/blocks don't receive variables or nonce,

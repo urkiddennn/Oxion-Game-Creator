@@ -25,6 +25,51 @@ import { ColorPickerWrapper } from '../../components/ColorPicker';
 
 
 
+const LayerTilemapRenderer = React.memo(({ tileData, tilesetSprite, gridSize }: { tileData: any; tilesetSprite: any; gridSize: number }) => {
+  const parsedTiles = useMemo(() => {
+    const data = tileData || {};
+    return Object.entries(data).map(([key, value]) => {
+      const commaIndex = key.indexOf(',');
+      let col = 0;
+      let row = 0;
+      if (commaIndex !== -1) {
+        col = parseInt(key.substring(0, commaIndex), 10);
+        row = parseInt(key.substring(commaIndex + 1), 10);
+      }
+      return {
+        key,
+        col,
+        row,
+        tileIndex: parseInt(value as string, 10)
+      };
+    });
+  }, [tileData]);
+
+  return (
+    <>
+      {parsedTiles.map((tile) => (
+        <View
+          key={tile.key}
+          style={{
+            position: 'absolute',
+            left: tile.col * gridSize,
+            top: tile.row * gridSize,
+            width: gridSize,
+            height: gridSize,
+          }}
+        >
+          <PixelSprite
+            sprite={tilesetSprite}
+            size={gridSize}
+            originalSize={true}
+            frameIndex={tile.tileIndex}
+          />
+        </View>
+      ))}
+    </>
+  );
+});
+
 const DraggableInstance = ({ inst, obj, scale, gridSize, onDragStart, onDragEnd, onRotateEnd, sprite, activeTool, onToolAction, isPlacing, isSelected, onSelect }: any) => {
   const translateX = useSharedValue(Number(inst?.x) || 0);
   const translateY = useSharedValue(Number(inst?.y) || 0);
@@ -152,32 +197,11 @@ const DraggableInstance = ({ inst, obj, scale, gridSize, onDragStart, onDragEnd,
                 <Text style={{ color: '#10B981', fontSize: 7, marginTop: 2, fontWeight: 'bold' }}>Tilemap</Text>
               </View>
             ) : (
-              Object.entries(inst?.tileData || {}).map(([key, value]) => {
-                const [colStr, rowStr] = key.split(',');
-                const col = parseInt(colStr, 10);
-                const row = parseInt(rowStr, 10);
-                const tileIndex = parseInt(value, 10);
-
-                return (
-                  <View
-                    key={key}
-                    style={{
-                      position: 'absolute',
-                      left: col * gs,
-                      top: row * gs,
-                      width: gs,
-                      height: gs,
-                    }}
-                  >
-                    <PixelSprite
-                      sprite={sprite}
-                      size={gs}
-                      originalSize={true}
-                      frameIndex={tileIndex}
-                    />
-                  </View>
-                );
-              })
+              <LayerTilemapRenderer
+                tileData={inst?.tileData}
+                tilesetSprite={sprite}
+                gridSize={gs}
+              />
             )}
           </View>
         ) : (
@@ -738,32 +762,11 @@ export default function RoomsScreen() {
                           zIndex: idx * 10
                         }}
                       >
-                        {Object.entries(tileData).map(([key, value]) => {
-                          const [colStr, rowStr] = key.split(',');
-                          const col = parseInt(colStr, 10);
-                          const row = parseInt(rowStr, 10);
-                          const tileIndex = parseInt(value, 10);
-
-                          return (
-                            <View
-                              key={key}
-                              style={{
-                                position: 'absolute',
-                                left: col * GRID_SIZE,
-                                top: row * GRID_SIZE,
-                                width: GRID_SIZE,
-                                height: GRID_SIZE,
-                              }}
-                            >
-                              <PixelSprite
-                                sprite={tilesetSprite}
-                                size={GRID_SIZE}
-                                originalSize={true}
-                                frameIndex={tileIndex}
-                              />
-                            </View>
-                          );
-                        })}
+                        <LayerTilemapRenderer
+                          tileData={tileData}
+                          tilesetSprite={tilesetSprite}
+                          gridSize={GRID_SIZE}
+                        />
                       </View>
                     )}
 
