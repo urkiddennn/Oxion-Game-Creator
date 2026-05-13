@@ -1,5 +1,9 @@
 # Changelog - Oxion Game Creator
 
+## [1.22.1] - 2026-05-13
+### Fixed
+- **Tilemap Boundary Removal**: Removed hardcoded room bounds checks (`roomWidth`/`roomHeight`) in both individual tilemap instance painting and active layer painting, enabling creators to paint and place tilesets anywhere in world space (inside or outside standard room boundaries).
+
 ## [1.21.1] - 2026-05-12
 ### Fixed
 - **Synchronized Room Editor Gestures & Crash Protection**:

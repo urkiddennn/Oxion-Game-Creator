@@ -548,11 +548,6 @@ export default function RoomsScreen() {
       const col = Math.floor(relativeX / GRID_SIZE);
       const row = Math.floor(relativeY / GRID_SIZE);
 
-      // Bounds check relative to room size (or allow infinite relative coordinates)
-      const absCol = Math.floor(x / GRID_SIZE);
-      const absRow = Math.floor(y / GRID_SIZE);
-      if (absCol < 0 || absCol * GRID_SIZE >= roomWidth || absRow < 0 || absRow * GRID_SIZE >= roomHeight) return;
-
       const key = `${col},${row}`;
       const tileData = { ...(selectedInst.tileData || {}) };
 
@@ -575,8 +570,6 @@ export default function RoomsScreen() {
 
     const col = Math.floor(x / GRID_SIZE);
     const row = Math.floor(y / GRID_SIZE);
-
-    if (col < 0 || col * GRID_SIZE >= roomWidth || row < 0 || row * GRID_SIZE >= roomHeight) return;
 
     const key = `${col},${row}`;
     const tileData = { ...(layer.tileData || {}) };
