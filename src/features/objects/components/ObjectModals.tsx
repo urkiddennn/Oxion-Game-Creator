@@ -534,7 +534,15 @@ export default function ObjectModals({
                 { id: 'on_full', label: 'On Full (100%)', icon: Activity, color: theme.colors.primary },
                 { id: 'on_life_lost', label: 'On Life Lost', icon: Heart, color: theme.colors.error },
                 { id: 'on_zero_lives', label: 'On Zero Lives', icon: Heart, color: theme.colors.error },
-              ].filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).length > 0) && (
+              ].filter(ev => {
+                if (ev.id === 'on_empty' || ev.id === 'on_full') {
+                  return selectedObject?.behavior === 'progress_bar';
+                }
+                if (ev.id === 'on_life_lost' || ev.id === 'on_zero_lives') {
+                  return selectedObject?.behavior !== 'progress_bar';
+                }
+                return true;
+              }).filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).length > 0) && (
                 <>
                   <View style={styles.divider} />
                   <Text style={styles.subSectionTitleCompact}>Progress Bar & Stats</Text>
@@ -543,7 +551,15 @@ export default function ObjectModals({
                     { id: 'on_full', label: 'On Full (100%)', icon: Activity, color: theme.colors.primary },
                     { id: 'on_life_lost', label: 'On Life Lost', icon: Heart, color: theme.colors.error },
                     { id: 'on_zero_lives', label: 'On Zero Lives', icon: Heart, color: theme.colors.error },
-                  ].filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).map(ev => (
+                  ].filter(ev => {
+                    if (ev.id === 'on_empty' || ev.id === 'on_full') {
+                      return selectedObject?.behavior === 'progress_bar';
+                    }
+                    if (ev.id === 'on_life_lost' || ev.id === 'on_zero_lives') {
+                      return selectedObject?.behavior !== 'progress_bar';
+                    }
+                    return true;
+                  }).filter(ev => matchesSearch(ev.label) || matchesSearch(ev.id)).map(ev => (
                     <TouchableOpacity
                       key={ev.id}
                       style={styles.actionPresetItem}
@@ -866,12 +882,22 @@ export default function ObjectModals({
                 </>
               )}
 
-              {['x', 'y', 'vx', 'vy', 'width', 'height', 'health', 'angle', 'scale', 'visible', 'value', 'current_count', 'max_count'].filter(p => matchesSearch(p)).length > 0 && (
+              {['x', 'y', 'vx', 'vy', 'width', 'height', 'health', 'angle', 'scale', 'visible', 'value', 'current_count', 'max_count'].filter(p => {
+                if (p === 'value') return selectedObject?.behavior === 'progress_bar';
+                if (p === 'current_count' || p === 'max_count') return selectedObject?.behavior === 'sprite_repeater';
+                if (p === 'health') return selectedObject?.behavior !== 'progress_bar' && selectedObject?.behavior !== 'sprite_repeater';
+                return true;
+              }).filter(p => matchesSearch(p)).length > 0 && (
                 <>
                   <View style={styles.divider} />
                   <Text style={styles.subSectionTitleCompact}>Current Object (this/self)</Text>
                   <View style={styles.pickerRowSmall}>
-                    {['x', 'y', 'vx', 'vy', 'width', 'height', 'health', 'angle', 'scale', 'visible', 'value', 'current_count', 'max_count'].filter(p => matchesSearch(p)).map(p => (
+                    {['x', 'y', 'vx', 'vy', 'width', 'height', 'health', 'angle', 'scale', 'visible', 'value', 'current_count', 'max_count'].filter(p => {
+                      if (p === 'value') return selectedObject?.behavior === 'progress_bar';
+                      if (p === 'current_count' || p === 'max_count') return selectedObject?.behavior === 'sprite_repeater';
+                      if (p === 'health') return selectedObject?.behavior !== 'progress_bar' && selectedObject?.behavior !== 'sprite_repeater';
+                      return true;
+                    }).filter(p => matchesSearch(p)).map(p => (
                       <TouchableOpacity key={p} style={styles.pickerChip} onPress={() => {
                         const val = `self.${p}`;
                         if (handlePropertySelect) handlePropertySelect(val);
@@ -979,7 +1005,12 @@ export default function ObjectModals({
                           <Text style={[styles.miniLabel, { color: theme.colors.primary, marginBottom: 0 }]}>{displayName.toUpperCase()}</Text>
                         </View>
                         <View style={styles.pickerRowSmall}>
-                          {['x', 'y', 'vx', 'vy', 'width', 'height', 'health', 'scale'].map(p => (
+                          {['x', 'y', 'vx', 'vy', 'width', 'height', 'health', 'scale', 'value', 'current_count', 'max_count'].filter(p => {
+                            if (p === 'value') return obj.behavior === 'progress_bar';
+                            if (p === 'current_count' || p === 'max_count') return obj.behavior === 'sprite_repeater';
+                            if (p === 'health') return obj.behavior !== 'progress_bar' && obj.behavior !== 'sprite_repeater';
+                            return true;
+                          }).map(p => (
                             <TouchableOpacity key={p} style={styles.pickerChipSecondary} onPress={() => {
                               if (handlePropertySelect) handlePropertySelect(`${targetId}.${p}`);
                               else if ((global as any).handlePropertySelect) (global as any).handlePropertySelect(`${targetId}.${p}`);
@@ -1161,7 +1192,12 @@ export default function ObjectModals({
                 { id: 'damage:1', label: 'Damage (-1 Life)', icon: Heart, color: theme.colors.error },
                 { id: 'heal:1', label: 'Heal (+1 Life)', icon: Heart, color: theme.colors.success },
                 { id: 'set_count:3', label: 'Set Lives Count', icon: Heart, color: theme.colors.primary },
-              ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).length > 0) && (
+              ].filter(act => {
+                if (act.id === 'set_count:3') {
+                  return selectedObject?.behavior === 'sprite_repeater';
+                }
+                return selectedObject?.behavior !== 'progress_bar' && selectedObject?.behavior !== 'sprite_repeater';
+              }).filter(act => matchesSearch(act.label) || matchesSearch(act.id)).length > 0) && (
                 <>
                   <View style={styles.divider} />
                   <Text style={styles.subSectionTitleCompact}>Lives & Stats</Text>
@@ -1169,7 +1205,12 @@ export default function ObjectModals({
                     { id: 'damage:1', label: 'Damage (-1 Life)', icon: Heart, color: theme.colors.error },
                     { id: 'heal:1', label: 'Heal (+1 Life)', icon: Heart, color: theme.colors.success },
                     { id: 'set_count:3', label: 'Set Lives Count', icon: Heart, color: theme.colors.primary },
-                  ].filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
+                  ].filter(act => {
+                    if (act.id === 'set_count:3') {
+                      return selectedObject?.behavior === 'sprite_repeater';
+                    }
+                    return selectedObject?.behavior !== 'progress_bar' && selectedObject?.behavior !== 'sprite_repeater';
+                  }).filter(act => matchesSearch(act.label) || matchesSearch(act.id)).map(act => (
                     <TouchableOpacity
                       key={act.id}
                       style={styles.actionPresetItem}
@@ -1251,7 +1292,7 @@ export default function ObjectModals({
               )}
 
               {/* Progress Bar Actions */}
-              {([
+              {(selectedObject?.behavior === 'progress_bar' && [
                 { id: 'set_value:50', label: 'SET VALUE' },
                 { id: 'add_value:-10', label: 'CHANGE BAR' },
                 { id: 'tween_to:100:1000', label: 'TWEEN TO' },

@@ -2049,6 +2049,29 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       name: any; id: string; gameObject: any; body: Matter.Body; sv: any; expires?: number; sprite: any; width: number; height: number; layerIndex: number; isRoomInstance?: boolean;
     }[] = [];
     const guiRef: any[] = [];
+    const findGuiStateByName = (name: string): any => {
+      if (!name) return null;
+      const lowerName = name.toLowerCase();
+      for (const gui of guiRef) {
+        if (gui.gameObject?.name?.toLowerCase() === lowerName) return gui;
+        if (gui.gameObject?.gui_hierarchy?.root) {
+          const searchNode = (nodes: any[]): any => {
+            for (const n of nodes) {
+              const nodeObj = objectMap.get(n.objectId);
+              if (nodeObj?.name?.toLowerCase() === lowerName || n.name?.toLowerCase() === lowerName) return n;
+              if (n.children) {
+                const found = searchNode(n.children);
+                if (found) return found;
+              }
+            }
+            return null;
+          };
+          const foundNode = searchNode(gui.gameObject.gui_hierarchy.root);
+          if (foundNode) return foundNode;
+        }
+      }
+      return null;
+    };
     const svMap = new Map<string, any>();
     const subscriptions: any[] = [];
     liveObjectsRef.current.clear();
@@ -2088,6 +2111,14 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
 
           // Special case for GUI elements with no physical body
           if (!targetBody && actualObj) {
+            const node = (currentObj as any)?.node;
+            if (node) {
+              if (prop === 'x') return node.x !== undefined ? node.x : 0;
+              if (prop === 'y') return node.y !== undefined ? node.y : 0;
+            } else if ((currentObj as any)?.sv) {
+              if (prop === 'x') return (currentObj as any).sv.x?.value || 0;
+              if (prop === 'y') return (currentObj as any).sv.y?.value || 0;
+            }
             if (prop === 'current_count' && actualObj.sprite_repeater) return actualObj.sprite_repeater.currentCount;
             if (prop === 'max_count' && actualObj.sprite_repeater) return actualObj.sprite_repeater.maxCount;
             if (prop === 'value' && actualObj.progress_bar) return actualObj.progress_bar.currentValue;
@@ -2194,6 +2225,22 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
                 if (attr === 'hitObject') return result.hitObject ? 1 : 0;
               }
             }
+          }
+        } else {
+          // Fallback: Check GUI elements by name
+          const targetKey = target.toLowerCase();
+          const guiState = findGuiStateByName(targetKey);
+          if (guiState) {
+            const actualObj = guiState._logicState || guiState;
+            const node = actualObj.node || guiState;
+            if (prop === 'x') return node.x !== undefined ? node.x : (actualObj.sv?.x?.value || 0);
+            if (prop === 'y') return node.y !== undefined ? node.y : (actualObj.sv?.y?.value || 0);
+            if (prop === 'current_count' && actualObj.sprite_repeater) return actualObj.sprite_repeater.currentCount;
+            if (prop === 'max_count' && actualObj.sprite_repeater) return actualObj.sprite_repeater.maxCount;
+            if (prop === 'value' && actualObj.progress_bar) return actualObj.progress_bar.currentValue;
+            if (prop === 'health' && actualObj.health) return actualObj.health.current;
+            if (prop === 'scale') return actualObj.physics?.scale || 1;
+            if (prop === 'visible') return actualObj.visible !== false ? 1 : 0;
           }
         }
       }
@@ -2337,7 +2384,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         'save_game', 'load_game', 'set_scale', 'add_scale', 'destroy', 'set_visible', 'set_text'
       ];
 
-      if (!knownCommands.includes(cmd)) {
+       if (!knownCommands.includes(cmd)) {
         const targetKey = cmd.toLowerCase();
         const targetBodyFromMap = nameLookupRef.current.get(targetKey);
         const targetBodiesFromMap = behaviorLookupRef.current.get(targetKey);
@@ -2352,6 +2399,17 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
             });
           }
           return;
+        } else {
+          const guiState = findGuiStateByName(targetKey);
+          if (guiState) {
+            const actualCmd = parts[1];
+            const actualParts = parts.slice(1);
+            if (actualCmd) {
+              const actualObj = guiState._logicState || guiState;
+              executeAction({ cmd: actualCmd, parts: actualParts }, null, actualObj, `${source}:Target:${cmd}`, otherBody);
+            }
+            return;
+          }
         }
       }
 
@@ -2460,10 +2518,11 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
         }
         const info = body ? (body as any).gameInfo : (obj as any);
         const sign = cmd === 'damage' ? -1 : 1;
+        const behavior = info?.obj?.behavior || obj?.behavior;
 
-        // 1. Update health (if present)
+        // 1. Update health (if present and NOT a progress_bar or sprite_repeater)
         let health = info?.health || info?.obj?.health;
-        if (health) {
+        if (health && behavior !== 'progress_bar' && behavior !== 'sprite_repeater') {
           const old = health.current;
           const newVal = Math.max(0, Math.min(health.max, health.current + (amount * sign)));
 
@@ -2482,9 +2541,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           setNonce(n => n + 1);
         }
 
-        // 2. Update sprite_repeater – check BOTH info.sprite_repeater (GUI) and info.obj.sprite_repeater
+        // 2. Update sprite_repeater (if behavior is sprite_repeater)
         let sr = info?.sprite_repeater || info?.obj?.sprite_repeater;
-        if (sr) {
+        if (sr && behavior === 'sprite_repeater') {
           let nextCount = sr.currentCount;
           if (sign < 0) nextCount = Math.max(0, nextCount - amount);
           else nextCount = Math.min(sr.maxCount, nextCount + amount);
@@ -2500,9 +2559,9 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
           variablesDirtyRef.current = true; // Ensure store sync
         }
 
-        // 3. Update progress_bar – check BOTH info.progress_bar and info.obj.progress_bar
+        // 3. Update progress_bar (if behavior is progress_bar)
         let pb = info?.progress_bar || info?.obj?.progress_bar;
-        if (pb) {
+        if (pb && behavior === 'progress_bar') {
           const delta = amount * sign;
           const nextVal = Math.max(pb.minValue, Math.min(pb.maxValue, pb.currentValue + delta));
 
@@ -2543,13 +2602,61 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
       } else if (cmd === 'set_vy') {
         if (body) Matter.Body.setVelocity(body, { x: body.velocity.x, y: resolveValue(parts[1], body, obj) });
       } else if (cmd === 'set_x') {
-        if (body) Matter.Body.setPosition(body, { x: resolveValue(parts[1], body, obj), y: body.position.y });
+        const val = resolveValue(parts[1], body, obj);
+        if (body) {
+          Matter.Body.setPosition(body, { x: val, y: body.position.y });
+        } else {
+          const info = obj as any;
+          if (info?.node) {
+            info.node.x = val;
+            setNonce(n => n + 1);
+          } else if (info?.sv?.x) {
+            info.sv.x.value = val;
+            setNonce(n => n + 1);
+          }
+        }
       } else if (cmd === 'set_y') {
-        if (body) Matter.Body.setPosition(body, { x: body.position.x, y: resolveValue(parts[1], body, obj) });
+        const val = resolveValue(parts[1], body, obj);
+        if (body) {
+          Matter.Body.setPosition(body, { x: body.position.x, y: val });
+        } else {
+          const info = obj as any;
+          if (info?.node) {
+            info.node.y = val;
+            setNonce(n => n + 1);
+          } else if (info?.sv?.y) {
+            info.sv.y.value = val;
+            setNonce(n => n + 1);
+          }
+        }
       } else if (cmd === 'add_x') {
-        if (body) Matter.Body.setPosition(body, { x: body.position.x + resolveValue(parts[1], body, obj), y: body.position.y });
+        const val = resolveValue(parts[1], body, obj);
+        if (body) {
+          Matter.Body.setPosition(body, { x: body.position.x + val, y: body.position.y });
+        } else {
+          const info = obj as any;
+          if (info?.node) {
+            info.node.x = (info.node.x || 0) + val;
+            setNonce(n => n + 1);
+          } else if (info?.sv?.x) {
+            info.sv.x.value = info.sv.x.value + val;
+            setNonce(n => n + 1);
+          }
+        }
       } else if (cmd === 'add_y') {
-        if (body) Matter.Body.setPosition(body, { x: body.position.x, y: body.position.y + resolveValue(parts[1], body, obj) });
+        const val = resolveValue(parts[1], body, obj);
+        if (body) {
+          Matter.Body.setPosition(body, { x: body.position.x, y: body.position.y + val });
+        } else {
+          const info = obj as any;
+          if (info?.node) {
+            info.node.y = (info.node.y || 0) + val;
+            setNonce(n => n + 1);
+          } else if (info?.sv?.y) {
+            info.sv.y.value = info.sv.y.value + val;
+            setNonce(n => n + 1);
+          }
+        }
       } else if (cmd === 'set_angle') {
         if (body) Matter.Body.setAngle(body, resolveValue(parts[1], body, obj) * Math.PI / 180);
       } else if (cmd === 'add_angle') {
@@ -4653,6 +4760,7 @@ export default function GamePlayer({ visible, onClose, projectOverride, debug }:
               const filteredScripts = scripts.filter(Boolean);
               node._logicState = {
                 obj: liveObj,
+                node: node,
                 scripts: filteredScripts,
                 tickScripts: filteredScripts.filter((s: any) => s && s.cmd === 'on_tick'),
                 timerScripts: filteredScripts.filter((s: any) => s && s.cmd === 'on_timer' && s.timerMs > 0),

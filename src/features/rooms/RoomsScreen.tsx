@@ -635,8 +635,9 @@ export default function RoomsScreen() {
     const frameW = obj?.width || ((sprite?.grid?.enabled && sprite.grid.frameWidth) ? sprite.grid.frameWidth : (sprite?.width || 32));
     const frameH = obj?.height || ((sprite?.grid?.enabled && sprite.grid.frameHeight) ? sprite.grid.frameHeight : (sprite?.height || 32));
 
+    const newInstId = Math.random().toString(36).substr(2, 9);
     addInstanceToRoom(currentRoom.id, {
-      id: Math.random().toString(36).substr(2, 9),
+      id: newInstId,
       objectId: selectedObjectId,
       x: snappedX,
       y: snappedY,
@@ -644,6 +645,12 @@ export default function RoomsScreen() {
       height: frameH,
       layerId: activeLayerId || (currentRoom.layers?.[0]?.id || 'default')
     });
+
+    if (obj?.behavior === 'tilemap') {
+      setSelectedInstanceId(newInstId);
+      setSelectedObjectId(null);
+      setActiveTool('select');
+    }
   };
 
   const tapGesture = Gesture.Tap()
@@ -920,9 +927,33 @@ export default function RoomsScreen() {
                       key={obj.id}
                       style={[
                         styles.objectItem,
-                        selectedObjectId === obj.id && styles.objectItemActive
+                        (selectedObjectId === obj.id || (selectedInstanceId && currentRoom?.instances?.find(i => i.id === selectedInstanceId)?.objectId === obj.id)) && styles.objectItemActive
                       ]}
-                      onPress={() => setSelectedObjectId(obj.id === selectedObjectId ? null : obj.id)}
+                      onPress={() => {
+                        const isSelected = selectedObjectId === obj.id;
+                        const activeInst = selectedInstanceId ? currentRoom?.instances?.find(i => i.id === selectedInstanceId) : null;
+                        const isInstanceSelected = activeInst?.objectId === obj.id;
+
+                        if (obj.behavior === 'tilemap') {
+                          if (isInstanceSelected) {
+                            setSelectedObjectId(obj.id);
+                            setSelectedInstanceId(null);
+                          } else {
+                            const existingInst = currentRoom?.instances?.find(i => i.objectId === obj.id);
+                            if (existingInst) {
+                              setSelectedInstanceId(existingInst.id);
+                              setSelectedObjectId(null);
+                              setActiveTool('select');
+                            } else {
+                              setSelectedObjectId(isSelected ? null : obj.id);
+                              setSelectedInstanceId(null);
+                            }
+                          }
+                        } else {
+                          setSelectedObjectId(isSelected ? null : obj.id);
+                          setSelectedInstanceId(null);
+                        }
+                      }}
                     >
                       <View style={styles.objectPreview}>
                         {obj.behavior === 'text' ? (

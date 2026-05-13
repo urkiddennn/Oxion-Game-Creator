@@ -699,7 +699,9 @@ export default function ObjectInspectorModal({
 
   const safeObject = {
     ...selectedObject,
-    health: selectedObject.health || { max: 100, current: 100 },
+    health: (selectedObject.behavior !== 'progress_bar' && selectedObject.behavior !== 'sprite_repeater')
+      ? (selectedObject.health || { max: 100, current: 100 })
+      : undefined,
     animations: selectedObject.animations || {},
     appearance: {
       ...selectedObject.appearance,
@@ -764,14 +766,23 @@ export default function ObjectInspectorModal({
       burst: false,
       ...selectedObject.emitter,
     },
-    progress_bar: {
+    progress_bar: selectedObject.behavior === 'progress_bar' ? {
       minValue: 0,
       maxValue: 100,
       currentValue: 100,
       fillColor: theme.colors.primary,
       direction: 'horizontal',
       ...selectedObject.progress_bar,
-    },
+    } : undefined,
+    sprite_repeater: selectedObject.behavior === 'sprite_repeater' ? {
+      maxCount: 3,
+      currentCount: 3,
+      activeSpriteId: '',
+      inactiveSpriteId: '',
+      layout: 'horizontal',
+      spacing: 4,
+      ...selectedObject.sprite_repeater,
+    } : undefined,
     plugins: selectedObject.plugins || [],
   };
 

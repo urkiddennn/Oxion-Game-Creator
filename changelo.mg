@@ -1,5 +1,23 @@
 # Changelog - Oxion Game Creator
 
+## [1.23.0] - 2026-05-13
+### Added
+- **Dynamic Object-Level Properties**: Isolated progress bar (`value`) and sprite repeater (`current_count`, `max_count`) variables, removing global overlap. Properties are now dynamic, customizable, and unique per created object instance.
+- **Dynamic Position Tracking & Modifiers**: Added `x` and `y` configuration coordinates and `Get Coordinate` logic actions for Progress Bars, Sprite Repeaters, and GUI objects, allowing real-time attachment and offset mapping.
+- **Smart Adaptive Property & Action Filter**: Upgraded modals to automatically hide progress bar, sprite repeater, or health-related properties unless the active object has the corresponding behavior, resulting in a cleaner and context-aware workspace.
+- **Object-Level Visibility & Action System**: Added unified object appearance triggers (`is visible`, `is hidden`) and action commands (`set_visible`, `set_x`, `set_y`) running natively in the physical and GUI runner loop.
+
+## [1.22.3] - 2026-05-13
+### Added
+- **Tilemap Workflow Streamlining**: Selecting a Tilemap object in the Objects sidebar now automatically selects its corresponding room instance (if already present), instantly opening the Tilemap Instance Painter. Additionally, placing a new Tilemap instance immediately transitions the editor to select/paint mode on that instance, completely removing the hassle of manual canvas clicks.
+
+## [1.22.2] - 2026-05-13
+### Optimized
+- **TypedArrays Sprite Painter**: Fully refactored `SpriteEditor.tsx` to utilize flat, lightning-fast `Uint32Array` buffers with dynamic color caching (O(1) uint32-to-hex LUT), completely avoiding high-frequency nested array clone overhead and garbage-collector stuttering during draw/paint actions.
+- **O(1) Tilemap Dimensions Caching**: Integrated a `WeakMap`-backed boundary tracking cache in the physics engine Visibility Culling loop, resolving maximum tile rows/columns lookup complexity in true O(1) without string operations.
+- **State-Memoized Tilemap Layer Component**: Designed a standalone `LayerTilemapRenderer` component in `GamePlayer.tsx` and `RoomsScreen.tsx` that evaluates and memoizes coordinate offsets in a single run-pass on state modifications, removing high-frequency string splitting and coordinate parsing from layout updates.
+- **Single-Pass Physics Boundaries**: Optimized solid-layer boundary parsing routines to resolve min/max constraints using simple single-pass loops rather than mapping/splitting multiple temporary arrays.
+
 ## [1.22.1] - 2026-05-13
 ### Fixed
 - **Tilemap Boundary Removal**: Removed hardcoded room bounds checks (`roomWidth`/`roomHeight`) in both individual tilemap instance painting and active layer painting, enabling creators to paint and place tilesets anywhere in world space (inside or outside standard room boundaries).
